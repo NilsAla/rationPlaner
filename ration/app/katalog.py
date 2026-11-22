@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from dataclasses import fields, replace
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -11,7 +13,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import dubletten, kueche
-from app.db import DubletteEntscheidung, Packung, ProduktMerge, RezeptMeta, ZutatAlias
+from app.db import (
+    BonAlias,
+    DubletteEntscheidung,
+    Kochvorgang,
+    Packung,
+    PlanEintrag,
+    Preis,
+    ProduktMerge,
+    RezeptBewertung,
+    RezeptMeta,
+    ZutatAlias,
+)
 from app.deps import backend, session, settings
 from app.inventory.base import (
     DueType,
@@ -241,6 +254,8 @@ async def rezeptbuch(
     produkte = {p.id: p for p in await b.list_products()}
     bestand = await bestand_je_produkt(b, list(produkte.values()))
     meta = {m.rezept_id: m for m in s.scalars(select(RezeptMeta))}
+    verlauf = kochverlauf(s)
+    meinung = {x.rezept_id: x for x in s.scalars(select(RezeptBewertung))}
     result = []
     for r in await b.list_recipes():
         fehlend = [
@@ -262,9 +277,30 @@ async def rezeptbuch(
                 "fehlend": fehlend,
                 "kochbar": not fehlend and bool(r.ingredients),
                 "quelle": m.quelle if m else None,
+                **verlauf.get(r.id, {"gekocht": 0, "zuletzt": None}),
+                **_meinung(meinung.get(r.id)),
             }
         )
     return sorted(result, key=lambda r: r["name"].lower())
+
+
+def kochverlauf(s: Session) -> dict[str, dict]:
+    """Je Rezept: wie oft gekocht, wann zuletzt."""
+    out: dict[str, dict] = {}
+    for k in s.scalars(select(Kochvorgang)):
+        e = out.setdefault(k.rezept_id, {"gekocht": 0, "zuletzt": None})
+        e["gekocht"] += 1
+        if e["zuletzt"] is None or k.datum > e["zuletzt"]:
+            e["zuletzt"] = k.datum
+    return out
+
+
+def _meinung(m: RezeptBewertung | None) -> dict:
+    return {
+        "bewertung": m.bewertung if m else 0,
+        "favorit": bool(m.favorit) if m else False,
+        "notiz": m.notiz if m else None,
+    }
 
 
 @router.get("/rezepte/{rezept_id}")
@@ -310,6 +346,16 @@ async def rezept_detail(
         "schritte": kueche.schritte(r.description),
         "quelle": m.quelle if m else None,
         "url": m.url if m else None,
+        **_meinung(s.get(RezeptBewertung, r.id)),
+        "verlauf": [
+            {"id": k.id, "datum": k.datum, "portionen": k.portionen, "bewertung": k.bewertung}
+            for k in s.scalars(
+                select(Kochvorgang)
+                .where(Kochvorgang.rezept_id == r.id)
+                .order_by(Kochvorgang.datum.desc())
+                .limit(20)
+            )
+        ],
     }
 
 
@@ -440,3 +486,254 @@ async def dubletten_ignorieren(data: MergeIn, s: Session = Depends(session)) -> 
     s.merge(DubletteEntscheidung(produkt_a=a, produkt_b=b_))
     s.commit()
     return {"produkt_a": a, "produkt_b": b_}
+
+
+# --- Anlegen, Löschen, Massenaktionen -----------------------------------------------------
+
+
+class ProduktNeuIn(ProduktPatchIn):
+    name: str = Field(min_length=1, max_length=120)
+    einheit: str = Field(default="g", min_length=1, max_length=30)
+
+
+@router.post("/produkte", status_code=201)
+async def produkt_anlegen(data: ProduktNeuIn, b: InventoryBackend = Depends(backend)) -> dict:
+    """Neues Produkt; existiert der Name schon, kommt 409 statt einer Dublette."""
+    name = data.name.strip()
+    if any(p.name.lower() == name.lower() for p in await b.list_products()):
+        raise HTTPException(409, f"„{name}“ gibt es schon")
+    if data.parent_id:
+        await b.get_product(data.parent_id)
+    p = await b.create_product(name, data.einheit.strip())
+    rest = replace(data.patch(), name=None)
+    if any(getattr(rest, f.name) is not None for f in fields(rest)):
+        p = await b.update_product(p.id, rest)
+    return produkt_dict(p)
+
+
+async def loeschen_pruefen(b: InventoryBackend, produkt_id: str) -> str | None:
+    """Grund, warum ein Produkt nicht gelöscht werden darf, sonst None.
+
+    Grocy löscht beim Produkt Bestand und Rezeptzutaten mit, das verhindern wir hier.
+    """
+    produkte = await b.list_products()
+    if not any(p.id == produkt_id for p in produkte):
+        return "gibt es nicht"
+    if (menge := await b.get_stock_amount(produkt_id)) > 0:
+        return f"hat noch Bestand ({kueche.menge(menge)})"
+    if kinder := [p.name for p in produkte if p.parent_id == produkt_id]:
+        return f"hat Varianten: {', '.join(kinder[:3])}"
+    if rezepte := [
+        r.name
+        for r in await b.list_recipes()
+        if any(z.product_id == produkt_id for z in r.ingredients)
+    ]:
+        return f"steckt in Rezepten: {', '.join(rezepte[:3])}"
+    return None
+
+
+def _app_daten_entfernen(s: Session, produkt_id: str) -> None:
+    for modell in (ZutatAlias, BonAlias, Packung, Preis):
+        for row in s.scalars(select(modell).where(modell.produkt_id == produkt_id)):
+            s.delete(row)
+
+
+@router.delete("/produkte/{produkt_id}")
+async def produkt_loeschen(
+    produkt_id: str, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+) -> dict:
+    if grund := await loeschen_pruefen(b, produkt_id):
+        raise HTTPException(404 if grund == "gibt es nicht" else 409, f"Nicht löschbar: {grund}")
+    await b.delete_product(produkt_id)
+    _app_daten_entfernen(s, produkt_id)
+    s.commit()
+    log.info("Produkt %s gelöscht", produkt_id)
+    return {"geloescht": produkt_id}
+
+
+class ProduktAktionIn(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=500)
+    aktion: Literal["loeschen", "setzen"]
+    werte: ProduktPatchIn | None = None  # für setzen: nur gesetzte Felder werden geändert
+
+
+@router.post("/produkte/aktion")
+async def produkte_aktion(
+    data: ProduktAktionIn, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+) -> dict:
+    """Massenaktion. Jedes Produkt einzeln, Fehler stoppen die anderen nicht."""
+    ok, fehler = [], []
+    if data.aktion == "setzen":
+        if data.werte is None or not data.werte.model_dump(exclude_none=True):
+            raise HTTPException(422, "werte fehlen")
+        if data.werte.name is not None:
+            raise HTTPException(422, "Name lässt sich nicht für mehrere setzen")
+        patch = data.werte.patch()
+        if data.werte.parent_id:
+            await b.get_product(data.werte.parent_id)
+    for pid in data.ids:
+        try:
+            if data.aktion == "loeschen":
+                if grund := await loeschen_pruefen(b, pid):
+                    fehler.append({"id": pid, "fehler": grund})
+                    continue
+                await b.delete_product(pid)
+                _app_daten_entfernen(s, pid)
+            else:
+                if data.werte and data.werte.parent_id == pid:
+                    fehler.append({"id": pid, "fehler": "kann nicht Variante von sich sein"})
+                    continue
+                await b.update_product(pid, patch)
+            ok.append(pid)
+        except Exception as err:  # noqa: BLE001 - je Produkt melden, weitermachen
+            fehler.append({"id": pid, "fehler": str(err) or type(err).__name__})
+    s.commit()
+    return {"ok": ok, "fehler": fehler}
+
+
+class RezeptNeuIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    portionen: int = Field(default=2, ge=1, le=24)
+    schritte: list[str] = Field(default_factory=list)
+    zutaten: list[RezeptZutatIn] = Field(default_factory=list)
+    tags: list[str] | None = None
+    status: str | None = "ungetestet"
+    aufwand: str | None = None
+
+
+@router.post("/rezepte", status_code=201)
+async def rezept_anlegen(data: RezeptNeuIn, b: InventoryBackend = Depends(backend)) -> dict:
+    if data.status not in (None, *REZEPT_STATUS):
+        raise HTTPException(422, f"status muss {'/'.join(REZEPT_STATUS)} sein")
+    if data.aufwand not in (None, *AUFWAND):
+        raise HTTPException(422, f"aufwand muss {'/'.join(AUFWAND)} sein")
+    for z in data.zutaten:
+        await b.get_product(z.produkt_id)
+    r = await b.create_recipe(
+        data.name.strip(),
+        data.portionen,
+        kueche.beschreibung(data.schritte),
+        [Ingredient(z.produkt_id, z.menge, z.notiz) for z in data.zutaten],
+    )
+    if data.tags or data.status or data.aufwand:
+        r = await b.update_recipe(
+            r.id, RecipePatch(tags=data.tags, status=data.status, effort=data.aufwand)
+        )
+    return {"id": r.id, "name": r.name}
+
+
+def _rezept_app_daten_entfernen(s: Session, rezept_id: str) -> None:
+    for modell in (RezeptMeta, RezeptBewertung):
+        if row := s.get(modell, rezept_id):
+            s.delete(row)
+    for e in s.scalars(
+        select(PlanEintrag).where(
+            PlanEintrag.rezept_id == rezept_id, PlanEintrag.status == "geplant"
+        )
+    ):
+        s.delete(e)
+
+
+@router.delete("/rezepte/{rezept_id}")
+async def rezept_loeschen(
+    rezept_id: str, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+) -> dict:
+    await b.get_recipe(rezept_id)
+    await b.delete_recipe(rezept_id)
+    _rezept_app_daten_entfernen(s, rezept_id)
+    s.commit()
+    log.info("Rezept %s gelöscht", rezept_id)
+    return {"geloescht": rezept_id}
+
+
+class RezeptAktionIn(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=500)
+    aktion: Literal["loeschen", "tag_hinzu", "tag_weg", "status", "aufwand", "favorit"]
+    wert: str | bool | None = None
+
+
+@router.post("/rezepte/aktion")
+async def rezepte_aktion(
+    data: RezeptAktionIn, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+) -> dict:
+    if data.aktion == "status" and data.wert not in REZEPT_STATUS:
+        raise HTTPException(422, f"status muss {'/'.join(REZEPT_STATUS)} sein")
+    if data.aktion == "aufwand" and data.wert not in AUFWAND:
+        raise HTTPException(422, f"aufwand muss {'/'.join(AUFWAND)} sein")
+    if data.aktion in ("tag_hinzu", "tag_weg") and not (
+        isinstance(data.wert, str) and data.wert.strip()
+    ):
+        raise HTTPException(422, "wert (Tag) fehlt")
+    ok, fehler = [], []
+    for rid in data.ids:
+        try:
+            r = await b.get_recipe(rid)
+            if data.aktion == "loeschen":
+                await b.delete_recipe(rid)
+                _rezept_app_daten_entfernen(s, rid)
+            elif data.aktion == "favorit":
+                m = s.get(RezeptBewertung, rid) or RezeptBewertung(rezept_id=rid)
+                m.favorit = bool(data.wert)
+                s.add(m)
+            elif data.aktion == "tag_hinzu":
+                tag = str(data.wert).strip()
+                if tag not in r.tags:
+                    await b.update_recipe(rid, RecipePatch(tags=[*r.tags, tag]))
+            elif data.aktion == "tag_weg":
+                await b.update_recipe(rid, RecipePatch(tags=[t for t in r.tags if t != data.wert]))
+            elif data.aktion == "status":
+                await b.update_recipe(rid, RecipePatch(status=str(data.wert)))
+            else:
+                await b.update_recipe(rid, RecipePatch(effort=str(data.wert)))
+            ok.append(rid)
+        except Exception as err:  # noqa: BLE001 - je Rezept melden, weitermachen
+            fehler.append({"id": rid, "fehler": str(err) or type(err).__name__})
+    s.commit()
+    return {"ok": ok, "fehler": fehler}
+
+
+class MeinungIn(BaseModel):
+    bewertung: Literal[-1, 0, 1] | None = None
+    favorit: bool | None = None
+    notiz: str | None = Field(default=None, max_length=500)
+
+
+@router.put("/rezepte/{rezept_id}/meinung")
+async def meinung_setzen(
+    rezept_id: str,
+    data: MeinungIn,
+    s: Session = Depends(session),
+    b: InventoryBackend = Depends(backend),
+) -> dict:
+    """Daumen, Favorit, Notiz. Fließt in den Planer (Lieblinge ↔ Neues)."""
+    await b.get_recipe(rezept_id)
+    m = s.get(RezeptBewertung, rezept_id) or RezeptBewertung(rezept_id=rezept_id)
+    if data.bewertung is not None:
+        m.bewertung = data.bewertung
+    if data.favorit is not None:
+        m.favorit = data.favorit
+    if data.notiz is not None:
+        m.notiz = data.notiz.strip() or None
+    s.add(m)
+    s.commit()
+    return _meinung(m)
+
+
+class KochBewertungIn(BaseModel):
+    bewertung: Literal[-1, 0, 1]
+
+
+@router.put("/kochvorgaenge/{vorgang_id}/bewertung")
+async def kochvorgang_bewerten(
+    vorgang_id: int, data: KochBewertungIn, s: Session = Depends(session)
+) -> dict:
+    """Daumen nach dem Kochen; gilt auch als aktuelle Meinung zum Rezept."""
+    k = s.get(Kochvorgang, vorgang_id)
+    if k is None:
+        raise HTTPException(404, "Kochvorgang nicht gefunden")
+    k.bewertung = data.bewertung
+    m = s.get(RezeptBewertung, k.rezept_id) or RezeptBewertung(rezept_id=k.rezept_id)
+    m.bewertung = data.bewertung
+    s.add(m)
+    s.commit()
+    return {"id": k.id, "rezept_id": k.rezept_id, "bewertung": k.bewertung}

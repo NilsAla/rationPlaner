@@ -152,3 +152,36 @@ class Preis(Base):
     markt: Mapped[str | None] = mapped_column(String, nullable=True)
     datum: Mapped[date] = mapped_column(Date)
     quelle: Mapped[str] = mapped_column(String, default="bon")
+
+
+class Kochvorgang(Base):
+    """Jedes „Gekocht“: Verlauf, Lieblinge, Abwechslung, Bewertung (Daumen)."""
+
+    __tablename__ = "kochvorgang"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rezept_id: Mapped[str] = mapped_column(String, index=True)
+    datum: Mapped[date] = mapped_column(Date)
+    portionen: Mapped[int] = mapped_column(Integer, default=1)
+    bewertung: Mapped[int | None] = mapped_column(Integer, nullable=True)  # -1 / 0 / 1
+    notiz: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class Einstellung(Base):
+    """In der Web-App änderbare Einstellungen (die App-Optionen bleiben in HA)."""
+
+    __tablename__ = "einstellung"
+
+    schluessel: Mapped[str] = mapped_column(String, primary_key=True)
+    wert: Mapped[object] = mapped_column(JSON)
+
+
+class RezeptBewertung(Base):
+    """Persönliche Meinung zu einem Rezept: Daumen, Favorit, Notiz."""
+
+    __tablename__ = "rezept_bewertung"
+
+    rezept_id: Mapped[str] = mapped_column(String, primary_key=True)
+    bewertung: Mapped[int] = mapped_column(Integer, default=0)  # -1 / 0 / 1
+    favorit: Mapped[bool] = mapped_column(Integer, default=0)
+    notiz: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -21,7 +21,10 @@ class RationApi:
     def __init__(self, session: aiohttp.ClientSession, url: str, token: str = "") -> None:
         self._session = session
         self._base = url.rstrip("/") + "/api/v1"
-        self._headers = {"Authorization": f"Bearer {token}"} if token else {}
+        # X-Ration-Client: die App ordnet Änderungen im Protokoll der Bridge zu.
+        self._headers = {"X-Ration-Client": "bridge"}
+        if token:
+            self._headers["Authorization"] = f"Bearer {token}"
 
     async def request(
         self, method: str, path: str, json: dict | None = None, params: dict | None = None

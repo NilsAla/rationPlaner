@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from app.inventory.base import (
+    BatchPatch,
     Ingredient,
     InsufficientStockError,
     InventoryBackend,
@@ -182,6 +183,42 @@ async def case_merge(b: InventoryBackend, s: ContractSetup) -> str:
     return "Merge rechnet Bestand und Rezeptmengen um und hängt Varianten um"
 
 
+async def case_inventur(b: InventoryBackend, s: ContractSetup) -> str:
+    await b.add_stock(s.child_id, 300, _in(3), s.fridge_id)
+    await b.add_stock(s.child_id, 100, _in(8), s.fridge_id)
+    erste = (await b.get_batches(s.child_id))[0]
+    await b.update_batch(erste.id, BatchPatch(amount=250, best_before=_in(4)))
+    chargen = await b.get_batches(s.child_id)
+    stand = sorted((c.amount, c.best_before) for c in chargen)
+    assert stand == [(100, _in(8)), (250, _in(4))], f"nach Bearbeiten: {stand}"
+    zweite = next(c for c in chargen if c.best_before == _in(8))
+    await b.consume_batch(zweite.id, 40, spoiled=True)
+    chargen = await b.get_batches(s.child_id)
+    stand = sorted((c.amount, c.best_before) for c in chargen)
+    assert stand == [(60, _in(8)), (250, _in(4))], f"nach Abbuchen der Charge: {stand}"
+    zweite = next(c for c in chargen if c.best_before == _in(8))
+    try:
+        await b.consume_batch(zweite.id, 1000, spoiled=False)
+        raise AssertionError("Überbuchung einer Charge wurde nicht abgelehnt")
+    except InsufficientStockError:
+        pass
+    await b.consume_batch(zweite.id, None, spoiled=False)
+    rest = [(c.amount, c.best_before) for c in await b.get_batches(s.child_id)]
+    assert rest == [(250, _in(4))], f"nach Abbuchen der ganzen Charge: {rest}"
+    return "Chargen lassen sich bearbeiten und einzeln (auch teilweise) abbuchen"
+
+
+async def case_loeschen(b: InventoryBackend, s: ContractSetup) -> str:
+    tag = uuid.uuid4().hex[:6]
+    p = await b.create_product(f"{TEST_PREFIX} Wegwerf {tag}", "g")
+    r = await b.create_recipe(f"{TEST_PREFIX} Wegwerf-Rezept {tag}", 2, "", [Ingredient(p.id, 50)])
+    await b.delete_recipe(r.id)
+    assert r.id not in {x.id for x in await b.list_recipes()}, "Rezept existiert noch"
+    await b.delete_product(p.id)
+    assert p.id not in {x.id for x in await b.list_products()}, "Produkt existiert noch"
+    return "Eigene Produkte und Rezepte lassen sich löschen"
+
+
 Case = Callable[[InventoryBackend, ContractSetup], Awaitable[str]]
 
 CASES: list[tuple[str, str, Case]] = [
@@ -193,6 +230,8 @@ CASES: list[tuple[str, str, Case]] = [
     ("bearbeiten", "Lassen sich Produkt-Attribute setzen?", case_update),
     ("rezept", "Lässt sich ein Rezept samt Zutaten bearbeiten?", case_recipe_edit),
     ("merge", "Rechnet Zusammenführen Bestand und Rezepte richtig um?", case_merge),
+    ("inventur", "Lassen sich einzelne Chargen bearbeiten und abbuchen?", case_inventur),
+    ("loeschen", "Lassen sich Produkte und Rezepte löschen?", case_loeschen),
 ]
 
 

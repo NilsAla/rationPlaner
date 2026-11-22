@@ -12,6 +12,7 @@ import httpx
 
 from app.inventory.base import (
     Batch,
+    BatchPatch,
     DueType,
     Ingredient,
     InsufficientStockError,
@@ -285,6 +286,52 @@ class GrocyBackend:
                 "allow_subproduct_substitution": True,
             },
         )
+
+    async def update_batch(self, batch_id: str, patch: BatchPatch) -> None:
+        roh = await self._get(f"/objects/stock/{batch_id}")
+        ablauf = roh.get("best_before_date")
+        if patch.ohne_ablauf:
+            ablauf = NEVER_EXPIRES
+        elif patch.best_before is not None:
+            ablauf = patch.best_before.isoformat()
+        body: dict[str, Any] = {
+            # Grocy überschreibt alle Felder, daher die bisherigen Werte mitschicken.
+            "amount": patch.amount if patch.amount is not None else float(roh["amount"]),
+            "best_before_date": ablauf,
+            "location_id": int(patch.location_id or roh["location_id"]),
+            "shopping_location_id": roh.get("shopping_location_id"),
+            "price": roh.get("price"),
+            "open": patch.opened if patch.opened is not None else bool(int(roh.get("open") or 0)),
+            "purchased_date": roh.get("purchased_date"),
+            "note": roh.get("note"),
+        }
+        await self._put(f"/stock/entry/{batch_id}", body)
+
+    async def consume_batch(self, batch_id: str, amount: float | None, *, spoiled: bool) -> None:
+        roh = await self._get(f"/objects/stock/{batch_id}")
+        menge = float(roh["amount"]) if amount is None else amount
+        if menge > float(roh["amount"]) + 1e-9:
+            raise InsufficientStockError(str(roh["product_id"]))
+        await self._post(
+            f"/stock/products/{roh['product_id']}/consume",
+            {
+                "amount": menge,
+                "transaction_type": "consume",
+                "spoiled": spoiled,
+                "stock_entry_id": roh["stock_id"],
+                "location_id": int(roh["location_id"]),
+            },
+        )
+
+    async def delete_product(self, product_id: str) -> None:
+        await self._delete(f"/objects/products/{int(product_id)}")
+
+    async def delete_recipe(self, recipe_id: str) -> None:
+        # Grocy löscht die Zutatenliste nicht mit.
+        for pos in await self._get("/objects/recipes_pos"):
+            if str(pos["recipe_id"]) == str(recipe_id):
+                await self._delete(f"/objects/recipes_pos/{pos['id']}")
+        await self._delete(f"/objects/recipes/{int(recipe_id)}")
 
     async def transfer(
         self, product_id: str, amount: float, from_location_id: str, to_location_id: str

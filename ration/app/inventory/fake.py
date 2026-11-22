@@ -8,6 +8,7 @@ from datetime import date, timedelta
 
 from app.inventory.base import (
     Batch,
+    BatchPatch,
     Ingredient,
     InsufficientStockError,
     Location,
@@ -113,6 +114,40 @@ class FakeBackend:
         self._batches.append(
             Batch(str(next(self._ids)), product_id, amount, best_before, location_id)
         )
+
+    def _batch(self, batch_id: str) -> Batch:
+        for b in self._batches:
+            if b.id == batch_id:
+                return b
+        raise NotFoundError(f"Charge {batch_id}")
+
+    async def update_batch(self, batch_id: str, patch: BatchPatch) -> None:
+        b = self._batch(batch_id)
+        neu = replace(
+            b,
+            amount=b.amount if patch.amount is None else patch.amount,
+            best_before=None if patch.ohne_ablauf else (patch.best_before or b.best_before),
+            location_id=patch.location_id or b.location_id,
+            opened=b.opened if patch.opened is None else patch.opened,
+        )
+        self._batches[self._batches.index(b)] = neu
+
+    async def consume_batch(self, batch_id: str, amount: float | None, *, spoiled: bool) -> None:
+        b = self._batch(batch_id)
+        self._take([b], b.amount if amount is None else amount)
+
+    async def delete_product(self, product_id: str) -> None:
+        await self.get_product(product_id)
+        # wie Grocy: Bestand und Rezeptzutaten fallen mit weg
+        self._batches = [b for b in self._batches if b.product_id != product_id]
+        for rid, r in list(self._recipes.items()):
+            zutaten = tuple(z for z in r.ingredients if z.product_id != product_id)
+            self._recipes[rid] = replace(r, ingredients=zutaten)
+        del self._products[product_id]
+
+    async def delete_recipe(self, recipe_id: str) -> None:
+        await self.get_recipe(recipe_id)
+        del self._recipes[recipe_id]
 
     def _take(self, batches: list[Batch], amount: float) -> list[tuple[Batch, float]]:
         if sum(b.amount for b in batches) + 1e-9 < amount:

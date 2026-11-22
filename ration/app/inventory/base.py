@@ -132,6 +132,17 @@ class Batch:
     opened: bool = False
 
 
+@dataclass(frozen=True)
+class BatchPatch:
+    """Änderung einer Charge. None = unverändert; ohne_ablauf entfernt das Ablaufdatum."""
+
+    amount: float | None = None
+    best_before: date | None = None
+    ohne_ablauf: bool = False
+    location_id: str | None = None
+    opened: bool | None = None
+
+
 def consume_order(batch: Batch) -> tuple:
     """Grocy-Standard: geöffnet zuerst, dann frühestes Ablaufdatum, dann Einbuchreihenfolge."""
     return (not batch.opened, batch.best_before or date.max, int(batch.id))
@@ -196,6 +207,23 @@ class InventoryBackend(Protocol):
     async def update_product(self, product_id: str, patch: ProductPatch) -> Product: ...
 
     async def update_recipe(self, recipe_id: str, patch: RecipePatch) -> Recipe: ...
+
+    async def update_batch(self, batch_id: str, patch: BatchPatch) -> None:
+        """Ändert Menge, Ablauf, Lagerort oder geöffnet einer Charge (Inventur)."""
+        ...
+
+    async def consume_batch(self, batch_id: str, amount: float | None, *, spoiled: bool) -> None:
+        """Bucht genau diese Charge ab (amount None = alles). Wirft InsufficientStockError."""
+        ...
+
+    async def delete_product(self, product_id: str) -> None:
+        """Löscht ein Produkt. Grocy löscht dabei Bestand und Rezeptzutaten mit, daher nur
+        nach Prüfung (kein Bestand, in keinem Rezept, keine Varianten) und Bestätigung."""
+        ...
+
+    async def delete_recipe(self, recipe_id: str) -> None:
+        """Löscht ein Rezept samt Zutatenliste. Nur nach Bestätigung."""
+        ...
 
     async def merge_products(self, keep_id: str, remove_id: str) -> None:
         """Hängt Bestand, Rezeptzutaten und Varianten von remove auf keep um, löscht remove.

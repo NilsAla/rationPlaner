@@ -21,16 +21,20 @@ from app import (
     API_VERSION,
     __version__,
     bon,
+    einstellungen,
+    inventar,
     katalog,
     kategorisierung,
     kueche,
     llm_import,
     planer,
+    protokoll,
     rezept_import,
     testdaten,
 )
 from app.db import (
     FuellstandAbfrage,
+    Kochvorgang,
     Packung,
     PlanEintrag,
     RezeptImport,
@@ -257,6 +261,8 @@ async def gekocht(
     ergebnis = await kueche.gekocht(b, recipe, data.portionen_gekocht, data.portionen_gegessen)
     if eintrag and eintrag.rezept_id == rezept_id:
         eintrag.status = "gekocht"
+    vorgang = Kochvorgang(rezept_id=rezept_id, datum=date.today(), portionen=data.portionen_gekocht)
+    s.add(vorgang)
     # Füllstand höchstens alle FUELLSTAND_TAGE je Produkt abfragen.
     heute = date.today()
     fragen = []
@@ -269,7 +275,12 @@ async def gekocht(
     log.info("Gekocht: %s, %s Portionen", recipe.name, data.portionen_gekocht)
     daten = asdict(ergebnis)
     del daten["fuellstand_produkte"]
-    return {"rezept": recipe.name, **daten, "fuellstand_fragen": fragen}
+    return {
+        "rezept": recipe.name,
+        **daten,
+        "fuellstand_fragen": fragen,
+        "kochvorgang_id": vorgang.id,
+    }
 
 
 class FuellstandIn(BaseModel):
@@ -588,6 +599,8 @@ def create_app(
         if ha is None and st.supervisor_token:
             app.state.ha = SupervisorHomeAssistant(st.supervisor_token)
             owned.append(app.state.ha)
+        if app.state.ha is not None:
+            app.state.ha = protokoll.ProtokollHA(app.state.ha, app.state.engine)
         yield
         for client in owned:
             await client.aclose()
@@ -598,6 +611,13 @@ def create_app(
     app.include_router(bon.router)
     app.include_router(kategorisierung.router)
     app.include_router(planer.router)
+    app.include_router(protokoll.router)
+    app.include_router(einstellungen.router)
+    app.include_router(inventar.router)
+
+    @app.middleware("http")
+    async def aenderungen_protokollieren(request: Request, call_next):
+        return await protokoll.aenderung_protokollieren(request, call_next, INGRESS_IP)
 
     @app.middleware("http")
     async def token_pruefen(request: Request, call_next):
