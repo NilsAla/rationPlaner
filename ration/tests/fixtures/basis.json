@@ -1,0 +1,25 @@
+{
+  "_hinweis": "Testdaten für FakeBackend. Keine produktiven Stammdaten im Repo.",
+  "locations": [
+    {"id": "kuehlschrank", "name": "Kühlschrank"},
+    {"id": "vorrat", "name": "Vorrat"},
+    {"id": "gefrierschrank", "name": "Gefrierschrank", "is_freezer": true}
+  ],
+  "products": [
+    {"id": "paprika", "name": "Paprika rot", "unit": "g", "tracking_mode": "exakt", "grams_per_unit": 1, "tolerance_pct": 30},
+    {"id": "nudeln", "name": "Nudeln", "unit": "g", "tracking_mode": "menge", "grams_per_unit": 1, "tolerance_pct": 15},
+    {"id": "oel", "name": "Olivenöl", "unit": "EL", "tracking_mode": "fuellstand", "grams_per_unit": 10}
+  ],
+  "recipes": [
+    {
+      "id": "paprika-pasta",
+      "name": "Paprika-Pasta",
+      "servings": 2,
+      "ingredients": [
+        {"product_id": "paprika", "amount": 250},
+        {"product_id": "nudeln", "amount": 200},
+        {"product_id": "oel", "amount": 2}
+      ]
+    }
+  ]
+}

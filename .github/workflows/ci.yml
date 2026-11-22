@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    services:
+      grocy:
+        image: linuxserver/grocy:latest
+        ports:
+          - 9283:80
+    env:
+      RATION_TEST_GROCY_URL: http://localhost:9283
+      RATION_TEST_GROCY_API_KEY: ci-test-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e "ration[dev]"
+      - name: Lint
+        run: |
+          ruff check . && ruff format --check .
+          cd ration && ruff check . && ruff format --check .
+      - name: Grocy-Testinstanz vorbereiten
+        env:
+          GROCY: ${{ job.services.grocy.id }}
+        run: |
+          # Grocy legt die DB beim ersten Seitenaufruf an; warten, bis die Tabelle existiert.
+          for i in $(seq 1 60); do
+            curl -s -L -o /dev/null http://localhost:9283/ || true
+            docker exec "$GROCY" php -r '
+              $db = new PDO("sqlite:/config/data/grocy.db");
+              exit($db->query("SELECT name FROM sqlite_master WHERE name = \"api_keys\"")->fetch() ? 0 : 1);' \
+              2>/dev/null && break
+            sleep 2
+          done
+          docker exec "$GROCY" php -r '
+            $db = new PDO("sqlite:/config/data/grocy.db");
+            $db->exec("INSERT INTO api_keys (api_key, user_id, expires, key_type) VALUES (\"ci-test-key\", 1, \"2999-12-31 23:59:59\", \"default\")");'
+          curl -fs -H "GROCY-API-KEY: ci-test-key" http://localhost:9283/api/system/info
+      - name: Tests inkl. Contract-Tests gegen Grocy
+        working-directory: ration
+        run: pytest -q

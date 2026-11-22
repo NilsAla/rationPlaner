@@ -1,0 +1,13 @@
+{
+  "domain": "ration",
+  "name": "rationPlaner Bridge",
+  "codeowners": ["@NilsAla"],
+  "config_flow": true,
+  "dependencies": ["http"],
+  "documentation": "https://github.com/NilsAla/rationPlaner",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/NilsAla/rationPlaner/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
