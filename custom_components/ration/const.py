@@ -9,7 +9,5 @@ DEFAULT_URL = "http://local-ration:8099"
 SUPPORTED_API_MAJOR = 1
 SCAN_INTERVAL = timedelta(minutes=1)
 
-SERVICE_GEKOCHT = "gekocht"
-SERVICE_EINKAUFSLISTE = "einkaufsliste_erzeugen"
 SERVICE_PLAN_ERZEUGEN = "plan_erzeugen"
 SERVICE_KATEGORISIEREN = "kategorisieren"

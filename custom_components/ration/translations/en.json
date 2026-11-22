@@ -52,6 +52,100 @@
           "description": "Wie viele Tage ab heute berücksichtigt werden"
         }
       }
+    },
+    "heute": {
+      "name": "Today",
+      "description": "Today's recipe (response)."
+    },
+    "bestand": {
+      "name": "Stock",
+      "description": "All stock batches (response)."
+    },
+    "produkte": {
+      "name": "Products",
+      "description": "All products (response)."
+    },
+    "lagerorte": {
+      "name": "Locations",
+      "description": "All locations (response)."
+    },
+    "rezepte": {
+      "name": "Recipes",
+      "description": "All recipes (response)."
+    },
+    "status": {
+      "name": "Status",
+      "description": "Status line and batches expiring soon (response).",
+      "fields": {
+        "tage": {
+          "name": "Days",
+          "description": "How many days from today"
+        }
+      }
+    },
+    "plan": {
+      "name": "Plan",
+      "description": "Meal plan from today (response).",
+      "fields": {
+        "tage": {
+          "name": "Days",
+          "description": "How many days from today"
+        }
+      }
+    },
+    "plan_setzen": {
+      "name": "Set plan",
+      "description": "Plans a recipe for a day.",
+      "fields": {
+        "datum": {
+          "name": "Date",
+          "description": "Day of the plan"
+        },
+        "rezept_id": {
+          "name": "Recipe",
+          "description": "Recipe ID"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Number of servings"
+        }
+      }
+    },
+    "plan_loeschen": {
+      "name": "Clear plan",
+      "description": "Removes the plan entry of a day.",
+      "fields": {
+        "datum": {
+          "name": "Date",
+          "description": "Day of the plan"
+        }
+      }
+    },
+    "einbuchen": {
+      "name": "Add stock",
+      "description": "Adds an amount of a product to stock.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "menge": {
+          "name": "Amount",
+          "description": "In the product's stock unit"
+        },
+        "mhd": {
+          "name": "Best before",
+          "description": "Empty = default shelf life"
+        },
+        "lagerort_id": {
+          "name": "Location",
+          "description": "Empty = product default"
+        },
+        "preis": {
+          "name": "Price",
+          "description": "Optional"
+        }
+      }
     }
   }
 }

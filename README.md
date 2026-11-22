@@ -39,5 +39,27 @@ und eine To-do-Entität für die Einkaufsliste.
 
 Beide Services liefern eine Antwort (`response_variable`), z. B. was gefehlt hat.
 
+Lesend (nur mit Antwort): `ration.heute`, `ration.status`, `ration.bestand`, `ration.produkte`,
+`ration.lagerorte`, `ration.rezepte`, `ration.plan`. Schreibend: `ration.plan_setzen`,
+`ration.plan_loeschen`, `ration.einbuchen`. Listen kommen als `{"items": [...]}`.
+
+## LLM und MCP
+
+Die Bridge registriert die LLM-API **rationPlaner**. Jede Aktion oben ist dort ein Tool
+(`ration_rezepte`, `ration_plan_setzen`, …).
+
+- **MCP Server von HA:** Integration „Model Context Protocol Server“ hinzufügen bzw. neu
+  konfigurieren und als LLM-API „rationPlaner“ (zusätzlich zu Assist) auswählen.
+- **Assist:** im Gesprächsagenten (OpenAI/Anthropic) unter „Home Assistant steuern“
+  „rationPlaner“ aktivieren.
+- **ha-mcp o. Ä.:** die Services oben mit `return_response` aufrufen.
+
+Test: `ration.rezepte` unter Entwicklerwerkzeuge → Aktionen mit „Antwort“ ausführen.
+
+## Testrezepte
+
+Button „Testrezepte in Grocy anlegen“ im Tab *Woche* (oder `POST /api/v1/testdaten`) legt
+2 Rezepte samt 6 Produkten an. Idempotent, löscht nichts.
+
 Das System startet ohne Rezepte und Produkte. Befüllung per Import und LLM-Kategorisierung,
 siehe Konzept, Abschnitt „Stammdaten-Aufbau“.

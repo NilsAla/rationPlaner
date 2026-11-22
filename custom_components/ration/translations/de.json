@@ -52,6 +52,100 @@
           "description": "Wie viele Tage ab heute berücksichtigt werden"
         }
       }
+    },
+    "heute": {
+      "name": "Heute",
+      "description": "Rezept für heute (Antwort)."
+    },
+    "bestand": {
+      "name": "Bestand",
+      "description": "Alle Chargen im Bestand (Antwort)."
+    },
+    "produkte": {
+      "name": "Produkte",
+      "description": "Alle Produkte (Antwort)."
+    },
+    "lagerorte": {
+      "name": "Lagerorte",
+      "description": "Alle Lagerorte (Antwort)."
+    },
+    "rezepte": {
+      "name": "Rezepte",
+      "description": "Alle Rezepte (Antwort)."
+    },
+    "status": {
+      "name": "Status",
+      "description": "Statuszeile und bald ablaufende Chargen (Antwort).",
+      "fields": {
+        "tage": {
+          "name": "Tage",
+          "description": "Wie viele Tage ab heute"
+        }
+      }
+    },
+    "plan": {
+      "name": "Plan",
+      "description": "Wochenplan ab heute (Antwort).",
+      "fields": {
+        "tage": {
+          "name": "Tage",
+          "description": "Wie viele Tage ab heute"
+        }
+      }
+    },
+    "plan_setzen": {
+      "name": "Plan setzen",
+      "description": "Plant ein Rezept für einen Tag.",
+      "fields": {
+        "datum": {
+          "name": "Datum",
+          "description": "Tag des Plans"
+        },
+        "rezept_id": {
+          "name": "Rezept",
+          "description": "ID des Rezepts"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Anzahl Portionen"
+        }
+      }
+    },
+    "plan_loeschen": {
+      "name": "Plan löschen",
+      "description": "Entfernt den Planeintrag eines Tages.",
+      "fields": {
+        "datum": {
+          "name": "Datum",
+          "description": "Tag des Plans"
+        }
+      }
+    },
+    "einbuchen": {
+      "name": "Einbuchen",
+      "description": "Bucht eine Menge eines Produkts ein.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "menge": {
+          "name": "Menge",
+          "description": "In der Bestandseinheit des Produkts"
+        },
+        "mhd": {
+          "name": "MHD",
+          "description": "Leer = Standard-Haltbarkeit"
+        },
+        "lagerort_id": {
+          "name": "Lagerort",
+          "description": "Leer = Standard des Produkts"
+        },
+        "preis": {
+          "name": "Preis",
+          "description": "Optional"
+        }
+      }
     }
   }
 }

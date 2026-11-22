@@ -29,3 +29,71 @@ einkaufsliste_erzeugen:
           max: 14
 plan_erzeugen:
 kategorisieren:
+heute:
+bestand:
+produkte:
+lagerorte:
+rezepte:
+status:
+  fields:
+    tage:
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 30
+plan:
+  fields:
+    tage:
+      default: 7
+      selector:
+        number:
+          min: 1
+          max: 14
+plan_setzen:
+  fields:
+    datum:
+      required: true
+      selector:
+        date:
+    rezept_id:
+      required: true
+      selector:
+        text:
+    portionen:
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 12
+plan_loeschen:
+  fields:
+    datum:
+      required: true
+      selector:
+        date:
+einbuchen:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+    menge:
+      required: true
+      selector:
+        number:
+          min: 0
+          step: any
+          mode: box
+    mhd:
+      selector:
+        date:
+    lagerort_id:
+      selector:
+        text:
+    preis:
+      selector:
+        number:
+          min: 0
+          step: 0.01
+          mode: box
