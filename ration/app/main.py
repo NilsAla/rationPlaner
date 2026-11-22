@@ -25,6 +25,7 @@ from app import (
     kategorisierung,
     kueche,
     llm_import,
+    planer,
     rezept_import,
     testdaten,
 )
@@ -596,6 +597,7 @@ def create_app(
     app.include_router(katalog.router)
     app.include_router(bon.router)
     app.include_router(kategorisierung.router)
+    app.include_router(planer.router)
 
     @app.middleware("http")
     async def token_pruefen(request: Request, call_next):

@@ -27,7 +27,6 @@ einkaufsliste_erzeugen:
         number:
           min: 1
           max: 14
-plan_erzeugen:
 heute:
 bestand:
 produkte:
@@ -442,3 +441,62 @@ vorschlaege_entscheiden:
     ablehnen:
       selector:
         object:
+plan_erzeugen:
+  fields:
+    start:
+      selector:
+        date:
+    tage:
+      selector:
+        number:
+          min: 1
+          max: 14
+    portionen:
+      selector:
+        number:
+          min: 1
+          max: 6
+    ki:
+      selector:
+        boolean:
+    ueberschreiben:
+      selector:
+        boolean:
+    uebernehmen:
+      selector:
+        boolean:
+plan_vorschlag:
+  fields:
+    lauf_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+plan_laeufe:
+plan_uebernehmen:
+  fields:
+    lauf_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+plan_tauschen:
+  fields:
+    datum:
+      required: true
+      selector:
+        date:
+    portionen:
+      selector:
+        number:
+          min: 1
+          max: 6
+plan_simulation:
+  fields:
+    tage:
+      selector:
+        number:
+          min: 1
+          max: 14

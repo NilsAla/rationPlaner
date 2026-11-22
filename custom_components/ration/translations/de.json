@@ -45,10 +45,6 @@
         }
       }
     },
-    "plan_erzeugen": {
-      "name": "Plan erzeugen",
-      "description": "Erzeugt den Wochenplan."
-    },
     "einkaufsliste_erzeugen": {
       "name": "Einkaufsliste erzeugen",
       "description": "Schreibt fehlende Zutaten der geplanten Gerichte in die To-do-Liste.",
@@ -558,6 +554,84 @@
         "ablehnen": {
           "name": "Ablehnen",
           "description": "Liste von Vorschlags-IDs"
+        }
+      }
+    },
+    "plan_erzeugen": {
+      "name": "Plan erzeugen",
+      "description": "Startet den Wochenplaner (Code bewertet, KI wählt, Code simuliert Einkauf und Verderb).",
+      "fields": {
+        "start": {
+          "name": "Start",
+          "description": "Erster Tag, Standard heute"
+        },
+        "tage": {
+          "name": "Tage",
+          "description": "Anzahl Tage (Standard 7)"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Portionen je Tag (Standard 2)"
+        },
+        "ki": {
+          "name": "KI",
+          "description": "KI wählt aus (Standard an)"
+        },
+        "ueberschreiben": {
+          "name": "Überschreiben",
+          "description": "Auch schon geplante Tage neu planen"
+        },
+        "uebernehmen": {
+          "name": "Übernehmen",
+          "description": "Vorschlag direkt in den Wochenplan schreiben"
+        }
+      }
+    },
+    "plan_vorschlag": {
+      "name": "Planvorschlag",
+      "description": "Ergebnis eines Planer-Laufs mit Einkauf und Verderb.",
+      "fields": {
+        "lauf_id": {
+          "name": "Lauf",
+          "description": "ID aus plan_erzeugen"
+        }
+      }
+    },
+    "plan_laeufe": {
+      "name": "Planer-Läufe",
+      "description": "Die letzten Läufe des Wochenplaners."
+    },
+    "plan_uebernehmen": {
+      "name": "Plan übernehmen",
+      "description": "Schreibt einen Planvorschlag in den Wochenplan.",
+      "fields": {
+        "lauf_id": {
+          "name": "Lauf",
+          "description": "ID aus plan_erzeugen"
+        }
+      }
+    },
+    "plan_tauschen": {
+      "name": "Tag tauschen",
+      "description": "Ersetzt das Rezept eines Tages durch den nächstbesten Kandidaten, ohne KI.",
+      "fields": {
+        "datum": {
+          "name": "Datum",
+          "description": "Tag im Plan"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Standard wie bisher"
+        }
+      }
+    },
+    "plan_simulation": {
+      "name": "Plan simulieren",
+      "description": "Simuliert den Wochenplan gegen den Bestand: Einkauf, Verderb.",
+      "fields": {
+        "tage": {
+          "name": "Tage",
+          "description": "Anzahl Tage ab heute"
         }
       }
     }

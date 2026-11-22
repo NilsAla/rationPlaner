@@ -100,6 +100,70 @@ AKTIONEN: tuple[Aktion, ...] = (
         schreibend=True,
     ),
     Aktion(
+        "plan_erzeugen",
+        "Startet den Wochenplaner im Hintergrund: Code bewertet die Rezepte (läuft bald ab, "
+        "Bestand, Packungen, Abwechslung), die KI wählt aus, der Code simuliert Einkauf und "
+        "Verderb. Feste Tage bleiben. uebernehmen=true schreibt den Vorschlag direkt in den Plan, "
+        "sonst ist er ein Vorschlag (plan_vorschlag, plan_uebernehmen).",
+        "POST",
+        "/plan/erzeugen",
+        vol.Schema(
+            {
+                vol.Optional("start"): DATUM,
+                vol.Optional("tage"): vol.All(vol.Coerce(int), vol.Range(min=1, max=14)),
+                vol.Optional("portionen"): vol.All(vol.Coerce(int), vol.Range(min=1, max=6)),
+                vol.Optional("ki"): cv.boolean,
+                vol.Optional("ueberschreiben"): cv.boolean,
+                vol.Optional("uebernehmen"): cv.boolean,
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "plan_vorschlag",
+        "Ergebnis eines Planer-Laufs: Tage mit Rezept, Begründung und Toleranz-Skalierung, "
+        "Einkauf mit Kostenschätzung, was trotzdem verdirbt. lauf_id aus plan_erzeugen.",
+        "GET",
+        "/plan/laeufe/{lauf_id}",
+        vol.Schema({vol.Required("lauf_id"): vol.Coerce(int)}),
+    ),
+    Aktion(
+        "plan_laeufe",
+        "Die letzten Planer-Läufe mit Status (laeuft/fertig/uebernommen/fehler).",
+        "GET",
+        "/plan/laeufe",
+    ),
+    Aktion(
+        "plan_uebernehmen",
+        "Schreibt einen fertigen Planer-Vorschlag in den Wochenplan.",
+        "POST",
+        "/plan/laeufe/{lauf_id}/uebernehmen",
+        vol.Schema({vol.Required("lauf_id"): vol.Coerce(int)}),
+        schreibend=True,
+    ),
+    Aktion(
+        "plan_tauschen",
+        "Ersetzt das Rezept eines Tages durch den nächstbesten Kandidaten, ohne KI.",
+        "POST",
+        "/plan/{datum}/tauschen",
+        vol.Schema(
+            {
+                vol.Required("datum"): DATUM,
+                vol.Optional("portionen"): vol.All(vol.Coerce(int), vol.Range(min=1, max=6)),
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "plan_simulation",
+        "Simuliert den aktuellen Wochenplan gegen den Bestand: Einkauf mit Toleranz, Verderb.",
+        "GET",
+        "/plan/simulation",
+        vol.Schema(
+            {vol.Optional("tage", default=7): vol.All(vol.Coerce(int), vol.Range(min=1, max=14))}
+        ),
+    ),
+    Aktion(
         "einbuchen",
         "Bucht eine Menge eines Produkts (ID aus produkte, Menge in dessen Einheit) ein. "
         "Ohne MHD gilt die Standard-Haltbarkeit, ohne Lagerort der Standard des Produkts.",

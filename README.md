@@ -114,3 +114,15 @@ Button „Testrezepte in Grocy anlegen“ im Tab *Woche* (oder `POST /api/v1/tes
 
 Das System startet ohne Rezepte und Produkte. Befüllung per Import und LLM-Kategorisierung,
 siehe Konzept, Abschnitt „Stammdaten-Aufbau“.
+
+## Wochenplaner
+
+Tab *Woche* → *Plan vorschlagen* (oder Service `ration.plan_erzeugen`): Der Code bewertet alle
+Rezepte (läuft bald ab, Bestand, Packungen, Abwechslung), die KI wählt je Tag aus, der Code
+simuliert Einkauf mit Toleranz und Verderb. Feste Tage bleiben. Der Vorschlag kommt erst mit
+*Übernehmen* in den Plan; ⇄ tauscht einen Tag ohne KI. Für die Wochen-Automation:
+
+```yaml
+action: ration.plan_erzeugen
+data: {tage: 7, uebernehmen: true}
+```

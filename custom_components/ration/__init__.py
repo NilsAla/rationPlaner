@@ -13,7 +13,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from .aktionen import AKTIONEN, Aktion
 from .api import RationApi, RationApiError
-from .const import CONF_TOKEN, CONF_URL, DOMAIN, SERVICE_PLAN_ERZEUGEN
+from .const import CONF_TOKEN, CONF_URL, DOMAIN
 from .coordinator import RationCoordinator
 from .llm_api import RationLlmApi
 
@@ -45,13 +45,8 @@ def _register(hass: HomeAssistant, aktion: Aktion) -> None:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    async def noch_nicht(call: ServiceCall) -> None:
-        raise ServiceValidationError(f"{DOMAIN}.{call.service} ist noch nicht verfügbar")
-
     for aktion in AKTIONEN:
         _register(hass, aktion)
-    for service in (SERVICE_PLAN_ERZEUGEN,):
-        hass.services.async_register(DOMAIN, service, noch_nicht)
     return True
 
 

@@ -256,7 +256,7 @@ KI-Vorschläge sind in der Vorschau als „KI“ markiert, angelegt wird erst na
 KI aus, bleibt der Code-Vorschlag (Hinweis in der Vorschau).
 
 Kuratierung über Daumen hoch/runter. Planer mischt höchstens 1–2 ungetestete Rezepte pro Woche.
-Die Datenbank bleibt privat; fremde Fotos und Fließtexte werden nicht übernommen.
+Die Datenbank bleibt privat; fremde Fotos werden nicht übernommen, Zubereitungsschritte seit 0.12.0 schon (s. Import).
 
 ## Wochenplaner
 
@@ -273,6 +273,32 @@ Vollständige Tage: Frühstück und Abendbrot als **einfache Mahlzeiten** ohne R
 verbrauchen Bestand und zählen in die Makros. Tausch einzelner Tage ohne neuen LLM-Aufruf.
 
 **Kostenschätzung:** letzter Bonpreis > aktueller Angebotspreis > Streichpreis.
+
+**Umsetzung (0.13.0, `app/planer.py`):** `POST /plan/erzeugen` (Service `ration.plan_erzeugen`)
+läuft im Hintergrund und legt einen `plan_lauf` als Vorschlag ab; in `wochenplan` landet er erst
+mit „Übernehmen“ (oder `uebernehmen: true`, für die Wochen-Automation).
+- **Score (Code):** 3 × Aufbrauch (Anteil der Zutat aus Chargen, die in ≤ 4 Tagen ablaufen,
+  gewichtet nach Dringlichkeit) + 2 × Deckung (mit Toleranz) + 1 × Packungs-Fit (Fehlmenge ÷
+  gekaufte Packungsmenge) − 2 × Abwechslung (gekocht in den letzten 14 Tagen) + 0,2 je Zutat
+  mit laufendem Angebot − 0,3 für ungetestet. Top 25 ans LLM.
+- **Auswahl (LLM):** Struktur mit `select` für Datum und Rezept-ID, Portionen und Begründung.
+  Code prüft: Tag zu planen, ID ist Kandidat, kein Rezept doppelt (auch nicht zu festen Tagen),
+  höchstens 2 ungetestete, Portionen auf 1–6 geklemmt.
+- **Simulation:** Tag für Tag, FEFO über Parent + Varianten, abgelaufene Chargen sind weg.
+  Reicht der Bestand bis zur Toleranz, wird weniger genommen; sonst Zukauf in Packungen am
+  Planstart (Ablauf = Start + Haltbarkeit, Hinweis „erst kurz vorher kaufen“, wenn das nicht
+  reicht). Bleibt von einer frisch gekauften Packung (`exakt`) höchstens die Toleranz übrig,
+  geht sie ganz ins Rezept. Ergebnis: Einkauf mit Kosten (Preis je Bestandseinheit: Bon >
+  Angebot > Streichpreis), Verderb im Planzeitraum, Überhang aus Zukauf.
+- **Repair-Loop:** Formfehler und „verdirbt, obwohl ein nicht gewählter Kandidat es nutzt“
+  gehen als Liste zurück ans LLM, höchstens 2 Runden (≤ 3 Aufrufe). Was danach fehlt oder
+  ungültig ist, füllt der Code gierig. Ohne ai_task oder bei Fehler plant nur der Code.
+- **Feste Tage:** Geplante Tage bleiben (außer `ueberschreiben`), gekochte verbrauchen nichts mehr.
+- **Tauschen:** `POST /plan/{datum}/tauschen` nimmt den besten Kandidaten gegen den simulierten
+  Bestand, ohne LLM. `GET /plan/simulation` rechnet den aktuellen Plan durch.
+- **Annahmen:** Standard 2 Portionen je Tag (1 essen, 1 Rest mittags), nur Abendessen.
+  Offen: einfache Mahlzeiten (Frühstück/Abendbrot), Reste-Tage, Makro-Fit (braucht
+  Nährwerte), Bewertungen (Daumen); `/einkaufsliste` rechnet noch ohne Toleranz.
 
 ## Kochen und Abbuchung
 

@@ -9,5 +9,3 @@ CONF_TOKEN = "token"  # App-Option api_token, leer = App ohne Token
 DEFAULT_URL = "http://local-ration:8099"
 SUPPORTED_API_MAJOR = 1
 SCAN_INTERVAL = timedelta(minutes=1)
-
-SERVICE_PLAN_ERZEUGEN = "plan_erzeugen"

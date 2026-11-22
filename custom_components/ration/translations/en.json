@@ -45,10 +45,6 @@
         }
       }
     },
-    "plan_erzeugen": {
-      "name": "Plan erzeugen",
-      "description": "Erzeugt den Wochenplan."
-    },
     "einkaufsliste_erzeugen": {
       "name": "Einkaufsliste erzeugen",
       "description": "Schreibt fehlende Zutaten der geplanten Gerichte in die To-do-Liste.",
@@ -558,6 +554,84 @@
         "ablehnen": {
           "name": "Reject",
           "description": "List of suggestion IDs"
+        }
+      }
+    },
+    "plan_erzeugen": {
+      "name": "Generate plan",
+      "description": "Runs the weekly planner (code scores, AI picks, code simulates shopping and waste).",
+      "fields": {
+        "start": {
+          "name": "Start",
+          "description": "First day, default today"
+        },
+        "tage": {
+          "name": "Days",
+          "description": "Number of days (default 7)"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Servings per day (default 2)"
+        },
+        "ki": {
+          "name": "AI",
+          "description": "AI picks recipes (default on)"
+        },
+        "ueberschreiben": {
+          "name": "Overwrite",
+          "description": "Replan days that are already planned"
+        },
+        "uebernehmen": {
+          "name": "Apply",
+          "description": "Write the proposal to the meal plan directly"
+        }
+      }
+    },
+    "plan_vorschlag": {
+      "name": "Plan proposal",
+      "description": "Result of a planner run with shopping and waste.",
+      "fields": {
+        "lauf_id": {
+          "name": "Run",
+          "description": "ID from plan_erzeugen"
+        }
+      }
+    },
+    "plan_laeufe": {
+      "name": "Planner runs",
+      "description": "Latest planner runs."
+    },
+    "plan_uebernehmen": {
+      "name": "Apply plan",
+      "description": "Writes a plan proposal to the meal plan.",
+      "fields": {
+        "lauf_id": {
+          "name": "Run",
+          "description": "ID from plan_erzeugen"
+        }
+      }
+    },
+    "plan_tauschen": {
+      "name": "Swap day",
+      "description": "Replaces a day's recipe with the next best candidate, without AI.",
+      "fields": {
+        "datum": {
+          "name": "Date",
+          "description": "Day in the plan"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Default unchanged"
+        }
+      }
+    },
+    "plan_simulation": {
+      "name": "Simulate plan",
+      "description": "Simulates the meal plan against stock: shopping, waste.",
+      "fields": {
+        "tage": {
+          "name": "Days",
+          "description": "Number of days from today"
         }
       }
     }

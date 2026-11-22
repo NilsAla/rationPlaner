@@ -40,7 +40,7 @@ def fake_backend(basis: dict) -> FakeBackend:
 class FakeHomeAssistant:
     def __init__(self, items: list[str] | None = None):
         self.items = list(items or [])
-        self.ki_antwort: dict | Exception = {}
+        self.ki_antwort: dict | Exception | list = {}  # Liste: eine Antwort je Aufruf
         self.ki_anfragen: list[str] = []
         self.ki_anhaenge: list = []
         self.hinweise: list[tuple[str, str]] = []
@@ -64,9 +64,12 @@ class FakeHomeAssistant:
     ) -> dict:
         self.ki_anfragen.append(instructions)
         self.ki_anhaenge.append(attachments)
-        if isinstance(self.ki_antwort, Exception):
-            raise self.ki_antwort
-        return self.ki_antwort
+        antwort = self.ki_antwort
+        if isinstance(antwort, list):
+            antwort = antwort.pop(0) if len(antwort) > 1 else antwort[0]
+        if isinstance(antwort, Exception):
+            raise antwort
+        return antwort
 
 
 @pytest.fixture
