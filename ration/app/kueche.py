@@ -27,11 +27,16 @@ def wird_abgebucht(product: Product) -> bool:
     return product.tracking_mode in ABBUCHEN
 
 
+# Quellenlink unter den Schritten (rezept_import.quelle_link) ist kein Schritt
+QUELLE_ZEILE = re.compile(r"^(?:Quelle: |Zubereitung: siehe )Originalrezept \(")
+
+
 def schritte(description: str) -> list[str]:
     """Zerlegt Grocys HTML-Beschreibung in einzelne Schritte."""
     text = re.sub(r"(?i)</p>|<br\s*/?>|</li>|</h\d>", "\n", description)
     text = html.unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
-    return [line.strip() for line in text.splitlines() if line.strip()]
+    zeilen = (line.strip() for line in text.splitlines())
+    return [z for z in zeilen if z and not QUELLE_ZEILE.match(z)]
 
 
 def beschreibung(schritte_: list[str]) -> str:

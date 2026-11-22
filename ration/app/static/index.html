@@ -262,7 +262,7 @@ async function loadImport() {
       <textarea id="ih" placeholder="Seitenquelltext (Strg+U, alles kopieren)"></textarea></details>
     <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input id="iki" type="checkbox" checked style="width:auto"> Offene Zutaten per KI zuordnen</label>
     <button class="go" id="iload">Vorschau laden</button>
-    <p class="muted" style="font-size:13px">Übernommen werden nur Zutaten und Mengen, die Zubereitung bleibt als Link zur Quelle.</p></div>
+    <p class="muted" style="font-size:13px">Übernommen werden Zutaten, Mengen und Zubereitungsschritte (ohne Bilder), der Link zur Quelle bleibt dabei.</p></div>
     <div id="ivor"></div>`;
   $("#iload").onclick = () => guarded(async () => {
     if ($("#iki").checked) say("Lade Rezept, KI ordnet zu …");
@@ -299,7 +299,10 @@ function zeigeVorschau(v, produkte) {
       <tr><td style="border:0"><select data-zp="${z.index}">${opts(z)}</select>
           <input data-zn="${z.index}" value="${esc(z.neu_name ?? z.name)}" style="display:${z.aktion === "neu" ? "block" : "none"};margin-top:4px"></td>
         <td style="border:0;width:90px"><input data-zm="${z.index}" type="number" min="0" step="any" value="${z.menge_bestand ?? ""}"></td>
-        <td style="border:0;width:30px" class="muted" data-ze="${z.index}">${esc(einheit[z.produkt_id] ?? "g")}</td></tr>`).join("")}</table></div>`;
+        <td style="border:0;width:30px" class="muted" data-ze="${z.index}">${esc(einheit[z.produkt_id] ?? "g")}</td></tr>`).join("")}</table>
+    <label>Zubereitung (${v.schritte.length} Schritte, ein Schritt pro Zeile)</label>
+    <textarea id="is" style="font:inherit" rows="${Math.min(Math.max(v.schritte.length + 1, 3), 14)}"
+      placeholder="Quelle liefert keine Schritte, hier eintragen oder leer lassen">${esc(v.schritte.join("\n"))}</textarea></div>`;
   document.querySelectorAll("[data-zp]").forEach((sel) => sel.onchange = () => {
     const i = sel.dataset.zp;
     $(`[data-zn="${i}"]`).style.display = sel.value === "+neu" ? "block" : "none";
@@ -316,7 +319,8 @@ function zeigeVorschau(v, produkte) {
         : {index: i, produkt_id: sel.value, menge: +menge});
     }
     const e = await api(`import/${v.import_id}/uebernehmen`, {method: "POST", body: JSON.stringify({
-      name: $("#in").value, portionen: +$("#ip").value, zutaten, trotz_dublette: !!v.dublette})});
+      name: $("#in").value, portionen: +$("#ip").value, zutaten, trotz_dublette: !!v.dublette,
+      schritte: $("#is").value.split("\n").map((t) => t.trim()).filter(Boolean)})});
     say(`„${e.name}“ angelegt · ${e.zutaten} Zutaten` + (e.neue_produkte.length ? ` · ${e.neue_produkte.length} neue Produkte` : ""));
     $("#ivor").innerHTML = "";
   });

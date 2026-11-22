@@ -109,6 +109,7 @@ class UebernehmenIn(BaseModel):
     name: str | None = None
     portionen: int | None = Field(default=None, ge=1, le=12)
     zutaten: list[ImportZutatIn]  # nicht aufgeführte Zutaten werden weggelassen
+    schritte: list[str] | None = None  # bearbeitete Schritte, sonst die aus der Quelle
     trotz_dublette: bool = False
 
 
@@ -436,6 +437,7 @@ async def import_vorschau(
         "quelle_id": roh.quelle_id,
         "url": roh.url,
         "dublette": dublette.rezept_id if dublette else None,
+        "schritte": roh.schritte,
         "zutaten": [asdict(z) for z in zuordnung],
         "ki": asdict(ki),
     }
@@ -481,7 +483,9 @@ async def import_uebernehmen(
     recipe = await b.create_recipe(
         data.name or roh.name,
         data.portionen or roh.portionen,
-        rezept_import.beschreibung(roh),
+        rezept_import.beschreibung(
+            roh, None if data.schritte is None else rezept_import.schritte_begrenzen(data.schritte)
+        ),
         zutaten,
     )
     eintrag.rezept_id = recipe.id

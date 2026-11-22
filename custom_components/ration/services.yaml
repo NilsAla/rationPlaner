@@ -182,6 +182,9 @@ rezept_import_uebernehmen:
         number:
           min: 1
           max: 12
+    schritte:
+      selector:
+        object:
     trotz_dublette:
       selector:
         boolean:

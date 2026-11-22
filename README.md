@@ -71,8 +71,9 @@ Eingekauft wird in ganzen Packungen. Standard-Packung je Produkt = Einkaufseinhe
 ## Rezept-Import per Link
 
 Tab *Import*: Link einfügen (z. B. HelloFresh), Vorschau prüfen, je Zutat Produkt und Menge
-bestätigen, übernehmen. Übernommen werden nur Name, Portionen und Zutaten; die Zubereitung
-bleibt als Link zur Quelle. Dubletten werden über die Quell-ID erkannt, bestätigte
+bestätigen, übernehmen. Übernommen werden Name, Portionen, Zutaten und die
+Zubereitungsschritte (aus `recipeInstructions`, Fließtext wird an „1.“, „2.“ bzw. Zeilenumbrüchen
+getrennt, vor dem Übernehmen editierbar); Bilder nicht, der Link zur Quelle steht unter den Schritten. Dubletten werden über die Quell-ID erkannt, bestätigte
 Zuordnungen als Alias gemerkt. Ist `ai_task_entity` gesetzt (z. B. `ai_task.openai_ai_task`),
 ordnet die KI offene Zutaten Produkten zu und schätzt fehlende Gewichte; der Code validiert und
 rechnet. Per MCP: `ration_rezept_import_vorschau` →

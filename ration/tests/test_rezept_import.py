@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app import kueche
 from app import rezept_import as ri
 
 HTML = (Path(__file__).parent / "fixtures" / "rezept_jsonld.html").read_text(encoding="utf-8")
@@ -40,7 +41,46 @@ def test_rezept_aus_html():
     r = ri.rezept_aus_html(HTML, URL)
     assert r.name == "Testpfanne mit Paprika & Nudeln"
     assert r.portionen == 2 and len(r.zutaten) == 11
-    assert "Fremdtext" not in ri.beschreibung(r)
+    assert r.schritte == [
+        "Vorbereitung:",
+        "Paprika & Zwiebeln in Streifen schneiden.",
+        "Nudeln kochen. Abgießen.",
+    ]
+    html = ri.beschreibung(r)
+    assert html.startswith("<p>Vorbereitung:</p><p>Paprika &amp; Zwiebeln")
+    assert html.endswith("Originalrezept (hellofresh)</a></p>")
+    # Küchen-Card zerlegt die Beschreibung wieder, der Quellenlink ist kein Schritt
+    assert kueche.schritte(html) == r.schritte
+
+
+@pytest.mark.parametrize(
+    ("eingabe", "erwartet"),
+    [
+        (
+            "1. Wasser kochen. 2. Nudeln rein. 3. Abgießen.",
+            ["Wasser kochen.", "Nudeln rein.", "Abgießen."],
+        ),
+        ("Schritt 1: Ofen an\nSchritt 2: Backen", ["Ofen an", "Backen"]),
+        ("Zeile eins\n\nZeile zwei", ["Zeile eins", "Zeile zwei"]),
+        ("Ca. 2. Hälfte nehmen und 200 g Mehl.", ["Ca. 2. Hälfte nehmen und 200 g Mehl."]),
+        ("<p>1) Schneiden</p><p>2) Braten</p>", ["Schneiden", "Braten"]),
+        (
+            "Vorab alles bereitstellen. 1. Schneiden 2. Braten",
+            ["Vorab alles bereitstellen.", "Schneiden", "Braten"],
+        ),
+        ("", []),
+    ],
+)
+def test_schritte_aus_text(eingabe, erwartet):
+    assert ri.schritte_aus(eingabe) == erwartet
+
+
+def test_schritte_formen():
+    assert ri.schritte_aus(["Eins", "Zwei"]) == ["Eins", "Zwei"]
+    assert ri.schritte_aus([{"@type": "HowToStep", "name": "Nur Name"}]) == ["Nur Name"]
+    assert ri.schritte_aus(None) == [] and ri.schritte_aus(42) == []
+    lang = ri.schritte_begrenzen(["x" * 5000] * 100)
+    assert len(lang) == ri.MAX_SCHRITTE and len(lang[0]) == ri.MAX_SCHRITT_ZEICHEN
 
 
 def test_kein_rezept():
@@ -110,6 +150,9 @@ def test_import_uebernehmen(client, fake_backend):
     assert fz["standard"] == {"einheit": "Stück", "menge": 15}
     rezepte = {r["name"]: r for r in client.get("/api/v1/rezepte").json()}
     assert rezepte["Testpfanne mit Paprika & Nudeln"]["portionen"] == 2
+    assert len(v["schritte"]) == 3
+    leser = client.get(f"/api/v1/rezepte/{e['rezept_id']}").json()
+    assert leser["schritte"] == v["schritte"]
 
     # Zweite Vorschau: Dublette erkannt, neues Produkt wird jetzt direkt zugeordnet
     v2 = client.post("/api/v1/import/vorschau", json={"url": URL, "html": HTML}).json()
@@ -118,6 +161,14 @@ def test_import_uebernehmen(client, fake_backend):
     assert z2["Frühlingszwiebel"]["aktion"] == "zuordnen"
     again = client.post(f"/api/v1/import/{v2['import_id']}/uebernehmen", json={"zutaten": auswahl})
     assert again.status_code == 409
+    # Bewusst doppelt anlegen, mit eigenen Schritten statt denen der Quelle
+    eigen = client.post(
+        f"/api/v1/import/{v2['import_id']}/uebernehmen",
+        json={"zutaten": auswahl, "trotz_dublette": True, "schritte": ["Alles in eine Pfanne."]},
+    ).json()
+    assert client.get(f"/api/v1/rezepte/{eigen['rezept_id']}").json()["schritte"] == [
+        "Alles in eine Pfanne."
+    ]
 
 
 def test_uebernehmen_ohne_produkt(client):

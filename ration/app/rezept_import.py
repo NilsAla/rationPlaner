@@ -1,9 +1,9 @@
 """Rezept-Import per Link: schema.org/Recipe (JSON-LD) lesen, Zutaten auf Produkte abbilden.
 
-Übernommen werden nur Name, Portionen und Zutaten mit Mengen. Zubereitungstexte und Bilder
-bleiben bei der Quelle (Link in der Beschreibung), eine eigene Kurzfassung kommt später per
-ai_task. Die Zuordnung ist deterministisch (Alias, Name, Token-Ähnlichkeit) und wird immer
-im Review bestätigt, bevor etwas in Grocy landet.
+Übernommen werden Name, Portionen, Zutaten mit Mengen und die Zubereitungsschritte
+(recipeInstructions, für die private Datenbank, Entscheidung Nils). Bilder bleiben bei der
+Quelle, der Link steht unter den Schritten. Die Zuordnung ist deterministisch (Alias, Name,
+Token-Ähnlichkeit) und wird immer im Review bestätigt, bevor etwas in Grocy landet.
 """
 
 from __future__ import annotations
@@ -98,6 +98,7 @@ class RohRezept:
     url: str
     quelle: str
     quelle_id: str
+    schritte: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -217,6 +218,68 @@ def _portionen(value: object) -> int:
     return 1
 
 
+MAX_SCHRITTE = 40
+MAX_SCHRITT_ZEICHEN = 1500
+
+
+def _klartext(text: str) -> str:
+    """HTML-Reste und Entities raus, Leerraum je Zeile normalisieren."""
+    text = re.sub(r"(?i)<br\s*/?>|</p>|</li>", "\n", str(text))
+    text = unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
+    return "\n".join(re.sub(r"[ \t]+", " ", z).strip() for z in text.splitlines()).strip()
+
+
+def schritte_aus_text(text: str) -> list[str]:
+    """Fließtext in Schritte: an „1.“, „2)“, „Schritt 3:“ trennen, sonst an Zeilenumbrüchen.
+
+    Nummern mitten im Satz („ca. 2. Hälfte“) zählen nur, wenn sie aufsteigend ab 1 kommen.
+    """
+    text = _klartext(text)
+    if not text:
+        return []
+    marke = re.compile(r"(?:^|(?<=[\s.!?:]))(?:Schritt\s*)?(\d{1,2})\s*[.):]\s+(?=\S)", re.I)
+    treffer, erwartet = [], 1
+    for m in marke.finditer(text):
+        if int(m.group(1)) == erwartet:
+            treffer.append(m)
+            erwartet += 1
+    if len(treffer) >= 2:
+        teile = []
+        if vorspann := text[: treffer[0].start()].strip():
+            teile.append(vorspann)
+        for i, m in enumerate(treffer):
+            ende = treffer[i + 1].start() if i + 1 < len(treffer) else len(text)
+            teile.append(text[m.end() : ende])
+    else:
+        teile = re.split(r"\n+", text)
+    return [re.sub(r"\s+", " ", t).strip() for t in teile if t.strip()]
+
+
+def schritte_aus(instructions: object) -> list[str]:
+    """recipeInstructions: String, Liste, HowToStep, HowToSection (verschachtelt)."""
+    if instructions is None:
+        return []
+    if isinstance(instructions, str):
+        return schritte_aus_text(instructions)
+    if isinstance(instructions, list):
+        return [s for item in instructions for s in schritte_aus(item)]
+    if isinstance(instructions, dict):
+        if "itemListElement" in instructions:
+            unter = schritte_aus(instructions["itemListElement"])
+            titel = _klartext(instructions.get("name") or "")
+            if titel and unter and instructions.get("@type") == "HowToSection":
+                return [f"{titel}:", *unter]
+            return unter
+        text = instructions.get("text") or instructions.get("name") or ""
+        # HowToStep ist schon ein Schritt, Zeilenumbrüche darin nur glätten
+        return [t] if (t := re.sub(r"\s+", " ", _klartext(text)).strip()) else []
+    return []
+
+
+def schritte_begrenzen(schritte: list[str]) -> list[str]:
+    return [s[:MAX_SCHRITT_ZEICHEN] for s in schritte if s][:MAX_SCHRITTE]
+
+
 def rezept_aus_html(html: str, url: str) -> RohRezept:
     data = json_ld_rezept(html)
     quelle, quelle_id = quelle_von(url)
@@ -230,6 +293,7 @@ def rezept_aus_html(html: str, url: str) -> RohRezept:
         url=url.strip(),
         quelle=quelle,
         quelle_id=quelle_id,
+        schritte=schritte_begrenzen(schritte_aus(data.get("recipeInstructions"))),
     )
 
 
@@ -377,15 +441,16 @@ def zuordnen(rezept: RohRezept, produkte: list[Product], aliase: dict[str, str])
     return result
 
 
-def beschreibung(rezept: RohRezept) -> str:
-    """Kein Fremdtext: nur Verweis auf die Quelle. Kurzfassung kommt später per ai_task."""
-    return quelle_link(rezept.url, rezept.quelle)
+def beschreibung(rezept: RohRezept, schritte: list[str] | None = None) -> str:
+    """Schritte als <p>-Absätze (Küchen-Card zeigt sie einzeln), darunter der Quellenlink."""
+    liste = rezept.schritte if schritte is None else schritte
+    absaetze = "".join(f"<p>{escape(t.strip())}</p>" for t in liste if t.strip())
+    return absaetze + quelle_link(rezept.url, rezept.quelle)
 
 
 def quelle_link(url: str, quelle: str) -> str:
     return (
-        f'<p>Zubereitung: siehe <a href="{escape(url, quote=True)}">'
-        f"Originalrezept ({escape(quelle)})</a>.</p>"
+        f'<p>Quelle: <a href="{escape(url, quote=True)}">Originalrezept ({escape(quelle)})</a></p>'
     )
 
 

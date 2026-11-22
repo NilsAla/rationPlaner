@@ -249,6 +249,10 @@
           "name": "Portionen",
           "description": "Optional, sonst aus der Quelle"
         },
+        "schritte": {
+          "name": "Schritte",
+          "description": "Zubereitungsschritte, ersetzen die aus der Quelle"
+        },
         "trotz_dublette": {
           "name": "Trotz Dublette",
           "description": "Auch anlegen, wenn schon importiert"

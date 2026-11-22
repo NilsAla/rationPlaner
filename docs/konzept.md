@@ -229,8 +229,17 @@ Attribute** angelegt; ähnliche Produkte erscheinen nur als Alternative („Frü
 ist keine „Zwiebel“). Mengen gehen in g: g/kg direkt, ml/l über Dichte, Stück/Bund/EL/TL
 über eingebaute Richtwerte (`app/mengen.py`, z. B. Knoblauchzehe 4 g, Aubergine 300 g),
 als Schätzung markiert. Neue Stück-Produkte bekommen das Stückgewicht als Standard-Packung.
-Review nur bei echten Zweifeln (Menge nicht bestimmbar). Wasser wird weggelassen. Statt der Zubereitung steht
-ein Link zur Quelle in der Beschreibung; eine eigene Kurzfassung erzeugt später `ai_task`.
+Review nur bei echten Zweifeln (Menge nicht bestimmbar). Wasser wird weggelassen.
+
+**Zubereitungsschritte** (Änderung 0.12.0, Entscheidung Nils für die private Datenbank: ohne
+Schritte ist der Import wertlos). Quelle ist `recipeInstructions` aus dem JSON-LD: HowToStep
+ist ein Schritt, HowToSection wird zu „Titel:“ plus Unterschritte, Listen werden flach gemacht.
+Liefert die Seite Fließtext, trennt der Code an aufsteigender Nummerierung ab 1 („1.“, „2)“,
+„Schritt 3:“), sonst an Zeilenumbrüchen; Zahlen mitten im Satz zählen nicht. Kappung auf 40
+Schritte × 1500 Zeichen. Die Schritte stehen in der Vorschau als editierbares Textfeld (ein
+Schritt pro Zeile) und landen als `<p>`-Absätze in der Grocy-Beschreibung, darunter der
+Quellenlink, den `kueche.schritte()` beim Lesen wieder herausfiltert. Bilder werden weiterhin
+nicht übernommen, das Repo enthält weiterhin keine Rezeptdaten.
 Blockt eine Seite den Abruf, kann der Quelltext eingefügt werden.
 
 **KI-Zuordnung** (`app/llm_import.py`, wenn `ai_task_entity` gesetzt, abschaltbar mit `ki: false`):

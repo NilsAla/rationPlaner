@@ -182,7 +182,8 @@ AKTIONEN: tuple[Aktion, ...] = (
     Aktion(
         "rezept_import_uebernehmen",
         "Übernimmt eine geprüfte Import-Vorschau nach Grocy. zutaten: Liste aus index, menge und "
-        "entweder produkt_id oder neu_anlegen (Name). Nicht aufgeführte Zutaten entfallen.",
+        "entweder produkt_id oder neu_anlegen (Name). Nicht aufgeführte Zutaten entfallen. "
+        "schritte (optional) ersetzt die Zubereitungsschritte aus der Quelle.",
         "POST",
         "/import/{import_id}/uebernehmen",
         vol.Schema(
@@ -201,6 +202,7 @@ AKTIONEN: tuple[Aktion, ...] = (
                 ],
                 vol.Optional("name"): cv.string,
                 vol.Optional("portionen"): PORTIONEN,
+                vol.Optional("schritte"): [cv.string],
                 vol.Optional("trotz_dublette"): bool,
             }
         ),

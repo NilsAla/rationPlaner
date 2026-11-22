@@ -249,6 +249,10 @@
           "name": "Servings",
           "description": "Optional"
         },
+        "schritte": {
+          "name": "Steps",
+          "description": "Preparation steps, replace the ones from the source"
+        },
         "trotz_dublette": {
           "name": "Despite duplicate",
           "description": "Create even if already imported"
