@@ -165,6 +165,16 @@ Das System startet leer. Der Nutzer füllt es selbst, automatisiert per LLM:
    geänderte Produkte, Diff in die Review-Liste mit Push. Prüft zusätzlich Werte gegen echte
    Daten (z. B. regelmäßig vor MHD verdorben → kürzere Haltbarkeit vorschlagen).
 
+**Umsetzung (0.11.0, `app/kategorisierung.py`):** `POST /kategorisieren` (Service
+`ration.kategorisieren`, monatlich per Automation mit `nur_ohne_attribute: false`) läuft im
+Hintergrund in Batches zu 25. Produkte: Modus, Kategorie (feste Liste), Ablauf-Typ,
+Haltbarkeiten, g je Einheit, Toleranz, Standard-Packung. Rezepte: Tags (feste Liste), Aufwand,
+Rest-Haltbarkeit. Der Code validiert Enums und Bereiche (z. B. g je Stück ≥ 2, ml-Dichte 0,5–2),
+legt nur echte Änderungen als Vorschlag ab (Standard: nur leere Felder) und setzt nichts.
+Übernahme im Tab *Produkte* per Haken. Live gegen OpenAI getestet: Struktur funktioniert,
+Inhalte teils schwach (Ei „1 g“, Kidneybohnen 24 Tage), daher Plausibilitätsregeln und Review.
+Offen: BLS-/OFF-Zuordnung, „muss frisch sein“ je Zutat, Rezept-Dubletten.
+
 Vor dem ersten Lauf gelten Produkte ohne Attribute als `menge` mit globaler Toleranz.
 Der Planer startet erst, wenn alle Produkte Attribute haben.
 

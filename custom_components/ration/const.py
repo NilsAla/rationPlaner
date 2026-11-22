@@ -11,4 +11,3 @@ SUPPORTED_API_MAJOR = 1
 SCAN_INTERVAL = timedelta(minutes=1)
 
 SERVICE_PLAN_ERZEUGEN = "plan_erzeugen"
-SERVICE_KATEGORISIEREN = "kategorisieren"

@@ -420,7 +420,8 @@ async function bearbeiteRezept(id) {
 // --- Produktdatenbank + Dubletten --------------------------------------------------
 const pdState = {q: "", ohne: false};
 async function loadProdukte() {
-  const [liste, dub] = await Promise.all([api("katalog/produkte"), api("dubletten")]);
+  const [liste, dub, vor, laeufe] = await Promise.all([api("katalog/produkte"), api("dubletten"),
+    api("vorschlaege"), api("kategorisieren")]);
   const el = $("#produkte");
   const render = () => {
     const q = pdState.q.toLowerCase();
@@ -432,7 +433,7 @@ async function loadProdukte() {
         · ${p.rezepte} Rezepte · ${p.aliase} Aliase</div></div>`).join("") || `<p class="muted">Keine Produkte.</p>`;
     document.querySelectorAll("[data-p]").forEach((d) => d.onclick = () => guarded(() => zeigeProdukt(d.dataset.p)));
   };
-  el.innerHTML = `${dub.length ? `<div class="card" id="dubc"></div>` : ""}
+  el.innerHTML = `<div class="card" id="katc"></div>${dub.length ? `<div class="card" id="dubc"></div>` : ""}
     <div class="card"><h2>Produkte <span class="muted">(${liste.length})</span></h2>
     <input id="pdq" placeholder="Suchen …" value="${esc(pdState.q)}">
     <div class="chips"><button id="pdo" class="${pdState.ohne ? "on" : ""}">Ohne Attribute (${liste.filter((p) => p.attribute_fehlen).length})</button></div>
@@ -441,6 +442,44 @@ async function loadProdukte() {
   $("#pdo").onclick = () => { pdState.ohne = !pdState.ohne; loadProdukte(); };
   render();
   if (dub.length) zeigeDublette(dub, 0);
+  zeigeVorschlaege(vor, laeufe[0]);
+}
+
+const FELD = {tracking_modus: "Modus", kategorie: "Kategorie", ablauf_typ: "Ablauf", haltbarkeit_tage: "Haltbar (Tage)",
+  haltbarkeit_offen_tage: "geöffnet", haltbarkeit_gefroren_tage: "gefroren", haltbarkeit_aufgetaut_tage: "aufgetaut",
+  g_je_einheit: "g je Einheit", toleranz_pct: "Toleranz %", packung: "Packung", tags: "Tags", aufwand: "Aufwand",
+  rest_haltbarkeit_tage: "Rest-Haltbarkeit"};
+const wert = (v) => v == null ? "–" : Array.isArray(v) ? v.join(", ") : typeof v === "object" ? `${v.einheit} ${fmt(v.menge)}` : String(v);
+
+function zeigeVorschlaege(vor, lauf) {
+  const el = $("#katc"), laeuft = lauf?.status === "laeuft";
+  const gruppen = {};
+  vor.forEach((v) => (gruppen[`${v.typ}:${v.objekt_id}`] ??= {name: v.name, typ: v.typ, felder: []}).felder.push(v));
+  el.innerHTML = `<h2>KI-Kategorisierung</h2>
+    ${lauf?.status === "fehler" ? `<p class="over">Letzter Lauf fehlgeschlagen: ${esc(lauf.fehler)}</p>` : ""}
+    ${laeuft ? `<p class="muted">Läuft … Ergebnis kommt als Benachrichtigung.</p>` : ""}
+    ${vor.length ? `<p class="muted" style="font-size:13px">${vor.length} Vorschläge. Haken = übernehmen, der Rest wird abgelehnt.</p>
+      ${Object.values(gruppen).map((g) => `<div style="border-top:1px solid var(--line);padding:6px 0"><b>${esc(g.name)}</b>
+        <span class="muted">· ${g.typ}</span>${g.felder.map((v) => `<label style="display:flex;gap:6px;margin:4px 0 0;color:var(--text)">
+          <input type="checkbox" data-v="${v.id}" checked style="width:auto">${esc(FELD[v.feld] ?? v.feld)}:
+          <span class="muted">${esc(wert(v.alt))} →</span> <b>${esc(wert(v.neu))}</b></label>`).join("")}</div>`).join("")}
+      <button class="go" id="vok">Auswahl übernehmen</button>`
+      : `<p class="muted" style="font-size:13px">Die KI schlägt Modus, Kategorie, Haltbarkeiten, Packung und Toleranz vor
+          (Rezepte: Tags, Aufwand). Gesetzt wird erst nach deiner Prüfung.</p>
+        <label style="display:flex;gap:6px;color:var(--text)"><input id="kalle" type="checkbox" style="width:auto"> Auch schon kategorisierte prüfen</label>
+        <button class="go" id="kstart" ${laeuft ? "disabled" : ""}>Kategorisierung starten</button>`}`;
+  if ($("#kstart")) $("#kstart").onclick = () => guarded(async () => {
+    const alle = $("#kalle").checked;
+    await api("kategorisieren", {method: "POST", body: JSON.stringify({nur_ohne_attribute: !alle, nur_leere: !alle})});
+    say("Kategorisierung läuft"); setTimeout(() => guarded(loadProdukte), 4000);
+  });
+  if ($("#vok")) $("#vok").onclick = () => guarded(async () => {
+    const boxen = [...document.querySelectorAll("[data-v]")];
+    const e = await api("vorschlaege", {method: "POST", body: JSON.stringify({
+      uebernehmen: boxen.filter((b) => b.checked).map((b) => +b.dataset.v),
+      ablehnen: boxen.filter((b) => !b.checked).map((b) => +b.dataset.v)})});
+    say(`${e.uebernommen} übernommen` + (e.fehler.length ? ` · Fehler: ${e.fehler.join("; ")}` : "")); loadProdukte();
+  });
 }
 
 function zeigeDublette(dub, i) {

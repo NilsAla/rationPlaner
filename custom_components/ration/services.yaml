@@ -28,7 +28,6 @@ einkaufsliste_erzeugen:
           min: 1
           max: 14
 plan_erzeugen:
-kategorisieren:
 heute:
 bestand:
 produkte:
@@ -417,3 +416,26 @@ bon_verwerfen:
         number:
           min: 1
           mode: box
+kategorisieren:
+  fields:
+    produkte:
+      selector:
+        boolean:
+    rezepte:
+      selector:
+        boolean:
+    nur_ohne_attribute:
+      selector:
+        boolean:
+    nur_leere:
+      selector:
+        boolean:
+vorschlaege:
+vorschlaege_entscheiden:
+  fields:
+    uebernehmen:
+      selector:
+        object:
+    ablehnen:
+      selector:
+        object:

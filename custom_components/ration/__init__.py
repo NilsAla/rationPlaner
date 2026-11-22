@@ -13,7 +13,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from .aktionen import AKTIONEN, Aktion
 from .api import RationApi, RationApiError
-from .const import CONF_TOKEN, CONF_URL, DOMAIN, SERVICE_KATEGORISIEREN, SERVICE_PLAN_ERZEUGEN
+from .const import CONF_TOKEN, CONF_URL, DOMAIN, SERVICE_PLAN_ERZEUGEN
 from .coordinator import RationCoordinator
 from .llm_api import RationLlmApi
 
@@ -50,7 +50,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     for aktion in AKTIONEN:
         _register(hass, aktion)
-    for service in (SERVICE_PLAN_ERZEUGEN, SERVICE_KATEGORISIEREN):
+    for service in (SERVICE_PLAN_ERZEUGEN,):
         hass.services.async_register(DOMAIN, service, noch_nicht)
     return True
 

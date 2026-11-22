@@ -49,10 +49,6 @@
       "name": "Plan erzeugen",
       "description": "Erzeugt den Wochenplan."
     },
-    "kategorisieren": {
-      "name": "Kategorisieren",
-      "description": "Startet den Kategorisierungslauf (Ergebnis als Diff zur Review)."
-    },
     "einkaufsliste_erzeugen": {
       "name": "Einkaufsliste erzeugen",
       "description": "Schreibt fehlende Zutaten der geplanten Gerichte in die To-do-Liste.",
@@ -518,6 +514,46 @@
         "bon_id": {
           "name": "Bon",
           "description": "ID des Bons"
+        }
+      }
+    },
+    "kategorisieren": {
+      "name": "Kategorisieren",
+      "description": "KI schlägt Attribute für Produkte und Rezepte vor (Review nötig).",
+      "fields": {
+        "produkte": {
+          "name": "Produkte",
+          "description": "Produkte einbeziehen"
+        },
+        "rezepte": {
+          "name": "Rezepte",
+          "description": "Rezepte einbeziehen"
+        },
+        "nur_ohne_attribute": {
+          "name": "Nur ohne Attribute",
+          "description": "Nur noch nicht kategorisierte Objekte"
+        },
+        "nur_leere": {
+          "name": "Nur leere Felder",
+          "description": "Gesetzte Werte nicht überschreiben"
+        }
+      }
+    },
+    "vorschlaege": {
+      "name": "Vorschläge",
+      "description": "Offene Vorschläge der Kategorisierung (Antwort)."
+    },
+    "vorschlaege_entscheiden": {
+      "name": "Vorschläge entscheiden",
+      "description": "Übernimmt oder verwirft Vorschläge.",
+      "fields": {
+        "uebernehmen": {
+          "name": "Übernehmen",
+          "description": "Liste von Vorschlags-IDs"
+        },
+        "ablehnen": {
+          "name": "Ablehnen",
+          "description": "Liste von Vorschlags-IDs"
         }
       }
     }

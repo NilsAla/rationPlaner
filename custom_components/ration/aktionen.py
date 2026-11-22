@@ -376,6 +376,7 @@ AKTIONEN: tuple[Aktion, ...] = (
         "POST",
         "/bon/media",
         vol.Schema({vol.Required("pfad"): cv.string}),
+        schreibend=True,  # Automationen sollen ohne Antwort aufrufen können
     ),
     Aktion(
         "bons", "Die letzten Kassenbons mit Status (verarbeitung/review/gebucht).", "GET", "/bon"
@@ -419,5 +420,40 @@ AKTIONEN: tuple[Aktion, ...] = (
         "POST",
         "/bon/{bon_id}/verwerfen",
         vol.Schema({vol.Required("bon_id"): vol.Coerce(int)}),
+    ),
+    Aktion(
+        "kategorisieren",
+        "Startet den Kategorisierungslauf im Hintergrund: KI schlägt Attribute für Produkte und "
+        "Rezepte vor, gesetzt wird nichts. Danach vorschlaege prüfen.",
+        "POST",
+        "/kategorisieren",
+        vol.Schema(
+            {
+                vol.Optional("produkte", default=True): cv.boolean,
+                vol.Optional("rezepte", default=True): cv.boolean,
+                vol.Optional("nur_ohne_attribute", default=True): cv.boolean,
+                vol.Optional("nur_leere", default=True): cv.boolean,
+            }
+        ),
+        schreibend=True,  # Automationen sollen ohne Antwort aufrufen können
+    ),
+    Aktion(
+        "vorschlaege",
+        "Offene Vorschläge des Kategorisierungslaufs: Objekt, Feld, alter und neuer Wert.",
+        "GET",
+        "/vorschlaege",
+    ),
+    Aktion(
+        "vorschlaege_entscheiden",
+        "Übernimmt bzw. verwirft Vorschläge (Listen von Vorschlags-IDs).",
+        "POST",
+        "/vorschlaege",
+        vol.Schema(
+            {
+                vol.Optional("uebernehmen", default=list): [vol.Coerce(int)],
+                vol.Optional("ablehnen", default=list): [vol.Coerce(int)],
+            }
+        ),
+        schreibend=True,
     ),
 )

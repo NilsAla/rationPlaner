@@ -49,10 +49,6 @@
       "name": "Plan erzeugen",
       "description": "Erzeugt den Wochenplan."
     },
-    "kategorisieren": {
-      "name": "Kategorisieren",
-      "description": "Startet den Kategorisierungslauf (Ergebnis als Diff zur Review)."
-    },
     "einkaufsliste_erzeugen": {
       "name": "Einkaufsliste erzeugen",
       "description": "Schreibt fehlende Zutaten der geplanten Gerichte in die To-do-Liste.",
@@ -518,6 +514,46 @@
         "bon_id": {
           "name": "Receipt",
           "description": "Receipt ID"
+        }
+      }
+    },
+    "kategorisieren": {
+      "name": "Categorize",
+      "description": "AI suggests attributes for products and recipes (review needed).",
+      "fields": {
+        "produkte": {
+          "name": "Products",
+          "description": "Include products"
+        },
+        "rezepte": {
+          "name": "Recipes",
+          "description": "Include recipes"
+        },
+        "nur_ohne_attribute": {
+          "name": "Only uncategorized",
+          "description": "Only objects without attributes"
+        },
+        "nur_leere": {
+          "name": "Only empty fields",
+          "description": "Do not override set values"
+        }
+      }
+    },
+    "vorschlaege": {
+      "name": "Suggestions",
+      "description": "Open categorization suggestions (response)."
+    },
+    "vorschlaege_entscheiden": {
+      "name": "Decide suggestions",
+      "description": "Accepts or rejects suggestions.",
+      "fields": {
+        "uebernehmen": {
+          "name": "Accept",
+          "description": "List of suggestion IDs"
+        },
+        "ablehnen": {
+          "name": "Reject",
+          "description": "List of suggestion IDs"
         }
       }
     }
