@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import API_VERSION, __version__, kueche, rezept_import, testdaten
+from app import API_VERSION, __version__, kueche, llm_import, rezept_import, testdaten
 from app.db import Packung, PlanEintrag, RezeptImport, RezeptMeta, ZutatAlias, make_engine
 from app.ha import HomeAssistant, SupervisorHomeAssistant
 from app.inventory.base import Ingredient, InventoryBackend, NotFoundError
@@ -90,6 +90,7 @@ class WeiterePackungIn(PackungIn):
 class ImportIn(BaseModel):
     url: str = Field(min_length=8, max_length=2000)
     html: str | None = None  # Fallback: Seitenquelltext, falls die Seite den Abruf blockt
+    ki: bool = True  # offene Zutaten per ai_task zuordnen, falls ai_task_entity gesetzt
 
 
 class ImportZutatIn(BaseModel):
@@ -334,7 +335,11 @@ async def packung_loeschen(packung_id: int, s: Session = Depends(session)) -> No
 
 @api.post("/import/vorschau")
 async def import_vorschau(
-    data: ImportIn, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+    data: ImportIn,
+    request: Request,
+    s: Session = Depends(session),
+    b: InventoryBackend = Depends(backend),
+    st: Settings = Depends(settings),
 ) -> dict:
     """Liest das Rezept hinter einem Link und schlägt je Zutat Produkt und Menge vor."""
     try:
@@ -343,7 +348,13 @@ async def import_vorschau(
     except rezept_import.ImportError_ as err:
         raise HTTPException(422, str(err)) from err
     aliase = {a.text: a.produkt_id for a in s.scalars(select(ZutatAlias))}
-    zuordnung = rezept_import.zuordnen(roh, await b.list_products(), aliase)
+    produkte = await b.list_products()
+    zuordnung = rezept_import.zuordnen(roh, produkte, aliase)
+    ki = llm_import.KiErgebnis(aktiv=False)
+    if data.ki and st.ai_task_entity and request.app.state.ha is not None:
+        ki = await llm_import.verfeinern(
+            request.app.state.ha, st.ai_task_entity, zuordnung, produkte
+        )
     dublette = s.scalars(select(RezeptMeta).where(RezeptMeta.quelle_id == roh.quelle_id)).first()
     eintrag = RezeptImport(url=roh.url, quelle_id=roh.quelle_id, roh=asdict(roh))
     s.add(eintrag)
@@ -358,6 +369,7 @@ async def import_vorschau(
         "url": roh.url,
         "dublette": dublette.rezept_id if dublette else None,
         "zutaten": [asdict(z) for z in zuordnung],
+        "ki": asdict(ki),
     }
 
 

@@ -216,6 +216,10 @@
         "html": {
           "name": "Source",
           "description": "Optional, if the site blocks fetching"
+        },
+        "ki": {
+          "name": "AI mapping",
+          "description": "Map open ingredients via ai_task (default: on)"
         }
       }
     },

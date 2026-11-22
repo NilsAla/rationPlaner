@@ -165,11 +165,17 @@ AKTIONEN: tuple[Aktion, ...] = (
     Aktion(
         "rezept_import_vorschau",
         "Liest ein Rezept per Link (z. B. HelloFresh) und schlägt je Zutat Produkt-ID und Menge "
-        "in Bestandseinheit vor (status ok/vorschlag/schaetzung/einheit/unbekannt). "
-        "Legt nichts an.",
+        "in Bestandseinheit vor (status ok/schaetzung/pruefen). Offene Zutaten ordnet die KI "
+        "(ai_task) zu, sofern konfiguriert; ki=false schaltet das ab. Legt nichts an.",
         "POST",
         "/import/vorschau",
-        vol.Schema({vol.Required("url"): cv.string, vol.Optional("html"): cv.string}),
+        vol.Schema(
+            {
+                vol.Required("url"): cv.string,
+                vol.Optional("html"): cv.string,
+                vol.Optional("ki"): cv.boolean,
+            }
+        ),
     ),
     Aktion(
         "rezept_import_uebernehmen",

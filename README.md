@@ -69,7 +69,9 @@ Eingekauft wird in ganzen Packungen. Standard-Packung je Produkt = Einkaufseinhe
 Tab *Import*: Link einfügen (z. B. HelloFresh), Vorschau prüfen, je Zutat Produkt und Menge
 bestätigen, übernehmen. Übernommen werden nur Name, Portionen und Zutaten; die Zubereitung
 bleibt als Link zur Quelle. Dubletten werden über die Quell-ID erkannt, bestätigte
-Zuordnungen als Alias gemerkt. Per MCP: `ration_rezept_import_vorschau` →
+Zuordnungen als Alias gemerkt. Ist `ai_task_entity` gesetzt (z. B. `ai_task.openai_ai_task`),
+ordnet die KI offene Zutaten Produkten zu und schätzt fehlende Gewichte; der Code validiert und
+rechnet. Per MCP: `ration_rezept_import_vorschau` →
 `ration_rezept_import_uebernehmen`.
 
 ## Testrezepte

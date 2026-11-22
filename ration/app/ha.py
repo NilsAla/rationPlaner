@@ -16,11 +16,17 @@ class HomeAssistant(Protocol):
 
     async def todo_add(self, entity_id: str, item: str) -> None: ...
 
+    async def ai_task(
+        self, entity_id: str, task_name: str, instructions: str, structure: dict
+    ) -> dict:
+        """ai_task.generate_data mit Structured Output, liefert das data-Objekt."""
+        ...
+
 
 class SupervisorHomeAssistant:
     def __init__(self, token: str, base_url: str = SUPERVISOR_CORE_API):
         self._client = httpx.AsyncClient(
-            base_url=base_url, headers={"Authorization": f"Bearer {token}"}, timeout=15.0
+            base_url=base_url, headers={"Authorization": f"Bearer {token}"}, timeout=120.0
         )
 
     async def aclose(self) -> None:
@@ -43,3 +49,19 @@ class SupervisorHomeAssistant:
 
     async def todo_add(self, entity_id: str, item: str) -> None:
         await self._service("todo", "add_item", {"entity_id": entity_id, "item": item})
+
+    async def ai_task(
+        self, entity_id: str, task_name: str, instructions: str, structure: dict
+    ) -> dict:
+        result = await self._service(
+            "ai_task",
+            "generate_data",
+            {
+                "entity_id": entity_id,
+                "task_name": task_name,
+                "instructions": instructions,
+                "structure": structure,
+            },
+            response=True,
+        )
+        return result.get("service_response", {}).get("data") or {}

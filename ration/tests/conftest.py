@@ -40,12 +40,22 @@ def fake_backend(basis: dict) -> FakeBackend:
 class FakeHomeAssistant:
     def __init__(self, items: list[str] | None = None):
         self.items = list(items or [])
+        self.ki_antwort: dict | Exception = {}
+        self.ki_anfragen: list[str] = []
 
     async def todo_items(self, entity_id: str) -> list[str]:
         return list(self.items)
 
     async def todo_add(self, entity_id: str, item: str) -> None:
         self.items.append(item)
+
+    async def ai_task(
+        self, entity_id: str, task_name: str, instructions: str, structure: dict
+    ) -> dict:
+        self.ki_anfragen.append(instructions)
+        if isinstance(self.ki_antwort, Exception):
+            raise self.ki_antwort
+        return self.ki_antwort
 
 
 @pytest.fixture

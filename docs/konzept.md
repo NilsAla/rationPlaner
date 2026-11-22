@@ -204,8 +204,20 @@ ist keine „Zwiebel“). Mengen gehen in g: g/kg direkt, ml/l über Dichte, St�
 als Schätzung markiert. Neue Stück-Produkte bekommen das Stückgewicht als Standard-Packung.
 Review nur bei echten Zweifeln (Menge nicht bestimmbar). Wasser wird weggelassen. Statt der Zubereitung steht
 ein Link zur Quelle in der Beschreibung; eine eigene Kurzfassung erzeugt später `ai_task`.
-Blockt eine Seite den Abruf, kann der Quelltext eingefügt werden. Später übernimmt das LLM
-die Zuordnung unbekannter Zutaten (wählt Produkt-IDs, Code rechnet Mengen).
+Blockt eine Seite den Abruf, kann der Quelltext eingefügt werden.
+
+**KI-Zuordnung** (`app/llm_import.py`, wenn `ai_task_entity` gesetzt, abschaltbar mit `ki: false`):
+Nach dem Code-Lauf gehen nur die offenen Zutaten (Aktion „neu“) mit dem Produktkatalog
+(id|name|einheit) per `ai_task.generate_data` und Structured Output ans LLM. Es liefert je Zutat
+`zuordnen` + `produkt_id` oder `neu`, dazu `g_je_einheit` und `stueck_g`. Den Namen neuer
+Produkte bildet weiter der Code (im Test lieferte das LLM schlechtere Namen). Eine KI-Zuordnung
+mit völlig anderem Namen (Synonym oder Fehlgriff, live gesehen: „Salz“ → Olivenöl) wird nicht
+übernommen, sondern als erste Alternative mit „KI meint: …?“ angezeigt.
+Der Code validiert (Index und Produkt-ID müssen existieren, Gewichte 0–5000 g) und rechnet:
+Mengen wie beim Code-Lauf, `g_je_einheit` nur dort, wo Tabelle und Einheit keine Menge liefern.
+Alias-/Namens-Treffer und „weglassen“ bleiben Sache des Codes. Rohantwort wird geloggt,
+KI-Vorschläge sind in der Vorschau als „KI“ markiert, angelegt wird erst nach Klick. Fällt die
+KI aus, bleibt der Code-Vorschlag (Hinweis in der Vorschau).
 
 Kuratierung über Daumen hoch/runter. Planer mischt höchstens 1–2 ungetestete Rezepte pro Woche.
 Die Datenbank bleibt privat; fremde Fotos und Fließtexte werden nicht übernommen.

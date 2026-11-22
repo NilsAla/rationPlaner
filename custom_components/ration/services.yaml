@@ -159,6 +159,10 @@ rezept_import_vorschau:
       selector:
         text:
           multiline: true
+    ki:
+      default: true
+      selector:
+        boolean:
 rezept_import_uebernehmen:
   fields:
     import_id:

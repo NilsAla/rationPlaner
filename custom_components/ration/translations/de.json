@@ -216,6 +216,10 @@
         "html": {
           "name": "Quelltext",
           "description": "Optional, falls die Seite den Abruf blockt"
+        },
+        "ki": {
+          "name": "KI-Zuordnung",
+          "description": "Offene Zutaten per ai_task zuordnen (Standard: an)"
         }
       }
     },

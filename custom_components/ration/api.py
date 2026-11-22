@@ -27,7 +27,7 @@ class RationApi:
                 f"{self._base}{path}",
                 json=json,
                 params=params,
-                timeout=aiohttp.ClientTimeout(total=30),
+                timeout=aiohttp.ClientTimeout(total=150),  # KI-Import braucht länger,
             ) as resp:
                 body = None if resp.status == 204 else await resp.json(content_type=None)
                 if resp.status >= 400:
