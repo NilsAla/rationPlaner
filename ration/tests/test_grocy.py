@@ -135,3 +135,23 @@ def test_set_pack_beide_richtungen():
 def test_unbekanntes_rezept_404(client):
     resp = client.put("/api/v1/plan/2026-01-01", json={"rezept_id": "gibtsnicht"})
     assert resp.status_code == 404
+
+
+@pytest.mark.skipif(not GROCY_URL, reason="RATION_TEST_GROCY_URL nicht gesetzt")
+def test_create_product_und_recipe():
+    from app.inventory.base import Ingredient
+
+    async def run():
+        async with GrocyBackend(GROCY_URL, GROCY_KEY) as backend:
+            await backend.ensure_structure()
+            p = await backend.create_product("zz ration test Importprodukt", "g")
+            again = await backend.create_product("zz ration test Importprodukt", "g")
+            r = await backend.create_recipe(
+                "zz ration test Importrezept", 3, "<p>x</p>", [Ingredient(p.id, 123, "123 g X")]
+            )
+            return p, again, r
+
+    p, again, r = asyncio.run(run())
+    assert p.id == again.id and p.unit == "g" and p.tracking_mode is None
+    assert r.servings == 3 and r.ingredients[0].amount == 123
+    assert r.ingredients[0].note == "123 g X"

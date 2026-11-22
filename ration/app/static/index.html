@@ -30,6 +30,11 @@
   table { width: 100%; border-collapse: collapse; }
   td { padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; }
   .nw { white-space: nowrap; }
+  .tag { font-size: 12px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); }
+  .tag.ok { color: var(--accent); } .tag.vorschlag, .tag.schaetzung { color: var(--warn); }
+  .tag.unbekannt, .tag.einheit { color: var(--bad); }
+  textarea { width: 100%; min-height: 80px; font: 12px monospace; border: 1px solid var(--line);
+             border-radius: 8px; background: var(--bg); color: var(--text); }
   .soon { color: var(--warn); } .over { color: var(--bad); }
   label { display: block; font-size: 13px; color: var(--muted); margin-top: 8px; }
   input, select { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--line);
@@ -48,12 +53,14 @@
   <button data-tab="woche">Woche</button>
   <button data-tab="bestand">Bestand</button>
   <button data-tab="packungen">Packungen</button>
+  <button data-tab="import">Import</button>
 </nav>
 <main>
   <section id="heute" class="on"></section>
   <section id="woche"></section>
   <section id="bestand"></section>
   <section id="packungen"></section>
+  <section id="import"></section>
 </main>
 <div id="msg"></div>
 <script>
@@ -198,9 +205,62 @@ async function loadPackungen(auswahl) {
   }));
 }
 
+async function loadImport() {
+  $("#import").innerHTML = `<div class="card"><h2>Rezept per Link importieren</h2>
+    <label>Link (z. B. HelloFresh)</label><input id="iu" type="url" placeholder="https://www.hellofresh.de/recipes/…">
+    <details><summary class="muted" style="margin-top:8px;font-size:13px">Seite blockt? Quelltext einfügen</summary>
+      <textarea id="ih" placeholder="Seitenquelltext (Strg+U, alles kopieren)"></textarea></details>
+    <button class="go" id="iload">Vorschau laden</button>
+    <p class="muted" style="font-size:13px">Übernommen werden nur Zutaten und Mengen, die Zubereitung bleibt als Link zur Quelle.</p></div>
+    <div id="ivor"></div>`;
+  $("#iload").onclick = () => guarded(async () => {
+    const v = await api("import/vorschau", {method: "POST",
+      body: JSON.stringify({url: $("#iu").value, html: $("#ih").value || null})});
+    zeigeVorschau(v, await api("produkte"));
+  });
+}
+
+function zeigeVorschau(v, produkte) {
+  const einheit = Object.fromEntries(produkte.map((p) => [p.id, p.einheit]));
+  const opts = (sel) => `<option value="">– weglassen –</option><option value="+neu">+ neues Produkt</option>` +
+    produkte.map((p) => `<option value="${p.id}" ${p.id === sel ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+  $("#ivor").innerHTML = `<div class="card"><h2>Vorschau</h2>
+    ${v.dublette ? `<p class="over">Dieses Rezept gibt es schon (ID ${esc(v.dublette)}).</p>` : ""}
+    <div class="row"><div><label>Name</label><input id="in" value="${esc(v.name)}"></div>
+      <div style="flex:0 0 90px"><label>Portionen</label><input id="ip" type="number" min="1" max="12" value="${v.portionen}"></div></div>
+    <table>${v.zutaten.map((z) => `<tr><td colspan="3" style="border-top:1px solid var(--line);padding-bottom:0">
+        ${esc(z.text)} <span class="tag ${z.status}">${esc(z.status)}</span>
+        ${z.hinweis ? `<span class="muted" style="font-size:12px"> ${esc(z.hinweis)}</span>` : ""}</td></tr>
+      <tr><td style="border:0"><select data-zp="${z.index}">${opts(z.produkt_id)}</select>
+          <input data-zn="${z.index}" placeholder="Name neues Produkt" value="${esc(z.name)}" style="display:none;margin-top:4px"></td>
+        <td style="border:0;width:90px"><input data-zm="${z.index}" type="number" min="0" step="any" value="${z.menge_bestand ?? ""}"></td>
+        <td style="border:0;width:30px" class="muted" data-ze="${z.index}">${esc(einheit[z.produkt_id] ?? "g")}</td></tr>`).join("")}</table>
+    <button class="go" id="iok">In Grocy übernehmen</button></div>`;
+  document.querySelectorAll("[data-zp]").forEach((sel) => sel.onchange = () => {
+    const i = sel.dataset.zp;
+    $(`[data-zn="${i}"]`).style.display = sel.value === "+neu" ? "block" : "none";
+    $(`[data-ze="${i}"]`).textContent = einheit[sel.value] ?? "g";
+  });
+  $("#iok").onclick = () => guarded(async () => {
+    const zutaten = [];
+    for (const sel of document.querySelectorAll("[data-zp]")) {
+      const i = +sel.dataset.zp, menge = $(`[data-zm="${i}"]`).value;
+      if (!sel.value) continue;
+      if (menge === "") throw new Error(`Menge fehlt: ${v.zutaten[i].text}`);
+      zutaten.push(sel.value === "+neu"
+        ? {index: i, neu_anlegen: $(`[data-zn="${i}"]`).value, menge: +menge}
+        : {index: i, produkt_id: sel.value, menge: +menge});
+    }
+    const e = await api(`import/${v.import_id}/uebernehmen`, {method: "POST", body: JSON.stringify({
+      name: $("#in").value, portionen: +$("#ip").value, zutaten, trotz_dublette: !!v.dublette})});
+    say(`„${e.name}“ angelegt · ${e.zutaten} Zutaten` + (e.neue_produkte.length ? ` · neu: ${e.neue_produkte.join(", ")}` : ""));
+    $("#ivor").innerHTML = "";
+  });
+}
+
 function load(tab) {
   guarded(loadStatus);
-  guarded({heute: loadHeute, woche: loadWoche, bestand: loadBestand, packungen: () => loadPackungen()}[tab]);
+  guarded({heute: loadHeute, woche: loadWoche, bestand: loadBestand, packungen: () => loadPackungen(), import: loadImport}[tab]);
 }
 load("heute");
 </script>

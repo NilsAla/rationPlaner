@@ -163,6 +163,42 @@ AKTIONEN: tuple[Aktion, ...] = (
         schreibend=True,
     ),
     Aktion(
+        "rezept_import_vorschau",
+        "Liest ein Rezept per Link (z. B. HelloFresh) und schlägt je Zutat Produkt-ID und Menge "
+        "in Bestandseinheit vor (status ok/vorschlag/schaetzung/einheit/unbekannt). "
+        "Legt nichts an.",
+        "POST",
+        "/import/vorschau",
+        vol.Schema({vol.Required("url"): cv.string, vol.Optional("html"): cv.string}),
+    ),
+    Aktion(
+        "rezept_import_uebernehmen",
+        "Übernimmt eine geprüfte Import-Vorschau nach Grocy. zutaten: Liste aus index, menge und "
+        "entweder produkt_id oder neu_anlegen (Name). Nicht aufgeführte Zutaten entfallen.",
+        "POST",
+        "/import/{import_id}/uebernehmen",
+        vol.Schema(
+            {
+                vol.Required("import_id"): vol.Coerce(int),
+                vol.Required("zutaten"): [
+                    vol.Schema(
+                        {
+                            vol.Required("index"): vol.Coerce(int),
+                            vol.Required("menge"): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                            vol.Optional("produkt_id"): cv.string,
+                            vol.Optional("neu_anlegen"): cv.string,
+                            vol.Optional("einheit"): cv.string,
+                        }
+                    )
+                ],
+                vol.Optional("name"): cv.string,
+                vol.Optional("portionen"): PORTIONEN,
+                vol.Optional("trotz_dublette"): bool,
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
         "gekocht",
         "Bucht ein gekochtes Rezept ab (FEFO). Ohne rezept_id das für heute geplante.",
         "POST",

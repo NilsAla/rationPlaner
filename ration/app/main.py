@@ -16,10 +16,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import API_VERSION, __version__, kueche, testdaten
-from app.db import Packung, PlanEintrag, make_engine
+from app import API_VERSION, __version__, kueche, rezept_import, testdaten
+from app.db import Packung, PlanEintrag, RezeptImport, RezeptMeta, ZutatAlias, make_engine
 from app.ha import HomeAssistant, SupervisorHomeAssistant
-from app.inventory.base import InventoryBackend, NotFoundError
+from app.inventory.base import Ingredient, InventoryBackend, NotFoundError
 from app.inventory.grocy import GrocyBackend
 from app.settings import Settings, load_settings
 
@@ -85,6 +85,26 @@ class PackungIn(BaseModel):
 class WeiterePackungIn(PackungIn):
     quelle: Literal["manuell", "bon", "angebot", "llm"] = "manuell"
     gueltig_bis: date | None = None
+
+
+class ImportIn(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+    html: str | None = None  # Fallback: Seitenquelltext, falls die Seite den Abruf blockt
+
+
+class ImportZutatIn(BaseModel):
+    index: int = Field(ge=0)
+    produkt_id: str | None = None  # bestehendes Produkt
+    neu_anlegen: str | None = None  # oder neues Produkt mit diesem Namen (ohne Attribute)
+    einheit: str = "g"  # Bestandseinheit für neu_anlegen
+    menge: float = Field(ge=0)  # in Bestandseinheit des Produkts
+
+
+class UebernehmenIn(BaseModel):
+    name: str | None = None
+    portionen: int | None = Field(default=None, ge=1, le=12)
+    zutaten: list[ImportZutatIn]  # nicht aufgeführte Zutaten werden weggelassen
+    trotz_dublette: bool = False
 
 
 class EinkaufslisteIn(BaseModel):
@@ -309,6 +329,91 @@ async def packung_loeschen(packung_id: int, s: Session = Depends(session)) -> No
     if p := s.get(Packung, packung_id):
         s.delete(p)
         s.commit()
+
+
+@api.post("/import/vorschau")
+async def import_vorschau(
+    data: ImportIn, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+) -> dict:
+    """Liest das Rezept hinter einem Link und schlägt je Zutat Produkt und Menge vor."""
+    try:
+        html = data.html or await rezept_import.laden(data.url)
+        roh = rezept_import.rezept_aus_html(html, data.url)
+    except rezept_import.ImportError_ as err:
+        raise HTTPException(422, str(err)) from err
+    aliase = {a.text: a.produkt_id for a in s.scalars(select(ZutatAlias))}
+    zuordnung = rezept_import.zuordnen(roh, await b.list_products(), aliase)
+    dublette = s.scalars(select(RezeptMeta).where(RezeptMeta.quelle_id == roh.quelle_id)).first()
+    eintrag = RezeptImport(url=roh.url, quelle_id=roh.quelle_id, roh=asdict(roh))
+    s.add(eintrag)
+    s.commit()
+    log.info("Import-Vorschau %s: %s (%s Zutaten)", eintrag.id, roh.name, len(roh.zutaten))
+    return {
+        "import_id": eintrag.id,
+        "name": roh.name,
+        "portionen": roh.portionen,
+        "quelle": roh.quelle,
+        "quelle_id": roh.quelle_id,
+        "url": roh.url,
+        "dublette": dublette.rezept_id if dublette else None,
+        "zutaten": [asdict(z) for z in zuordnung],
+    }
+
+
+@api.post("/import/{import_id}/uebernehmen", status_code=201)
+async def import_uebernehmen(
+    import_id: int,
+    data: UebernehmenIn,
+    s: Session = Depends(session),
+    b: InventoryBackend = Depends(backend),
+) -> dict:
+    """Legt das geprüfte Rezept in Grocy an, merkt Aliase und Herkunft."""
+    eintrag = s.get(RezeptImport, import_id)
+    if eintrag is None:
+        raise HTTPException(404, "Import nicht gefunden")
+    if eintrag.rezept_id:
+        raise HTTPException(409, f"Schon übernommen als Rezept {eintrag.rezept_id}")
+    meta = s.scalars(select(RezeptMeta).where(RezeptMeta.quelle_id == eintrag.quelle_id)).first()
+    if meta and not data.trotz_dublette:
+        raise HTTPException(409, f"Rezept existiert schon (ID {meta.rezept_id})")
+    roh = rezept_import.RohRezept(
+        **{**eintrag.roh, "zutaten": [rezept_import.RohZutat(**z) for z in eintrag.roh["zutaten"]]}
+    )
+    zutaten, neu = [], []
+    for z in data.zutaten:
+        if z.index >= len(roh.zutaten):
+            raise HTTPException(422, f"Zutat {z.index} gibt es nicht")
+        original = roh.zutaten[z.index]
+        if z.neu_anlegen:
+            produkt = await b.create_product(z.neu_anlegen.strip(), z.einheit)
+            neu.append(produkt.name)
+        elif z.produkt_id:
+            produkt = await b.get_product(z.produkt_id)
+        else:
+            raise HTTPException(422, f"Zutat {z.index}: produkt_id oder neu_anlegen fehlt")
+        zutaten.append(Ingredient(produkt.id, z.menge, original.text))
+        s.merge(ZutatAlias(text=rezept_import.alias_key(original.name), produkt_id=produkt.id))
+    if not zutaten:
+        raise HTTPException(422, "Keine Zutaten übernommen")
+    recipe = await b.create_recipe(
+        data.name or roh.name,
+        data.portionen or roh.portionen,
+        rezept_import.beschreibung(roh),
+        zutaten,
+    )
+    eintrag.rezept_id = recipe.id
+    s.merge(
+        RezeptMeta(rezept_id=recipe.id, quelle=roh.quelle, quelle_id=roh.quelle_id, url=roh.url)
+    )
+    s.commit()
+    log.info("Import %s übernommen: %s → Rezept %s", import_id, recipe.name, recipe.id)
+    return {
+        "rezept_id": recipe.id,
+        "name": recipe.name,
+        "zutaten": len(zutaten),
+        "neue_produkte": neu,
+        "weggelassen": len(roh.zutaten) - len(zutaten),
+    }
 
 
 @api.post("/einkaufsliste")

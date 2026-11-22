@@ -42,7 +42,8 @@ Beide Services liefern eine Antwort (`response_variable`), z. B. was gefehlt hat
 Lesend (nur mit Antwort): `ration.heute`, `ration.status`, `ration.bestand`, `ration.produkte`,
 `ration.lagerorte`, `ration.rezepte`, `ration.plan`, `ration.packungen`. Schreibend:
 `ration.plan_setzen`, `ration.plan_loeschen`, `ration.einbuchen`, `ration.packung_setzen`,
-`ration.packung_hinzufuegen`, `ration.packung_loeschen`. Listen kommen als `{"items": [...]}`.
+`ration.packung_hinzufuegen`, `ration.packung_loeschen`, `ration.rezept_import_vorschau`
+(nur lesend), `ration.rezept_import_uebernehmen`. Listen kommen als `{"items": [...]}`.
 
 ## LLM und MCP
 
@@ -62,6 +63,14 @@ Test: `ration.rezepte` unter Entwicklerwerkzeuge → Aktionen mit „Antwort“ 
 Eingekauft wird in ganzen Packungen. Standard-Packung je Produkt = Einkaufseinheit in Grocy
 (mit Umrechnung), weitere Größen (400/800 g, Angebote mit Ablauf) in der App. Pflege im Tab
 *Packungen* oder per Service. Die Einkaufsliste wählt die Kombination mit dem kleinsten Überhang.
+
+## Rezept-Import per Link
+
+Tab *Import*: Link einfügen (z. B. HelloFresh), Vorschau prüfen, je Zutat Produkt und Menge
+bestätigen, übernehmen. Übernommen werden nur Name, Portionen und Zutaten; die Zubereitung
+bleibt als Link zur Quelle. Dubletten werden über die Quell-ID erkannt, bestätigte
+Zuordnungen als Alias gemerkt. Per MCP: `ration_rezept_import_vorschau` →
+`ration_rezept_import_uebernehmen`.
 
 ## Testrezepte
 

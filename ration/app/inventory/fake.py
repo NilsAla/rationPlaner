@@ -8,6 +8,7 @@ from datetime import date, timedelta
 
 from app.inventory.base import (
     Batch,
+    Ingredient,
     InsufficientStockError,
     Location,
     NotFoundError,
@@ -43,6 +44,24 @@ class FakeBackend:
         if product_id not in self._products:
             raise NotFoundError(f"Produkt {product_id}")
         return self._products[product_id]
+
+    async def create_product(self, name: str, unit: str) -> Product:
+        for p in self._products.values():
+            if p.name == name:
+                return p
+        location = next(iter(self._locations), None)
+        product = Product(
+            id=f"p{next(self._ids)}", name=name, unit=unit, default_location_id=location
+        )
+        self._products[product.id] = product
+        return product
+
+    async def create_recipe(
+        self, name: str, servings: int, description: str, ingredients: list[Ingredient]
+    ) -> Recipe:
+        recipe = Recipe(f"r{next(self._ids)}", name, servings, tuple(ingredients), description)
+        self._recipes[recipe.id] = recipe
+        return recipe
 
     async def set_pack(self, product_id: str, unit: str, size: float) -> None:
         product = await self.get_product(product_id)

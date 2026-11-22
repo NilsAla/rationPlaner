@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Date, Float, Integer, String, create_engine
+from sqlalchemy import JSON, Date, DateTime, Float, Integer, String, create_engine, func
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -35,6 +35,39 @@ class Packung(Base):
     menge: Mapped[float] = mapped_column(Float)  # in Bestandseinheit des Produkts
     quelle: Mapped[str] = mapped_column(String, default="manuell")  # manuell/bon/angebot/llm
     gueltig_bis: Mapped[date | None] = mapped_column(Date, nullable=True)  # Angebot
+
+
+class RezeptMeta(Base):
+    """Was Grocy am Rezept nicht kann: Herkunft (für Dubletten beim Import)."""
+
+    __tablename__ = "rezept_meta"
+
+    rezept_id: Mapped[str] = mapped_column(String, primary_key=True)
+    quelle: Mapped[str | None] = mapped_column(String, nullable=True)  # z. B. hellofresh
+    quelle_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    url: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class ZutatAlias(Base):
+    """Zutatentext aus Importen (normalisiert) → Produkt. Entsteht aus bestätigten Reviews."""
+
+    __tablename__ = "zutat_alias"
+
+    text: Mapped[str] = mapped_column(String, primary_key=True)
+    produkt_id: Mapped[str] = mapped_column(String)
+
+
+class RezeptImport(Base):
+    """Ein Import-Vorgang: gelesenes Rezept, wartet auf Review."""
+
+    __tablename__ = "rezept_import"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    url: Mapped[str] = mapped_column(String)
+    quelle_id: Mapped[str] = mapped_column(String, index=True)
+    roh: Mapped[dict] = mapped_column(JSON)
+    rezept_id: Mapped[str | None] = mapped_column(String, nullable=True)  # nach Übernahme
+    angelegt: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 def make_engine(db_url: str) -> Engine:

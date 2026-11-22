@@ -133,6 +133,16 @@ class InventoryBackend(Protocol):
         """Bucht ab, Reihenfolge wie get_batches. Wirft InsufficientStockError."""
         ...
 
+    async def create_product(self, name: str, unit: str) -> Product:
+        """Legt ein Produkt ohne Attribute an (Import). Existiert der Name, wird es geliefert."""
+        ...
+
+    async def create_recipe(
+        self, name: str, servings: int, description: str, ingredients: list[Ingredient]
+    ) -> Recipe:
+        """Legt ein Rezept an, Zutatenmengen in der Bestandseinheit des Produkts."""
+        ...
+
     async def set_pack(self, product_id: str, unit: str, size: float) -> None:
         """Setzt die Standard-Packung: Einkaufseinheit `unit` mit `size` Bestandseinheiten."""
         ...

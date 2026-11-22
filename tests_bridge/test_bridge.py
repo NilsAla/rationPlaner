@@ -144,3 +144,20 @@ async def test_service_packung_loeschen_pfad(hass: HomeAssistant, aioclient_mock
     assert any(
         c[0] == "DELETE" and str(c[1]).endswith("/packungen/7") for c in aioclient_mock.mock_calls
     )
+
+
+async def test_tool_import_uebernehmen(hass: HomeAssistant, aioclient_mock):
+    await _setup(hass, aioclient_mock)
+    aioclient_mock.post(f"{URL}/api/v1/import/3/uebernehmen", json={"rezept_id": "9"})
+    context = llm.LLMContext(
+        platform="test", context=None, language="de", assistant=None, device_id=None
+    )
+    instance = await llm.async_get_api(hass, DOMAIN, context)
+    tool = next(t for t in instance.tools if t.name == f"{DOMAIN}_rezept_import_uebernehmen")
+    args = {"import_id": 3, "zutaten": [{"index": 0, "produkt_id": "1", "menge": 250}]}
+    result = await tool.async_call(
+        hass, llm.ToolInput(tool_name=tool.name, tool_args=args), context
+    )
+    assert result == {"rezept_id": "9"}
+    post = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
+    assert post[-1][2] == {"zutaten": [{"index": 0, "produkt_id": "1", "menge": 250.0}]}

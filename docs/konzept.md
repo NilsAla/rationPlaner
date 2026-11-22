@@ -81,6 +81,8 @@ nur Zuordnungen, Präferenzen, Planungsdaten und Nährwerte und referenziert Gro
 | Produkt-Userfields | Grocy | `tracking_modus`, `kategorie`, `fuellstand`, `toleranz_pct` |
 | Rezept-Userfields | Grocy | `status`, `aufwand`, `tags`, `rest_haltbarkeit_tage` |
 | `packung` | App | Weitere Packungsgrößen je Produkt: Einheit, Menge, Quelle (manuell/bon/angebot/llm), gültig bis (Angebot) |
+| `zutat_alias` | App | Zutatentext aus Rezept-Importen (normalisiert) → Produkt |
+| `rezept_import` | App | Import-Vorgang: URL, Quell-ID, gelesenes Rezept, angelegtes Rezept |
 | `bon_alias` | App | Bon-Text je Markt → Produkt + Standardmenge |
 | `praeferenz` | App | Pro übergeordnetem Produkt/Kategorie: TK / frisch / egal |
 | `rezept_meta` | App | Quelle, „muss frisch sein“ je Zutat, `toleranz_pct`-Override je Zutat |
@@ -187,9 +189,20 @@ Der Planer startet erst, wenn alle Produkte Attribute haben.
 | Weg | Quelle | Extraktion | Status |
 |---|---|---|---|
 | Foto/PDF | Rezeptkarten, Kochbücher | `ai_task` mit Bild | ungetestet |
-| URL | Chefkoch & Co. | schema.org/Recipe (recipe-scrapers), LLM nur fürs Mapping | ungetestet |
+| URL | HelloFresh, Chefkoch & Co. | schema.org/Recipe (JSON-LD), Zuordnung per Alias/Name, Review | ungetestet |
 | Generiert | Prompt in der App | `ai_task` mit Bestand als Kontext | ungetestet |
 | Eigenes | Manuelle Eingabe | – | getestet |
+
+**Import per Link:** Vorschau liest Name, Portionen und Zutaten aus dem JSON-LD der Seite.
+Herkunft und Quell-ID (HelloFresh: 24-stellige Hex-ID am URL-Ende) landen in `rezept_meta`,
+darüber werden Dubletten erkannt. Jede Zutat bekommt einen Vorschlag (Alias aus
+`zutat_alias`, exakter Name, Token-Ähnlichkeit) samt Menge in Bestandseinheit (g/kg/ml/l
+direkt, Stück und Packungen über die Standard-Packung, EL/TL als markierte Schätzung).
+Übernommen wird erst nach Review (UI oder MCP); bestätigte Zuordnungen werden Aliase,
+unbekannte Zutaten werden als Produkte ohne Attribute angelegt. Statt der Zubereitung steht
+ein Link zur Quelle in der Beschreibung; eine eigene Kurzfassung erzeugt später `ai_task`.
+Blockt eine Seite den Abruf, kann der Quelltext eingefügt werden. Später übernimmt das LLM
+die Zuordnung unbekannter Zutaten (wählt Produkt-IDs, Code rechnet Mengen).
 
 Kuratierung über Daumen hoch/runter. Planer mischt höchstens 1–2 ungetestete Rezepte pro Woche.
 Die Datenbank bleibt privat; fremde Fotos und Fließtexte werden nicht übernommen.

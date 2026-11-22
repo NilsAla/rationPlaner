@@ -148,3 +148,37 @@ packung_loeschen:
         number:
           min: 1
           mode: box
+rezept_import_vorschau:
+  fields:
+    url:
+      required: true
+      selector:
+        text:
+          type: url
+    html:
+      selector:
+        text:
+          multiline: true
+rezept_import_uebernehmen:
+  fields:
+    import_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    zutaten:
+      required: true
+      selector:
+        object:
+    name:
+      selector:
+        text:
+    portionen:
+      selector:
+        number:
+          min: 1
+          max: 12
+    trotz_dublette:
+      selector:
+        boolean:

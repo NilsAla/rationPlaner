@@ -436,20 +436,43 @@ class GrocyBackend:
         found = await self._find("recipes", name=name)
         if found:
             return str(found["id"]), False
+        recipe = await self.create_recipe(
+            name,
+            servings,
+            description,
+            [Ingredient(pid, amount) for pid, amount in ingredients],
+        )
+        if userfields:
+            await self._put(f"/userfields/recipes/{recipe.id}", userfields)
+        return recipe.id, True
+
+    # --- Anlegen (Import) -----------------------------------------------------
+
+    async def create_product(self, name: str, unit: str) -> Product:
+        found = await self._find("products", name=name)
+        if found is None:
+            unit_id = await self.ensure_quantity_unit(unit)
+            locations = await self.list_locations()
+            location = next((loc for loc in locations if loc.name == "Vorrat"), locations[0])
+            await self.ensure_product(name, unit_id=unit_id, location_id=location.id)
+            found = await self._find("products", name=name)
+        return await self.get_product(str(found["id"]))
+
+    async def create_recipe(
+        self, name: str, servings: int, description: str, ingredients: list[Ingredient]
+    ) -> Recipe:
         recipe_id = await self._create(
             "recipes", {"name": name, "base_servings": servings, "description": description}
         )
         products = {p["id"]: p for p in await self._get("/objects/products")}
-        for product_id, amount in ingredients:
-            await self._create(
-                "recipes_pos",
-                {
-                    "recipe_id": recipe_id,
-                    "product_id": int(product_id),
-                    "amount": amount,
-                    "qu_id": products[int(product_id)]["qu_id_stock"],
-                },
-            )
-        if userfields:
-            await self._put(f"/userfields/recipes/{recipe_id}", userfields)
-        return str(recipe_id), True
+        for zutat in ingredients:
+            body = {
+                "recipe_id": recipe_id,
+                "product_id": int(zutat.product_id),
+                "amount": zutat.amount,
+                "qu_id": products[int(zutat.product_id)]["qu_id_stock"],
+            }
+            if zutat.note:
+                body["note"] = zutat.note
+            await self._create("recipes_pos", body)
+        return await self.get_recipe(str(recipe_id))

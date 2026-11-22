@@ -204,6 +204,46 @@
           "description": "ID from packages"
         }
       }
+    },
+    "rezept_import_vorschau": {
+      "name": "Recipe import: preview",
+      "description": "Reads a recipe from a link and proposes mappings (response).",
+      "fields": {
+        "url": {
+          "name": "Link",
+          "description": "Recipe URL"
+        },
+        "html": {
+          "name": "Source",
+          "description": "Optional, if the site blocks fetching"
+        }
+      }
+    },
+    "rezept_import_uebernehmen": {
+      "name": "Recipe import: apply",
+      "description": "Creates the reviewed preview in Grocy.",
+      "fields": {
+        "import_id": {
+          "name": "Import",
+          "description": "ID from the preview"
+        },
+        "zutaten": {
+          "name": "Ingredients",
+          "description": "List with index, amount and product_id or new name"
+        },
+        "name": {
+          "name": "Name",
+          "description": "Optional"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Optional"
+        },
+        "trotz_dublette": {
+          "name": "Despite duplicate",
+          "description": "Create even if already imported"
+        }
+      }
     }
   }
 }
