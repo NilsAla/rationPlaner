@@ -57,6 +57,9 @@ class Product:
     shelf_life_frozen_days: int = 0
     shelf_life_thawed_days: int = 0
     default_location_id: str | None = None
+    pack_unit: str | None = None  # Einkaufseinheit, z. B. "Dose"; None = in Bestandseinheit
+    pack_size: float | None = None  # Bestandseinheit je Einkaufseinheit, z. B. 400 (g je Dose)
+    min_stock: float = 0  # Mindestbestand in Bestandseinheit, Nachkauf darunter
 
 
 @dataclass(frozen=True)

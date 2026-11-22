@@ -86,10 +86,22 @@ def test_testdaten_idempotent():
             erst = await testdaten.anlegen(backend)
             zweit = await testdaten.anlegen(backend)
             rezepte = {r.name: r for r in await backend.list_recipes()}
-            return erst, zweit, rezepte
+            return erst, zweit, rezepte, await backend.list_products()
 
-    erst, zweit, rezepte = asyncio.run(run())
+    erst, zweit, rezepte, erst_produkte = asyncio.run(run())
     assert erst["produkte"] == 6
     assert not any(r["neu"] for r in zweit["rezepte"])
     pasta = rezepte["Test: Paprika-Pasta"]
     assert pasta.servings == 2 and len(pasta.ingredients) == 3
+    produkte = {p.name: p for p in erst_produkte}
+    assert (produkte["Kidneybohnen"].pack_unit, produkte["Kidneybohnen"].pack_size) == ("Dose", 400)
+    assert produkte["Nudeln"].min_stock == 500
+
+
+def test_to_product_packung_und_mindestbestand():
+    raw = {"id": 4, "name": "Kidneybohnen", "qu_id_stock": 1, "qu_id_purchase": 5}
+    raw["min_stock_amount"] = "400"
+    p = GrocyBackend._to_product(raw, {1: "g", 5: "Dose"}, {}, {(4, 5, 1): 400.0})
+    assert (p.pack_unit, p.pack_size, p.min_stock) == ("Dose", 400.0, 400.0)
+    ohne = GrocyBackend._to_product({**raw, "qu_id_purchase": 1}, {1: "g"}, {}, {})
+    assert ohne.pack_unit is None and ohne.pack_size is None

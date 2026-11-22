@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -35,6 +36,38 @@ class Position:
     name: str
     menge: float
     einheit: str
+
+
+@dataclass
+class Einkauf(Position):
+    """Fehlmenge, aufgerundet auf ganze Packungen (Einkaufseinheit aus Grocy)."""
+
+    packungen: int | None = None
+    packung: str | None = None  # Einkaufseinheit, z. B. "Dose"
+    packung_menge: float | None = None  # Bestandseinheit je Packung
+
+    @property
+    def text(self) -> str:
+        if self.packungen is None:
+            return f"{self.name} {menge(math.ceil(self.menge - EPS))} {self.einheit}".strip()
+        groesse = f"{menge(self.packung_menge)} {self.einheit}".strip()
+        return f"{self.name}, {self.packungen} × {self.packung} ({groesse})"
+
+
+def auf_packungen(product: Product, fehlmenge: float) -> Einkauf:
+    """Rundet eine Fehlmenge auf ganze Packungen. Ohne Packungsgröße bleibt die Menge."""
+    if not product.pack_size:
+        return Einkauf(product.id, product.name, fehlmenge, product.unit)
+    n = max(math.ceil(fehlmenge / product.pack_size - EPS), 1)
+    return Einkauf(
+        product.id,
+        product.name,
+        n * product.pack_size,
+        product.unit,
+        packungen=n,
+        packung=product.pack_unit,
+        packung_menge=product.pack_size,
+    )
 
 
 @dataclass
@@ -74,8 +107,10 @@ async def gekocht(
     return ergebnis
 
 
-async def bedarf(backend: InventoryBackend, geplant: list[tuple[Recipe, int]]) -> list[Position]:
-    """Was für die geplanten Gerichte fehlt, über alle Gerichte summiert, gegen den Bestand."""
+async def bedarf(backend: InventoryBackend, geplant: list[tuple[Recipe, int]]) -> list[Einkauf]:
+    """Was zu kaufen ist: Bedarf der geplanten Gerichte plus Mindestbestand, minus Bestand,
+    aufgerundet auf ganze Packungen. Produkte mit Mindestbestand kommen auch ungeplant drauf.
+    """
     products = {p.id: p for p in await backend.list_products()}
     summe: dict[str, float] = {}
     for recipe, portionen in geplant:
@@ -83,13 +118,16 @@ async def bedarf(backend: InventoryBackend, geplant: list[tuple[Recipe, int]]) -
         for zutat in recipe.ingredients:
             if wird_abgebucht(products[zutat.product_id]):
                 summe[zutat.product_id] = summe.get(zutat.product_id, 0) + zutat.amount * faktor
-    fehlend = []
+    for p in products.values():
+        if p.min_stock > 0 and wird_abgebucht(p):
+            summe.setdefault(p.id, 0)
+    einkauf = []
     for product_id, benoetigt in summe.items():
-        differenz = benoetigt - await backend.get_stock_amount(product_id)
+        p = products[product_id]
+        differenz = benoetigt + p.min_stock - await backend.get_stock_amount(product_id)
         if differenz > EPS:
-            p = products[product_id]
-            fehlend.append(Position(p.id, p.name, differenz, p.unit))
-    return sorted(fehlend, key=lambda x: x.name)
+            einkauf.append(auf_packungen(p, differenz))
+    return sorted(einkauf, key=lambda x: x.name)
 
 
 @dataclass

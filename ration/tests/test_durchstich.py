@@ -1,5 +1,6 @@
 """Durchstich: Einbuchen → Plan → Heute → Gekocht → Einkaufsliste → Status."""
 
+from dataclasses import replace
 from datetime import date, timedelta
 
 HEUTE = date.today().isoformat()
@@ -7,6 +8,10 @@ HEUTE = date.today().isoformat()
 
 def _in(days: int) -> str:
     return (date.today() + timedelta(days=days)).isoformat()
+
+
+def _produkt(backend, product_id):
+    return backend._products[product_id]
 
 
 def test_einbuchen_mit_standard_lagerort(client):
@@ -71,9 +76,28 @@ def test_einkaufsliste_summiert_und_dedupliziert(client, fake_ha):
     e = client.post("/api/v1/einkaufsliste", json={"tage": 7}).json()
 
     assert e["gerichte"] == 2
-    assert e["hinzugefuegt"] == ["Nudeln 250 g"]  # 400 benötigt, 150 da; Öl nie
-    assert e["schon_auf_liste"] == ["Paprika rot 500 g"]
-    assert "Nudeln 250 g" in fake_ha.items
+    # 400 g Nudeln benötigt, 150 da → 250 g fehlen → eine ganze Packung. Öl nie.
+    assert e["hinzugefuegt"] == ["Nudeln, 1 × Packung (500 g)"]
+    # 500 g Paprika à 160 g → 4 Stück
+    assert e["schon_auf_liste"] == ["Paprika rot, 4 × Stück (160 g)"]
+    assert "Nudeln, 1 × Packung (500 g)" in fake_ha.items
+    nudeln = next(p for p in e["positionen"] if p["name"] == "Nudeln")
+    assert nudeln["packungen"] == 1 and nudeln["menge"] == 500
+
+
+def test_einkaufsliste_ohne_packung_ganze_einheiten(client, fake_backend, fake_ha):
+    fake_backend.add_product(replace(_produkt(fake_backend, "paprika"), pack_size=None))
+    client.put(f"/api/v1/plan/{HEUTE}", json={"rezept_id": "paprika-pasta", "portionen": 1})
+    e = client.post("/api/v1/einkaufsliste", json={"tage": 1}).json()
+    assert "Paprika rot 125 g" in e["hinzugefuegt"]
+
+
+def test_einkaufsliste_mindestbestand_auch_ungeplant(client, fake_backend, fake_ha):
+    fake_backend.add_product(replace(_produkt(fake_backend, "nudeln"), min_stock=500))
+    client.post("/api/v1/bestand", json={"produkt_id": "nudeln", "menge": 300})
+    e = client.post("/api/v1/einkaufsliste", json={"tage": 7}).json()
+    assert e["gerichte"] == 0
+    assert e["hinzugefuegt"] == ["Nudeln, 1 × Packung (500 g)"]
 
 
 def test_status(client):

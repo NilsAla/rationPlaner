@@ -1,25 +1,129 @@
 {
-  "_hinweis": "Einzige mitgelieferte Daten: 2 Testrezepte zum Ausprobieren (Konzept: höchstens 1–3). Mengen in g.",
+  "_hinweis": "Einzige mitgelieferte Daten: 2 Testrezepte zum Ausprobieren (Konzept: höchstens 1–3). Mengen in g, Packung = Einkaufseinheit mit g je Packung.",
   "produkte": [
-    {"name": "Paprika rot", "lagerort": "Kühlschrank", "haltbarkeit_tage": 7, "eingefroren_tage": 180, "aufgetaut_tage": 1, "tracking_modus": "exakt", "toleranz_pct": 30},
-    {"name": "Nudeln", "lagerort": "Vorrat", "haltbarkeit_tage": 365, "tracking_modus": "menge", "toleranz_pct": 15},
-    {"name": "Olivenöl", "lagerort": "Vorrat", "haltbarkeit_tage": 365, "tracking_modus": "fuellstand"},
-    {"name": "Kidneybohnen (Dose)", "lagerort": "Vorrat", "haltbarkeit_tage": 730, "tracking_modus": "menge", "toleranz_pct": 15},
-    {"name": "Tomaten passiert", "lagerort": "Vorrat", "haltbarkeit_tage": 365, "tracking_modus": "menge", "toleranz_pct": 20},
-    {"name": "Zwiebel", "lagerort": "Vorrat", "haltbarkeit_tage": 30, "tracking_modus": "menge", "toleranz_pct": 30}
+    {
+      "name": "Paprika rot",
+      "lagerort": "Kühlschrank",
+      "haltbarkeit_tage": 7,
+      "eingefroren_tage": 180,
+      "aufgetaut_tage": 1,
+      "tracking_modus": "exakt",
+      "toleranz_pct": 30,
+      "packung": {
+        "einheit": "Stück",
+        "menge": 160
+      }
+    },
+    {
+      "name": "Nudeln",
+      "lagerort": "Vorrat",
+      "haltbarkeit_tage": 365,
+      "tracking_modus": "menge",
+      "toleranz_pct": 15,
+      "packung": {
+        "einheit": "Packung",
+        "menge": 500
+      },
+      "mindestbestand": 500
+    },
+    {
+      "name": "Olivenöl",
+      "lagerort": "Vorrat",
+      "haltbarkeit_tage": 365,
+      "tracking_modus": "fuellstand",
+      "packung": {
+        "einheit": "Flasche",
+        "menge": 750
+      }
+    },
+    {
+      "name": "Kidneybohnen",
+      "lagerort": "Vorrat",
+      "haltbarkeit_tage": 730,
+      "tracking_modus": "menge",
+      "toleranz_pct": 15,
+      "packung": {
+        "einheit": "Dose",
+        "menge": 400
+      }
+    },
+    {
+      "name": "Tomaten passiert",
+      "lagerort": "Vorrat",
+      "haltbarkeit_tage": 365,
+      "tracking_modus": "menge",
+      "toleranz_pct": 20,
+      "packung": {
+        "einheit": "Packung",
+        "menge": 500
+      }
+    },
+    {
+      "name": "Zwiebel",
+      "lagerort": "Vorrat",
+      "haltbarkeit_tage": 30,
+      "tracking_modus": "menge",
+      "toleranz_pct": 30,
+      "packung": {
+        "einheit": "Netz",
+        "menge": 1000
+      }
+    }
   ],
   "rezepte": [
     {
       "name": "Test: Paprika-Pasta",
       "portionen": 2,
-      "schritte": ["Nudeln in Salzwasser kochen.", "Paprika in Streifen schneiden und in Öl anbraten.", "Mit den Nudeln mischen, salzen und pfeffern."],
-      "zutaten": [["Paprika rot", 250], ["Nudeln", 200], ["Olivenöl", 20]]
+      "schritte": [
+        "Nudeln in Salzwasser kochen.",
+        "Paprika in Streifen schneiden und in Öl anbraten.",
+        "Mit den Nudeln mischen, salzen und pfeffern."
+      ],
+      "zutaten": [
+        [
+          "Paprika rot",
+          250
+        ],
+        [
+          "Nudeln",
+          200
+        ],
+        [
+          "Olivenöl",
+          20
+        ]
+      ]
     },
     {
       "name": "Test: Chili sin Carne",
       "portionen": 3,
-      "schritte": ["Zwiebel würfeln und in Öl anschwitzen.", "Paprika würfeln und mitbraten.", "Bohnen und Tomaten dazu, 20 Minuten köcheln, würzen."],
-      "zutaten": [["Zwiebel", 100], ["Paprika rot", 150], ["Kidneybohnen (Dose)", 400], ["Tomaten passiert", 500], ["Olivenöl", 15]]
+      "schritte": [
+        "Zwiebel würfeln und in Öl anschwitzen.",
+        "Paprika würfeln und mitbraten.",
+        "Bohnen und Tomaten dazu, 20 Minuten köcheln, würzen."
+      ],
+      "zutaten": [
+        [
+          "Zwiebel",
+          100
+        ],
+        [
+          "Paprika rot",
+          150
+        ],
+        [
+          "Kidneybohnen",
+          400
+        ],
+        [
+          "Tomaten passiert",
+          500
+        ],
+        [
+          "Olivenöl",
+          15
+        ]
+      ]
     }
   ]
 }

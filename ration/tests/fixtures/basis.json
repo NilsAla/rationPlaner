@@ -23,7 +23,9 @@
       "tracking_mode": "exakt",
       "grams_per_unit": 1,
       "tolerance_pct": 30,
-      "default_location_id": "kuehlschrank"
+      "default_location_id": "kuehlschrank",
+      "pack_unit": "Stück",
+      "pack_size": 160
     },
     {
       "id": "nudeln",
@@ -32,7 +34,9 @@
       "tracking_mode": "menge",
       "grams_per_unit": 1,
       "tolerance_pct": 15,
-      "default_location_id": "vorrat"
+      "default_location_id": "vorrat",
+      "pack_unit": "Packung",
+      "pack_size": 500
     },
     {
       "id": "oel",

@@ -30,6 +30,13 @@ async def anlegen(backend: GrocyBackend) -> dict:
         if "toleranz_pct" in p:
             uf[UF_TOLERANZ_PCT] = p["toleranz_pct"]
         await backend.set_product_userfields(pid, uf)
+        packung = p["packung"]
+        await backend.ensure_pack(
+            pid,
+            await backend.ensure_quantity_unit(packung["einheit"]),
+            packung["menge"],
+            min_stock=p.get("mindestbestand", 0),
+        )
         produkte[p["name"]] = pid
     rezepte = []
     for r in daten["rezepte"]:

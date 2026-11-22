@@ -249,13 +249,18 @@ async def einkaufsliste(
     vorhanden = [item.lower() for item in await ha.todo_items(todo)]
     neu, schon_da = [], []
     for pos in fehlend:
-        text = f"{pos.name} {kueche.menge(pos.menge)} {pos.einheit}".strip()
+        text = pos.text
         if any(item.startswith(pos.name.lower()) for item in vorhanden):
             schon_da.append(text)
             continue
         await ha.todo_add(todo, text)
         neu.append(text)
-    return {"hinzugefuegt": neu, "schon_auf_liste": schon_da, "gerichte": len(geplant)}
+    return {
+        "hinzugefuegt": neu,
+        "schon_auf_liste": schon_da,
+        "gerichte": len(geplant),
+        "positionen": [{**asdict(pos), "text": pos.text} for pos in fehlend],
+    }
 
 
 @api.post("/testdaten")
