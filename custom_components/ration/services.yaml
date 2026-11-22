@@ -450,7 +450,13 @@ plan_erzeugen:
       selector:
         number:
           min: 1
-          max: 14
+          max: 31
+    daten:
+      selector:
+        object:
+    kochtage:
+      selector:
+        object:
     portionen:
       selector:
         number:
@@ -465,6 +471,14 @@ plan_erzeugen:
     uebernehmen:
       selector:
         boolean:
+    praeferenzen:
+      selector:
+        object:
+    max_ungetestet:
+      selector:
+        number:
+          min: 0
+          max: 7
 plan_vorschlag:
   fields:
     lauf_id:

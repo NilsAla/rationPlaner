@@ -24,8 +24,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Date, DateTime, Integer, String, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app import kueche
-from app.db import Base, Packung, PlanEintrag, Preis
+from app import einstellungen, kueche
+from app.db import Base, Kochvorgang, Packung, PlanEintrag, Preis, RezeptBewertung
 from app.deps import backend, session, settings
 from app.inventory.base import Batch, InventoryBackend, Product, Recipe, TrackingMode, consume_order
 from app.kueche import EPS, Groesse, PackAnzahl, wird_abgebucht
@@ -122,6 +122,14 @@ class Lager:
 # --- Bewertung ---------------------------------------------------------------------------
 
 
+FLEISCH_KATEGORIEN = {"Fleisch", "Fisch"}
+FLEISCH_TAGS = {"Fleisch", "Fisch"}
+VEGGI_KATEGORIEN = {"Gemüse", "Obst", "Kräuter", "Hülsenfrüchte"}
+VEGGI_TAGS = {"vegetarisch", "vegan"}
+AUFWAND_RANG = {"schnell": 0, "normal": 1, "aufwaendig": 2}
+NEUTRAL = {"fleisch": 0.0, "preis": 0.0, "extravagant": 0.0, "neu": 0.0}
+
+
 @dataclass
 class Kandidat:
     rezept_id: str
@@ -135,6 +143,11 @@ class Kandidat:
     tags: list[str]
     aufwand: str | None
     nutzt_bald: list[str] = field(default_factory=list)
+    fleisch: float = 0.0  # Gewichtsanteil Fleisch/Fisch, -1 = unbekannt
+    kosten_portion: float | None = None
+    beliebt: float = 0.0  # 0 … 1 aus Favorit, Daumen, wie oft gekocht
+    gekocht: int = 0
+    zu_aufwendig: bool = False
 
 
 @dataclass
@@ -149,9 +162,55 @@ class Kontext:
     historie: dict[str, date]  # Rezept → zuletzt gekocht
     angebote: set[str]  # Produkte mit laufendem Angebot
     preise: dict[str, float]  # Produkt → EUR je Bestandseinheit
+    praeferenzen: dict = field(default_factory=lambda: dict(NEUTRAL))
+    beliebtheit: dict[str, float] = field(default_factory=dict)
+    bewertung: dict[str, int] = field(default_factory=dict)  # Daumen -1/0/1
+    gekocht: dict[str, int] = field(default_factory=dict)
+    aufwand_je_tag: dict[int, str] = field(default_factory=dict)  # Wochentag → höchster Aufwand
+    ausschluss_tags: set[str] = field(default_factory=set)
+    max_ungetestet: int = MAX_UNGETESTET
+    kosten_median: float | None = None
 
     def toleranz(self, p: Product) -> float:
         return (p.tolerance_pct if p.tolerance_pct is not None else self.toleranz_default) / 100
+
+    def pref(self, name: str) -> float:
+        try:
+            return max(-1.0, min(1.0, float(self.praeferenzen.get(name, 0) or 0)))
+        except (TypeError, ValueError):
+            return 0.0
+
+
+def _gramm(p: Product, menge: float) -> float:
+    return menge * (1.0 if p.unit.lower() in ("g", "ml") else (p.grams_per_unit or 0.0))
+
+
+def profil(rezept: Recipe, k: Kontext) -> tuple[float, float, float | None]:
+    """Fleischanteil, Gemüseanteil (nach Gewicht, Tags überstimmen) und Kosten je Portion."""
+    tags = set(rezept.tags)
+    gesamt = fleisch = veggi = 0.0
+    kosten, bekannt = 0.0, 0
+    for z in rezept.ingredients:
+        p = k.produkte.get(z.product_id)
+        if p is None:
+            continue
+        g = _gramm(p, z.amount)
+        gesamt += g
+        if p.category in FLEISCH_KATEGORIEN:
+            fleisch += g
+        elif p.category in VEGGI_KATEGORIEN:
+            veggi += g
+        if wird_abgebucht(p) and (preis := k.preise.get(p.id)) is not None:
+            kosten += preis * z.amount
+            bekannt += 1
+    f_anteil = fleisch / gesamt if gesamt else 0.0
+    v_anteil = veggi / gesamt if gesamt else 0.0
+    if tags & VEGGI_TAGS:
+        f_anteil = 0.0
+    elif tags & FLEISCH_TAGS:
+        f_anteil = max(f_anteil, 0.5)
+    portion = kosten / max(rezept.servings, 1) if bekannt else None
+    return f_anteil, v_anteil, portion
 
 
 def bewerten(rezept: Recipe, portionen: int, lager: Lager, k: Kontext, tag: date) -> Kandidat:
@@ -185,13 +244,31 @@ def bewerten(rezept: Recipe, portionen: int, lager: Lager, k: Kontext, tag: date
     zuletzt = k.historie.get(rezept.id)
     vor = (tag - zuletzt).days if zuletzt else None
     abwechslung = max(ABWECHSLUNG_TAGE - vor, 0) / ABWECHSLUNG_TAGE if vor is not None else 0.0
+
+    # Präferenzen (Regler -1 … 1, 0 = neutral)
+    extravagant, neu = k.pref("extravagant"), k.pref("neu")
+    vorrat_gewicht = 1 - 0.5 * extravagant  # -1: Vorrat doppelt so wichtig … 1: halb so wichtig
+    f_anteil, v_anteil, kosten = profil(rezept, k)
+    beliebt = k.beliebtheit.get(rezept.id, 0.0)
+    nie_gekocht = k.gekocht.get(rezept.id, 0) == 0
+    rel_kosten = 0.0
+    if kosten is not None and k.kosten_median:
+        rel_kosten = max(-1.0, min(1.0, kosten / k.kosten_median - 1))
+    max_aufwand = k.aufwand_je_tag.get(tag.weekday(), "aufwaendig")
+    zu_aufwendig = AUFWAND_RANG.get(rezept.effort or "", 0) > AUFWAND_RANG.get(max_aufwand, 2)
     score = (
-        GEWICHT["aufbrauch"] * aufbrauch
-        + GEWICHT["deckung"] * deckung
-        + GEWICHT["fit"] * fit
+        vorrat_gewicht
+        * (GEWICHT["aufbrauch"] * aufbrauch + GEWICHT["deckung"] * deckung + GEWICHT["fit"] * fit)
         + GEWICHT["abwechslung"] * abwechslung
         + GEWICHT["angebot"] * min(angebote, 3)
-        - (0.3 if rezept.status == "ungetestet" else 0.0)
+        - 0.3 * (1 - max(neu, 0)) * (rezept.status == "ungetestet")
+        + 1.5 * k.pref("fleisch") * (f_anteil - v_anteil)
+        + 1.0 * k.pref("preis") * rel_kosten
+        + 1.0 * max(extravagant, 0) * (1 - deckung)
+        - 1.5 * neu * beliebt
+        + 1.0 * max(neu, 0) * nie_gekocht
+        + 0.5 * k.bewertung.get(rezept.id, 0)
+        - (2.0 if zu_aufwendig else 0.0)
     )
     return Kandidat(
         rezept.id,
@@ -205,11 +282,20 @@ def bewerten(rezept: Recipe, portionen: int, lager: Lager, k: Kontext, tag: date
         list(rezept.tags),
         rezept.effort,
         nutzt,
+        round(f_anteil, 2),
+        round(kosten, 2) if kosten is not None else None,
+        round(beliebt, 2),
+        k.gekocht.get(rezept.id, 0),
+        zu_aufwendig,
     )
 
 
 def kandidaten(k: Kontext, lager: Lager, tag: date, portionen: int) -> list[Kandidat]:
-    alle = [bewerten(r, portionen, lager, k, tag) for r in k.rezepte.values() if r.ingredients]
+    alle = [
+        bewerten(r, portionen, lager, k, tag)
+        for r in k.rezepte.values()
+        if r.ingredients and not (set(r.tags) & k.ausschluss_tags)
+    ]
     return sorted(alle, key=lambda c: (-c.score, c.name))
 
 
@@ -398,7 +484,7 @@ def gierig(
                     c
                     for c in kandidaten(k, sim.lager, d, portionen)
                     if c.rezept_id not in benutzt
-                    and (c.status != "ungetestet" or ungetestet < MAX_UNGETESTET)
+                    and (c.status != "ungetestet" or ungetestet < k.max_ungetestet)
                 ),
                 None,
             )
@@ -430,16 +516,48 @@ Schon fest geplant (nicht ändern, nicht wiederholen): {fest}
 Läuft bald ab: {bald}
 
 Kandidaten (id | name | score | deckung % | nutzt bald Ablaufendes | zuletzt vor Tagen | status |
-tags | aufwand), höherer Score ist besser:
+tags | aufwand | Fleischanteil % | EUR je Portion | Liebling 0–1 | so oft gekocht), höherer Score
+ist besser, der Score enthält die Wünsche unten schon:
 {kandidaten}
+
+Wünsche des Nutzers: {wuensche}
 
 Regeln:
 - Für jeden zu planenden Tag genau ein Eintrag mit datum und rezept_id aus den Kandidaten.
 - Kein Rezept zweimal, höchstens {max_ungetestet} mit status ungetestet.
 - Rezepte, die bald Ablaufendes verbrauchen, früh in den Zeitraum legen.
-- Aufwändige Rezepte eher am Wochenende.
+- Höchster Aufwand je Wochentag: {aufwand}.
 - portionen: {portionen} (1 bis 6; mehr nur, wenn sonst etwas verdirbt).
 - begruendung: ein kurzer Satz."""
+
+
+def wuensche_text(k: Kontext) -> str:
+    """Präferenz-Regler in Worte, damit das LLM sie auch beim Abwägen berücksichtigt."""
+    stufen = [
+        ("fleisch", "weniger Fleisch, mehr Gemüse", "gern Fleisch"),
+        ("preis", "günstig", "darf teurer sein"),
+        ("extravagant", "Vorrat abbauen", "gern extravagant und neue Zutaten"),
+        ("neu", "lieber Lieblingsrezepte", "lieber etwas Neues"),
+    ]
+    teile = []
+    for name, links, rechts in stufen:
+        x = k.pref(name)
+        if abs(x) >= 0.2:
+            staerke = "stark: " if abs(x) >= 0.7 else ""
+            teile.append(staerke + (links if x < 0 else rechts))
+    if k.ausschluss_tags:
+        teile.append("nie: " + ", ".join(sorted(k.ausschluss_tags)))
+    return "; ".join(teile) or "keine besonderen"
+
+
+def _aufwand_text(k: Kontext, daten: list[date]) -> str:
+    tage = sorted({d.weekday() for d in daten})
+    grenzen = [
+        f"{WOCHENTAG[t]} {k.aufwand_je_tag.get(t, 'aufwaendig')}"
+        for t in tage
+        if k.aufwand_je_tag.get(t, "aufwaendig") != "aufwaendig"
+    ]
+    return ", ".join(grenzen) or "beliebig (aufwändige eher am Wochenende)"
 
 
 def struktur(daten: list[date], ids: list[str]) -> dict:
@@ -485,7 +603,9 @@ def anweisung(
     zeilen = [
         f"{c.rezept_id} | {c.name} | {c.score} | {round(c.deckung * 100)} | "
         f"{', '.join(c.nutzt_bald) or '-'} | {c.zuletzt_vor_tagen if c.zuletzt_vor_tagen is not None else '-'} | "  # noqa: E501
-        f"{c.status or '-'} | {', '.join(c.tags) or '-'} | {c.aufwand or '-'}"
+        f"{c.status or '-'} | {', '.join(c.tags) or '-'} | {c.aufwand or '-'} | "
+        f"{round(c.fleisch * 100)} | "
+        f"{c.kosten_portion if c.kosten_portion is not None else '-'} | {c.beliebt} | {c.gekocht}"
         for c in liste
     ]
     return ANWEISUNG.format(
@@ -494,8 +614,10 @@ def anweisung(
         or "nichts",
         bald="; ".join(bald) or "nichts",
         kandidaten="\n".join(zeilen),
-        max_ungetestet=MAX_UNGETESTET,
+        max_ungetestet=k.max_ungetestet,
         portionen=portionen,
+        wuensche=wuensche_text(k),
+        aufwand=_aufwand_text(k, daten),
     )
 
 
@@ -525,8 +647,15 @@ def pruefen(
             probleme.append(f"{d.isoformat()}: {rid!r} ist kein Kandidat")
         elif rid in benutzt:
             probleme.append(f"{d.isoformat()}: {k.rezepte[rid].name} kommt schon vor")
-        elif k.rezepte[rid].status == "ungetestet" and ungetestet >= MAX_UNGETESTET:
+        elif k.rezepte[rid].status == "ungetestet" and ungetestet >= k.max_ungetestet:
             probleme.append(f"{d.isoformat()}: zu viele ungetestete Rezepte")
+        elif set(k.rezepte[rid].tags) & k.ausschluss_tags:
+            probleme.append(f"{d.isoformat()}: {k.rezepte[rid].name} ist ausgeschlossen")
+        elif AUFWAND_RANG.get(k.rezepte[rid].effort or "", 0) > AUFWAND_RANG.get(
+            k.aufwand_je_tag.get(d.weekday(), "aufwaendig"), 2
+        ):
+            wt = WOCHENTAG[d.weekday()]
+            probleme.append(f"{d.isoformat()}: {k.rezepte[rid].name} ist zu aufwändig für {wt}")
         else:
             try:
                 portionen = min(max(int(float(e.get("portionen") or 0)), 1), 6)
@@ -566,7 +695,17 @@ def verderb_feedback(
 # --- Ablauf ------------------------------------------------------------------------------
 
 
-async def kontext_laden(b: InventoryBackend, s: Session, st: Settings, start: date) -> Kontext:
+async def kontext_laden(
+    b: InventoryBackend,
+    s: Session,
+    st: Settings,
+    start: date,
+    praeferenzen: dict | None = None,
+    max_ungetestet: int | None = None,
+) -> Kontext:
+    """Lädt Grocy-Daten und App-Daten; Präferenzen aus den Einstellungen, überschreibbar."""
+    einst = einstellungen.lesen(s)
+    prefs = {**einst["praeferenzen"], **(praeferenzen or {})}
     produkte = {p.id: p for p in await b.list_products()}
     rezepte = {r.id: r for r in await b.list_recipes()}
     weitere: dict[str, list[Groesse]] = defaultdict(list)
@@ -586,6 +725,24 @@ async def kontext_laden(b: InventoryBackend, s: Session, st: Settings, start: da
     ):
         if e.datum > historie.get(e.rezept_id, date.min):
             historie[e.rezept_id] = e.datum
+    gekocht: dict[str, int] = defaultdict(int)
+    for kv in s.scalars(select(Kochvorgang)):
+        gekocht[kv.rezept_id] += 1
+        if kv.datum < start and kv.datum > historie.get(kv.rezept_id, date.min):
+            historie[kv.rezept_id] = kv.datum
+    meinung = {m.rezept_id: m for m in s.scalars(select(RezeptBewertung))}
+    beliebtheit = {
+        rid: round(
+            min(
+                1.0,
+                0.5 * bool(m.favorit if (m := meinung.get(rid)) else False)
+                + 0.3 * max(m.bewertung if m else 0, 0)
+                + 0.2 * min(gekocht.get(rid, 0) / 5, 1.0),
+            ),
+            2,
+        )
+        for rid in rezepte
+    }
     # Kostenschätzung: letzter Bonpreis > Angebot > Streichpreis (Konzept)
     rang = {"bon": 0, "angebot": 1, "streichpreis": 2}
     preise: dict[str, tuple[int, date, float]] = {}
@@ -599,7 +756,7 @@ async def kontext_laden(b: InventoryBackend, s: Session, st: Settings, start: da
             -bisher[1].toordinal(),
         ):
             preise[pr.produkt_id] = kandidat
-    return Kontext(
+    k = Kontext(
         produkte=produkte,
         rezepte=rezepte,
         batches=await b.list_all_batches(),
@@ -608,7 +765,19 @@ async def kontext_laden(b: InventoryBackend, s: Session, st: Settings, start: da
         historie=historie,
         angebote=angebote,
         preise={pid: v[2] for pid, v in preise.items()},
+        praeferenzen=prefs,
+        beliebtheit=beliebtheit,
+        bewertung={rid: m.bewertung for rid, m in meinung.items()},
+        gekocht=dict(gekocht),
+        aufwand_je_tag={int(t): a for t, a in (prefs.get("aufwand_je_tag") or {}).items()},
+        ausschluss_tags=set(prefs.get("ausschluss_tags") or []),
+        max_ungetestet=(
+            max_ungetestet if max_ungetestet is not None else einst["planer"]["max_ungetestet"]
+        ),
     )
+    kosten = sorted(c for r in rezepte.values() if (c := profil(r, k)[2]) is not None)
+    k.kosten_median = kosten[len(kosten) // 2] if kosten else None
+    return k
 
 
 def feste_tage(
@@ -618,7 +787,7 @@ def feste_tage(
         return {}
     fest = {}
     for e in s.scalars(
-        select(PlanEintrag).where(PlanEintrag.datum >= daten[0], PlanEintrag.datum <= daten[-1])
+        select(PlanEintrag).where(PlanEintrag.datum >= min(daten), PlanEintrag.datum <= max(daten))
     ):
         if e.rezept_id not in k.rezepte:
             continue
@@ -640,12 +809,16 @@ async def planen(app, lauf_id: int) -> None:
         par = lauf.parameter
         try:
             start = lauf.start
-            alle = [start + timedelta(days=i) for i in range(par["tage"])]
-            ende = alle[-1]
-            k = await kontext_laden(b, s, st, start)
+            kochtage = sorted(date.fromisoformat(d) for d in par["daten"])
+            k = await kontext_laden(
+                b, s, st, start, par.get("praeferenzen"), par.get("max_ungetestet")
+            )
             if not any(r.ingredients for r in k.rezepte.values()):
                 raise ValueError("Keine Rezepte mit Zutaten in Grocy")
-            fest = feste_tage(s, k, alle, par.get("ueberschreiben", False))
+            # Schon geplante Tage im Zeitraum bleiben fest, auch an Nicht-Kochtagen.
+            fest = feste_tage(s, k, kochtage, par.get("ueberschreiben", False))
+            alle = sorted(set(kochtage) | set(fest))
+            ende = alle[-1]
             frei = [d for d in alle if d not in fest and d >= start]
             offen_fest = {d: t for d, t in fest.items() if d >= start}
             lager = Lager(k.produkte, k.batches)
@@ -754,11 +927,45 @@ def uebernehmen_(s: Session, lauf: PlanLauf) -> int:
 
 class PlanErzeugenIn(BaseModel):
     start: date | None = None  # Standard: heute
-    tage: int = Field(default=7, ge=1, le=14)
-    portionen: int = Field(default=2, ge=1, le=6)  # Annahme: 1 essen, 1 Rest für mittags
-    ki: bool = True
+    tage: int = Field(default=7, ge=1, le=31)
+    daten: list[date] | None = Field(default=None, max_length=31)  # Kochtage direkt (Kalender)
+    kochtage: list[int] | None = None  # Wochentage 0–6, Standard aus den Einstellungen
+    portionen: int | None = Field(default=None, ge=1, le=6)  # Standard aus den Einstellungen
+    ki: bool | None = None
+    praeferenzen: dict | None = None  # überschreibt die gespeicherten für diesen Lauf
+    max_ungetestet: int | None = Field(default=None, ge=0, le=7)
     ueberschreiben: bool = False  # True: auch geplante (nicht gekochte) Tage neu planen
     uebernehmen: bool = False  # True: direkt in den Wochenplan schreiben (Automation)
+
+
+def parameter(data: PlanErzeugenIn, s: Session) -> dict:
+    """Füllt fehlende Werte aus den Einstellungen; der Lauf speichert das vollständige Ergebnis."""
+    einst = einstellungen.lesen(s)
+    planer_ = einst["planer"]
+    if data.daten:
+        daten = sorted(set(data.daten))
+    else:
+        start = data.start or date.today()
+        wochentage = set(planer_["kochtage"] if data.kochtage is None else data.kochtage)
+        daten = [
+            d for i in range(data.tage) if (d := start + timedelta(days=i)).weekday() in wochentage
+        ]
+    if not daten:
+        raise HTTPException(422, "Keine Kochtage im Zeitraum")
+    prefs = einst["praeferenzen"]
+    if data.praeferenzen:
+        prefs = {**prefs, **einstellungen.pruefen("praeferenzen", data.praeferenzen)}
+    return {
+        "daten": [d.isoformat() for d in daten],
+        "portionen": data.portionen or planer_["portionen"],
+        "ki": planer_["ki"] if data.ki is None else data.ki,
+        "praeferenzen": prefs,
+        "max_ungetestet": (
+            planer_["max_ungetestet"] if data.max_ungetestet is None else data.max_ungetestet
+        ),
+        "ueberschreiben": data.ueberschreiben,
+        "uebernehmen": data.uebernehmen,
+    }
 
 
 @router.post("/plan/erzeugen", status_code=202)
@@ -771,11 +978,28 @@ async def plan_erzeugen(
     """Startet den Planer im Hintergrund. Ergebnis unter GET /plan/laeufe/{id}."""
     if s.scalars(select(PlanLauf).where(PlanLauf.status == "laeuft")).first():
         raise HTTPException(409, "Es läuft schon ein Planer")
-    lauf = PlanLauf(start=data.start or date.today(), parameter=data.model_dump(mode="json"))
+    par = parameter(data, s)
+    lauf = PlanLauf(start=date.fromisoformat(par["daten"][0]), parameter=par)
     s.add(lauf)
     s.commit()
     hintergrund.add_task(planen, request.app, lauf.id)
-    return {"lauf_id": lauf.id, "status": lauf.status}
+    return {"lauf_id": lauf.id, "status": lauf.status, "daten": par["daten"]}
+
+
+@router.get("/plan/vorschau-kandidaten")
+async def plan_kandidaten(
+    datum: date | None = None,
+    portionen: int | None = None,
+    s: Session = Depends(session),
+    b: InventoryBackend = Depends(backend),
+    st: Settings = Depends(settings),
+) -> list[dict]:
+    """Bewertete Rezepte für einen Tag mit den gespeicherten Präferenzen (ohne KI)."""
+    tag = datum or date.today()
+    k = await kontext_laden(b, s, st, tag)
+    lager = Lager(k.produkte, k.batches)
+    por = portionen or einstellungen.lesen(s)["planer"]["portionen"]
+    return [asdict(c) for c in kandidaten(k, lager, tag, por)]
 
 
 @router.get("/plan/laeufe")

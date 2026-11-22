@@ -569,6 +569,14 @@
           "name": "Tage",
           "description": "Anzahl Tage (Standard 7)"
         },
+        "daten": {
+          "name": "Kochtage",
+          "description": "Liste von Daten (JJJJ-MM-TT), ersetzt start/tage"
+        },
+        "kochtage": {
+          "name": "Wochentage",
+          "description": "Wochentage 0 (Mo) bis 6 (So), an denen gekocht wird"
+        },
         "portionen": {
           "name": "Portionen",
           "description": "Portionen je Tag (Standard 2)"
@@ -584,6 +592,14 @@
         "uebernehmen": {
           "name": "Übernehmen",
           "description": "Vorschlag direkt in den Wochenplan schreiben"
+        },
+        "praeferenzen": {
+          "name": "Präferenzen",
+          "description": "fleisch, preis, extravagant, neu je -1 bis 1, ausschluss_tags"
+        },
+        "max_ungetestet": {
+          "name": "Max. ungetestet",
+          "description": "Höchstens so viele ungetestete Rezepte"
         }
       }
     },

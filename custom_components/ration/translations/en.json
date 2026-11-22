@@ -569,6 +569,14 @@
           "name": "Days",
           "description": "Number of days (default 7)"
         },
+        "daten": {
+          "name": "Cooking days",
+          "description": "List of dates (YYYY-MM-DD), replaces start/days"
+        },
+        "kochtage": {
+          "name": "Weekdays",
+          "description": "Weekdays 0 (Mon) to 6 (Sun) with cooking"
+        },
         "portionen": {
           "name": "Servings",
           "description": "Servings per day (default 2)"
@@ -584,6 +592,14 @@
         "uebernehmen": {
           "name": "Apply",
           "description": "Write the proposal to the meal plan directly"
+        },
+        "praeferenzen": {
+          "name": "Preferences",
+          "description": "fleisch, preis, extravagant, neu each -1 to 1, ausschluss_tags"
+        },
+        "max_ungetestet": {
+          "name": "Max untested",
+          "description": "At most this many untested recipes"
         }
       }
     },

@@ -103,16 +103,21 @@ AKTIONEN: tuple[Aktion, ...] = (
         "plan_erzeugen",
         "Startet den Wochenplaner im Hintergrund: Code bewertet die Rezepte (läuft bald ab, "
         "Bestand, Packungen, Abwechslung), die KI wählt aus, der Code simuliert Einkauf und "
-        "Verderb. Feste Tage bleiben. uebernehmen=true schreibt den Vorschlag direkt in den Plan, "
-        "sonst ist er ein Vorschlag (plan_vorschlag, plan_uebernehmen).",
+        "Verderb. Feste Tage bleiben. daten (Liste) oder start+tage mit kochtage (0=Mo). "
+        "praeferenzen: fleisch/preis/extravagant/neu je -1…1, ausschluss_tags. Fehlendes kommt "
+        "aus den Einstellungen. uebernehmen=true schreibt direkt in den Plan.",
         "POST",
         "/plan/erzeugen",
         vol.Schema(
             {
                 vol.Optional("start"): DATUM,
-                vol.Optional("tage"): vol.All(vol.Coerce(int), vol.Range(min=1, max=14)),
+                vol.Optional("tage"): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
+                vol.Optional("daten"): [DATUM],
+                vol.Optional("kochtage"): [vol.All(vol.Coerce(int), vol.Range(min=0, max=6))],
                 vol.Optional("portionen"): vol.All(vol.Coerce(int), vol.Range(min=1, max=6)),
                 vol.Optional("ki"): cv.boolean,
+                vol.Optional("praeferenzen"): dict,
+                vol.Optional("max_ungetestet"): vol.All(vol.Coerce(int), vol.Range(min=0, max=7)),
                 vol.Optional("ueberschreiben"): cv.boolean,
                 vol.Optional("uebernehmen"): cv.boolean,
             }

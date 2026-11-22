@@ -1,5 +1,6 @@
 """Wochenplaner: Bewertung, Simulation mit Toleranz, KI-Auswahl mit Repair-Loop, Tauschen."""
 
+from dataclasses import replace
 from datetime import date, timedelta
 
 import pytest
@@ -229,3 +230,66 @@ def test_tauschen(p_client):
     assert resp.json()["rezept_id"] != "chili"
     p_client.post("/api/v1/gekocht", json={"portionen_gekocht": 2, "portionen_gegessen": 2})
     assert p_client.post(f"/api/v1/plan/{heute}/tauschen", json={}).status_code == 409
+
+
+# --- Präferenzen -------------------------------------------------------------------------
+
+
+def test_praeferenz_fleisch_und_lieblinge():
+    produkte = {p.id: p for p in PRODUKTE}
+    produkte["hack"] = Product("hack", "Hackfleisch", "g", tracking_mode=TrackingMode.EXAKT,
+                               category="Fleisch", pack_size=500)  # fmt: skip
+    produkte["reis"] = Product("reis", "Reis", "g", tracking_mode=TrackingMode.MENGE,
+                               category="Nudeln & Reis", pack_size=1000)  # fmt: skip
+    k = kontext([charge("reis", 2000, None)])
+    k.produkte = produkte
+    lager = planer.Lager(k.produkte, k.batches)
+    neutral = {c.rezept_id: c.score for c in planer.kandidaten(k, lager, tag(0), 2)}
+    k.praeferenzen = {"fleisch": -1}
+    weniger = {c.rezept_id: c for c in planer.kandidaten(k, lager, tag(0), 2)}
+    assert weniger["chili"].fleisch > 0.5
+    assert weniger["chili"].score < neutral["chili"] - 0.5
+    k.praeferenzen = {"neu": -1}
+    k.beliebtheit = {"risotto": 1.0}
+    lieblinge = {c.rezept_id: c.score for c in planer.kandidaten(k, lager, tag(0), 2)}
+    assert lieblinge["risotto"] > neutral["risotto"] + 1
+
+
+def test_aufwand_je_tag_und_ausschluss():
+    k = kontext([charge("reis", 2000, None)])
+    k.rezepte["curry"] = replace(k.rezepte["curry"], effort="aufwaendig")
+    montag = tag(0) + timedelta(days=(7 - tag(0).weekday()) % 7)
+    k.aufwand_je_tag = {montag.weekday(): "normal"}
+    c = {
+        x.rezept_id: x for x in planer.kandidaten(k, planer.Lager(k.produkte, k.batches), montag, 2)
+    }
+    assert c["curry"].zu_aufwendig and not c["chili"].zu_aufwendig
+    k.ausschluss_tags = {"Pasta"}
+    k.rezepte["chili"] = replace(k.rezepte["chili"], tags=("Pasta",))
+    ids = {
+        x.rezept_id for x in planer.kandidaten(k, planer.Lager(k.produkte, k.batches), montag, 2)
+    }
+    assert "chili" not in ids
+    antwort = {"tage": [{"datum": montag.isoformat(), "rezept_id": "curry", "portionen": 2}]}
+    _, probleme = planer.pruefen(antwort, k, [montag], {}, set(k.rezepte))
+    assert any("zu aufwändig" in p for p in probleme)
+
+
+def test_kochtage_aus_einstellungen(p_client):
+    p_client.put("/api/v1/einstellungen/planer", json={"kochtage": [tag(1).weekday()]})
+    resp = p_client.post("/api/v1/plan/erzeugen", json={"tage": 7, "ki": False})
+    assert resp.json()["daten"] == [tag(1).isoformat()]
+    lauf = p_client.get(f"/api/v1/plan/laeufe/{resp.json()['lauf_id']}").json()
+    assert [t["datum"] for t in lauf["tage"]] == [tag(1).isoformat()]
+    resp = p_client.post(
+        "/api/v1/plan/erzeugen",
+        json={"daten": [tag(3).isoformat(), tag(5).isoformat()], "ki": False,
+              "praeferenzen": {"neu": 1}},
+    )  # fmt: skip
+    lauf = p_client.get(f"/api/v1/plan/laeufe/{resp.json()['lauf_id']}").json()
+    assert [t["datum"] for t in lauf["tage"]] == [tag(3).isoformat(), tag(5).isoformat()]
+    assert lauf["parameter"]["praeferenzen"]["neu"] == 1
+    bad = p_client.post("/api/v1/plan/erzeugen", json={"praeferenzen": {"neu": 5}})
+    assert bad.status_code == 422
+    kand = p_client.get(f"/api/v1/plan/vorschau-kandidaten?datum={tag(0)}").json()
+    assert kand[0]["rezept_id"] == "chili"
