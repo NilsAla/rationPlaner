@@ -248,6 +248,180 @@
           "description": "Create even if already imported"
         }
       }
+    },
+    "rezeptbuch": {
+      "name": "Recipe book",
+      "description": "All recipes with tags, status and missing ingredients (response)."
+    },
+    "rezept_details": {
+      "name": "Recipe details",
+      "description": "Recipe with scaled ingredients, stock status and steps (response).",
+      "fields": {
+        "rezept_id": {
+          "name": "Recipe",
+          "description": "Recipe ID"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Scale to these servings"
+        }
+      }
+    },
+    "rezept_aendern": {
+      "name": "Edit recipe",
+      "description": "Changes name, servings, ingredients, steps, tags, status or effort.",
+      "fields": {
+        "rezept_id": {
+          "name": "Recipe",
+          "description": "Recipe ID"
+        },
+        "name": {
+          "name": "Name",
+          "description": "New name"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Base servings"
+        },
+        "zutaten": {
+          "name": "Ingredients",
+          "description": "Replaces all ingredients: list of produkt_id, menge, notiz"
+        },
+        "schritte": {
+          "name": "Steps",
+          "description": "List of steps"
+        },
+        "tags": {
+          "name": "Tags",
+          "description": "List of tags"
+        },
+        "status": {
+          "name": "Status",
+          "description": "tested or untested"
+        },
+        "aufwand": {
+          "name": "Effort",
+          "description": "quick, normal, elaborate"
+        },
+        "rest_haltbarkeit_tage": {
+          "name": "Leftover shelf life",
+          "description": "Days leftovers keep"
+        }
+      }
+    },
+    "produkt_details": {
+      "name": "Product details",
+      "description": "Product with attributes, packs, aliases and recipes (response).",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        }
+      }
+    },
+    "produkt_aendern": {
+      "name": "Edit product",
+      "description": "Changes product attributes.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "name": {
+          "name": "Name",
+          "description": "New name"
+        },
+        "tracking_modus": {
+          "name": "Tracking mode",
+          "description": "How stock is tracked"
+        },
+        "kategorie": {
+          "name": "Category",
+          "description": "e.g. vegetables"
+        },
+        "fuellstand": {
+          "name": "Fill level",
+          "description": "Fill level mode only"
+        },
+        "toleranz_pct": {
+          "name": "Tolerance %",
+          "description": "Amount tolerance"
+        },
+        "g_je_einheit": {
+          "name": "g per unit",
+          "description": "Grams per stock unit"
+        },
+        "mindestbestand": {
+          "name": "Minimum stock",
+          "description": "In stock unit"
+        },
+        "ablauf_typ": {
+          "name": "Due type",
+          "description": "Best before or use by"
+        },
+        "haltbarkeit_tage": {
+          "name": "Shelf life",
+          "description": "Days"
+        },
+        "haltbarkeit_offen_tage": {
+          "name": "Shelf life opened",
+          "description": "Days"
+        },
+        "haltbarkeit_gefroren_tage": {
+          "name": "Shelf life frozen",
+          "description": "Days"
+        },
+        "haltbarkeit_aufgetaut_tage": {
+          "name": "Shelf life thawed",
+          "description": "Days"
+        },
+        "lagerort_id": {
+          "name": "Location",
+          "description": "Default location ID"
+        },
+        "parent_id": {
+          "name": "Variant of",
+          "description": "Parent product ID, empty = none"
+        }
+      }
+    },
+    "dubletten": {
+      "name": "Duplicates",
+      "description": "Possible duplicate products (response).",
+      "fields": {
+        "schwelle": {
+          "name": "Threshold",
+          "description": "Name similarity 0.5–1"
+        }
+      }
+    },
+    "dubletten_ignorieren": {
+      "name": "Not a duplicate",
+      "description": "Remembers a product pair as not duplicate.",
+      "fields": {
+        "behalten": {
+          "name": "Product A",
+          "description": "ID"
+        },
+        "entfernen": {
+          "name": "Product B",
+          "description": "ID"
+        }
+      }
+    },
+    "dubletten_mergen": {
+      "name": "Merge products",
+      "description": "Moves stock, recipes and aliases and deletes the second product in Grocy.",
+      "fields": {
+        "behalten": {
+          "name": "Keep",
+          "description": "ID of the product to keep"
+        },
+        "entfernen": {
+          "name": "Remove",
+          "description": "ID of the product to delete"
+        }
+      }
     }
   }
 }

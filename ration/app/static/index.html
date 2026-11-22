@@ -41,6 +41,17 @@
   .row { display: flex; gap: 8px; } .row > * { flex: 1; }
   button.go { margin-top: 12px; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent);
               color: #fff; font: inherit; font-weight: 600; cursor: pointer; width: 100%; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: var(--accent); }
+  .dot.knapp { background: var(--warn); } .dot.fehlt { background: var(--bad); }
+  .list > div { padding: 9px 4px; border-top: 1px solid var(--line); cursor: pointer; }
+  .list > div:hover { background: var(--bg); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .chips button, button.ghost { border: 1px solid var(--line); background: var(--card); color: var(--text);
+    padding: 5px 10px; border-radius: 999px; font: inherit; font-size: 13px; cursor: pointer; }
+  .chips button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pair > div { border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 13px; }
+  .pair dl { margin: 0; } .pair dt { color: var(--muted); font-size: 12px; } .pair dd { margin: 0 0 4px; }
   #msg { position: fixed; left: 16px; right: 16px; bottom: 16px; padding: 10px 14px; border-radius: 8px;
          background: var(--text); color: var(--bg); display: none; max-width: 728px; }
 </style>
@@ -50,14 +61,18 @@
 <nav>
   <button data-tab="heute" class="on">Heute</button>
   <button data-tab="woche">Woche</button>
+  <button data-tab="rezepte">Rezepte</button>
   <button data-tab="bestand">Bestand</button>
+  <button data-tab="produkte">Produkte</button>
   <button data-tab="packungen">Packungen</button>
   <button data-tab="import">Import</button>
 </nav>
 <main>
   <section id="heute" class="on"></section>
   <section id="woche"></section>
+  <section id="rezepte"></section>
   <section id="bestand"></section>
+  <section id="produkte"></section>
   <section id="packungen"></section>
   <section id="import"></section>
 </main>
@@ -271,9 +286,207 @@ function zeigeVorschau(v, produkte) {
   });
 }
 
+// --- Rezeptbuch -----------------------------------------------------------------
+const rbState = {q: "", kochbar: false, tag: ""};
+async function loadRezepte() {
+  const buch = await api("rezeptbuch"), el = $("#rezepte");
+  const tags = [...new Set(buch.flatMap((r) => r.tags))].sort();
+  const render = () => {
+    const q = rbState.q.toLowerCase();
+    const treffer = buch.filter((r) => (!q || r.name.toLowerCase().includes(q))
+      && (!rbState.kochbar || r.kochbar) && (!rbState.tag || r.tags.includes(rbState.tag)));
+    $("#rbl").innerHTML = treffer.length ? treffer.map((r) => `<div data-r="${r.id}">
+      <b>${esc(r.name)}</b> <span class="muted">· ${r.portionen} P.</span>
+      ${r.status === "ungetestet" ? `<span class="tag">neu</span>` : ""}
+      <div class="muted" style="font-size:13px">${r.kochbar ? `<span class="dot"></span>alles da`
+        : `<span class="dot ${r.fehlend.length > 2 ? "fehlt" : "knapp"}"></span>${r.fehlend.length} fehlen`}
+        ${r.tags.length ? " · " + r.tags.map(esc).join(", ") : ""}${r.aufwand ? " · " + esc(r.aufwand) : ""}</div></div>`).join("")
+      : `<p class="muted">Keine Rezepte gefunden.</p>`;
+    document.querySelectorAll("[data-r]").forEach((d) => d.onclick = () => guarded(() => zeigeRezept(d.dataset.r)));
+  };
+  el.innerHTML = `<div class="card"><h2>Rezeptbuch <span class="muted">(${buch.length})</span></h2>
+    <input id="rbq" placeholder="Suchen …" value="${esc(rbState.q)}">
+    <div class="chips"><button id="rbk" class="${rbState.kochbar ? "on" : ""}">Jetzt kochbar</button>
+      ${tags.map((t) => `<button data-tag="${esc(t)}" class="${rbState.tag === t ? "on" : ""}">${esc(t)}</button>`).join("")}</div>
+    <div class="list" id="rbl" style="margin-top:8px"></div></div><div id="rbd"></div>`;
+  $("#rbq").oninput = () => { rbState.q = $("#rbq").value; render(); };
+  $("#rbk").onclick = () => { rbState.kochbar = !rbState.kochbar; loadRezepte(); };
+  document.querySelectorAll("[data-tag]").forEach((b) => b.onclick = () => {
+    rbState.tag = rbState.tag === b.dataset.tag ? "" : b.dataset.tag; loadRezepte(); });
+  render();
+}
+
+async function zeigeRezept(id, portionen) {
+  const r = await api(`rezepte/${id}` + (portionen ? `?portionen=${portionen}` : ""));
+  $("#rbl").parentElement.style.display = "none";
+  $("#rbd").innerHTML = `<div class="card">
+    <button class="ghost" id="rzurueck">← Rezeptbuch</button>
+    <h2 style="margin-top:10px">${esc(r.name)}</h2>
+    <p class="muted">${[r.status, r.aufwand, ...r.tags].filter(Boolean).map(esc).join(" · ")}
+      ${r.url ? ` · <a href="${esc(r.url)}" target="_blank" rel="noopener">Quelle</a>` : ""}</p>
+    <div class="row" style="align-items:center"><div style="flex:0 0 auto">Portionen</div>
+      <div style="flex:0 0 90px"><input id="rpor" type="number" min="1" max="24" value="${r.portionen}"></div><div></div></div>
+    <h2 style="margin-top:12px">Zutaten</h2>
+    <table>${r.zutaten.map((z) => `<tr><td><span class="dot ${z.ampel}"></span>${esc(z.name)}
+      ${z.notiz ? `<div class="muted" style="font-size:12px">${esc(z.notiz)}</div>` : ""}</td>
+      <td class="nw">${fmt(z.menge)} ${esc(z.einheit)}</td><td class="nw muted">da: ${fmt(z.bestand)}</td></tr>`).join("")}</table>
+    ${r.schritte.length ? `<h2 style="margin-top:12px">Zubereitung</h2><ol>${r.schritte.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>` : ""}
+    <div class="row"><button class="go" id="rheute">Heute kochen</button>
+      <button class="go" id="redit" style="background:none;color:var(--accent);border:1px solid var(--line)">Bearbeiten</button></div></div>`;
+  $("#rzurueck").onclick = () => guarded(loadRezepte);
+  $("#rpor").onchange = () => guarded(() => zeigeRezept(id, +$("#rpor").value));
+  $("#rheute").onclick = () => guarded(async () => {
+    await api(`plan/${iso(new Date())}`, {method: "PUT", body: JSON.stringify({rezept_id: id, portionen: +$("#rpor").value})});
+    say("Für heute geplant");
+  });
+  $("#redit").onclick = () => guarded(() => bearbeiteRezept(id));
+}
+
+async function bearbeiteRezept(id) {
+  const [r, produkte] = await Promise.all([api(`rezepte/${id}`), api("produkte")]);
+  const opt = (sel) => produkte.map((p) => `<option value="${p.id}" ${p.id === sel ? "selected" : ""}>${esc(p.name)} (${esc(p.einheit)})</option>`).join("");
+  const zeile = (z = {}) => `<tr data-zrow><td><select data-zp>${opt(z.produkt_id)}</select>
+      <input data-zn placeholder="Notiz" value="${esc(z.notiz ?? "")}" style="margin-top:4px"></td>
+    <td style="width:90px"><input data-zm type="number" min="0" step="any" value="${z.menge_basis ?? ""}"></td>
+    <td style="width:30px"><button class="ghost" data-zdel>✕</button></td></tr>`;
+  const sel = (id_, werte, wert) => `<select id="${id_}"><option value="">–</option>${werte.map((w) =>
+    `<option ${w === wert ? "selected" : ""}>${w}</option>`).join("")}</select>`;
+  $("#rbd").innerHTML = `<div class="card"><h2>Rezept bearbeiten</h2>
+    <label>Name</label><input id="ename" value="${esc(r.name)}">
+    <div class="row"><div><label>Portionen</label><input id="epor" type="number" min="1" max="24" value="${r.portionen_basis}"></div>
+      <div><label>Status</label>${sel("estat", ["getestet", "ungetestet"], r.status)}</div>
+      <div><label>Aufwand</label>${sel("eauf", ["schnell", "normal", "aufwaendig"], r.aufwand)}</div></div>
+    <label>Tags (mit Komma)</label><input id="etags" value="${esc(r.tags.join(", "))}">
+    <label>Zutaten (Mengen für ${r.portionen_basis} Portionen, in Bestandseinheit)</label>
+    <table id="ezut">${r.zutaten.map(zeile).join("")}</table>
+    <button class="ghost" id="ezadd" style="margin-top:6px">+ Zutat</button>
+    <label>Zubereitung (ein Schritt pro Zeile)</label><textarea id="eschr" style="font:inherit;min-height:140px">${esc(r.schritte.join("\n"))}</textarea>
+    <div class="row"><button class="go" id="esave">Speichern</button>
+      <button class="go" id="eabbr" style="background:none;color:var(--accent);border:1px solid var(--line)">Abbrechen</button></div></div>`;
+  const bindDel = () => document.querySelectorAll("[data-zdel]").forEach((b) => b.onclick = () => b.closest("tr").remove());
+  bindDel();
+  $("#ezadd").onclick = () => { $("#ezut").insertAdjacentHTML("beforeend", zeile()); bindDel(); };
+  $("#eabbr").onclick = () => guarded(() => zeigeRezept(id));
+  $("#esave").onclick = () => guarded(async () => {
+    const zutaten = [...document.querySelectorAll("[data-zrow]")].map((tr) => ({
+      produkt_id: tr.querySelector("[data-zp]").value, menge: +tr.querySelector("[data-zm]").value,
+      notiz: tr.querySelector("[data-zn]").value || null}));
+    const body = {name: $("#ename").value, portionen: +$("#epor").value, zutaten,
+      tags: $("#etags").value.split(",").map((t) => t.trim()).filter(Boolean),
+      schritte: $("#eschr").value.split("\n")};
+    if ($("#estat").value) body.status = $("#estat").value;
+    if ($("#eauf").value) body.aufwand = $("#eauf").value;
+    await api(`rezepte/${id}`, {method: "PATCH", body: JSON.stringify(body)});
+    say("Rezept gespeichert"); zeigeRezept(id);
+  });
+}
+
+// --- Produktdatenbank + Dubletten --------------------------------------------------
+const pdState = {q: "", ohne: false};
+async function loadProdukte() {
+  const [liste, dub] = await Promise.all([api("katalog/produkte"), api("dubletten")]);
+  const el = $("#produkte");
+  const render = () => {
+    const q = pdState.q.toLowerCase();
+    const t = liste.filter((p) => (!q || p.name.toLowerCase().includes(q)) && (!pdState.ohne || p.attribute_fehlen));
+    $("#pdl").innerHTML = t.map((p) => `<div data-p="${p.id}"><b>${esc(p.name)}</b>
+      <span class="muted">· ${esc(p.tracking_modus ?? "ohne Attribute")}${p.kategorie ? " · " + esc(p.kategorie) : ""}</span>
+      <div class="muted" style="font-size:13px">Bestand ${fmt(p.bestand)} ${esc(p.einheit)}
+        ${p.packung ? ` · ${esc(p.packung.einheit)} ${fmt(p.packung.menge)} ${esc(p.einheit)}` : ""}
+        · ${p.rezepte} Rezepte · ${p.aliase} Aliase</div></div>`).join("") || `<p class="muted">Keine Produkte.</p>`;
+    document.querySelectorAll("[data-p]").forEach((d) => d.onclick = () => guarded(() => zeigeProdukt(d.dataset.p)));
+  };
+  el.innerHTML = `${dub.length ? `<div class="card" id="dubc"></div>` : ""}
+    <div class="card"><h2>Produkte <span class="muted">(${liste.length})</span></h2>
+    <input id="pdq" placeholder="Suchen …" value="${esc(pdState.q)}">
+    <div class="chips"><button id="pdo" class="${pdState.ohne ? "on" : ""}">Ohne Attribute (${liste.filter((p) => p.attribute_fehlen).length})</button></div>
+    <div class="list" id="pdl" style="margin-top:8px"></div></div><div id="pdd"></div>`;
+  $("#pdq").oninput = () => { pdState.q = $("#pdq").value; render(); };
+  $("#pdo").onclick = () => { pdState.ohne = !pdState.ohne; loadProdukte(); };
+  render();
+  if (dub.length) zeigeDublette(dub, 0);
+}
+
+function zeigeDublette(dub, i) {
+  const k = dub[i];
+  const seite = (p, key) => `<div><label style="margin:0 0 6px;display:flex;gap:6px;color:var(--text)">
+      <input type="radio" name="keep" value="${p.id}" ${key === "a" ? "checked" : ""} style="width:auto"> <b>${esc(p.name)}</b></label>
+    <dl><dt>Einheit</dt><dd>${esc(p.einheit)}</dd><dt>Bestand</dt><dd>${fmt(p.bestand)} ${esc(p.einheit)}</dd>
+    <dt>Modus</dt><dd>${esc(p.tracking_modus ?? "–")}</dd><dt>Packung</dt><dd>${p.packung ? `${esc(p.packung.einheit)} ${fmt(p.packung.menge)}` : "–"}</dd>
+    <dt>Kategorie</dt><dd>${esc(p.kategorie ?? "–")}</dd><dt>ID</dt><dd>${esc(p.id)}</dd></dl></div>`;
+  $("#dubc").innerHTML = `<h2>Mögliche Dublette ${i + 1}/${dub.length} <span class="muted">· ${Math.round(k.score * 100)} % · ${esc(k.grund)}</span></h2>
+    <p class="muted" style="font-size:13px">Auswählen, welches Produkt bleibt. Bestand, Rezepte, Aliase und Packungen wandern dorthin, das andere wird in Grocy gelöscht.</p>
+    <div class="pair">${seite(k.a, "a")}${seite(k.b, "b")}</div>
+    <div class="row"><button class="go" id="dmerge">Mergen</button>
+      <button class="go" id="dnein" style="background:none;color:var(--accent);border:1px solid var(--line)">Nicht mergen</button></div>
+    ${dub.length > 1 ? `<button class="ghost" id="dnext" style="margin-top:8px">Später, nächstes Paar →</button>` : ""}`;
+  const keep = () => document.querySelector("input[name=keep]:checked").value;
+  $("#dmerge").onclick = () => guarded(async () => {
+    const behalten = keep(), entfernen = behalten === k.a.id ? k.b.id : k.a.id;
+    const e = await api("dubletten/mergen", {method: "POST", body: JSON.stringify({behalten, entfernen})});
+    say(`„${e.entfernt}“ in „${e.behalten}“ zusammengeführt`); loadProdukte();
+  });
+  $("#dnein").onclick = () => guarded(async () => {
+    await api("dubletten/ignorieren", {method: "POST", body: JSON.stringify({behalten: k.a.id, entfernen: k.b.id})});
+    say("Gemerkt: kein Duplikat"); loadProdukte();
+  });
+  if ($("#dnext")) $("#dnext").onclick = () => zeigeDublette(dub, (i + 1) % dub.length);
+}
+
+async function zeigeProdukt(id) {
+  const [p, liste, orte] = await Promise.all([api(`produkte/${id}`), api("produkte"), api("lagerorte")]);
+  const sel = (id_, werte, wert, leer = "–") => `<select id="${id_}"><option value="">${leer}</option>${werte.map((w) =>
+    `<option value="${esc(w[0])}" ${w[0] === wert ? "selected" : ""}>${esc(w[1])}</option>`).join("")}</select>`;
+  const num = (id_, wert, ph = "") => `<input id="${id_}" type="number" step="any" value="${wert ?? ""}" placeholder="${ph}">`;
+  $("#pdl").parentElement.style.display = "none";
+  $("#pdd").innerHTML = `<div class="card"><button class="ghost" id="pzurueck">← Produkte</button>
+    <h2 style="margin-top:10px">${esc(p.name)} <span class="muted">· ID ${esc(p.id)} · Bestand ${fmt(p.bestand)} ${esc(p.einheit)}</span></h2>
+    <label>Name</label><input id="pn" value="${esc(p.name)}">
+    <div class="row"><div><label>Tracking-Modus</label>${sel("pm", [["exakt", "exakt"], ["menge", "menge"], ["fuellstand", "Füllstand"], ["immer_da", "immer da"]], p.tracking_modus, "nicht gesetzt")}</div>
+      <div><label>Kategorie</label><input id="pk" value="${esc(p.kategorie ?? "")}"></div></div>
+    <div class="row"><div><label>Füllstand</label>${sel("pf", [["voll", "voll"], ["knapp", "knapp"], ["leer", "leer"]], p.fuellstand)}</div>
+      <div><label>Toleranz %</label>${num("pt", p.toleranz_pct)}</div>
+      <div><label>g je ${esc(p.einheit)}</label>${num("pg", p.g_je_einheit)}</div></div>
+    <div class="row"><div><label>Mindestbestand (${esc(p.einheit)})</label>${num("pmin", p.mindestbestand)}</div>
+      <div><label>Ablauf</label>${sel("pa", [["mhd", "MHD"], ["verbrauchsdatum", "Verbrauchsdatum"]], p.ablauf_typ)}</div>
+      <div><label>Lagerort</label>${sel("pl", orte.map((o) => [o.id, o.name]), p.lagerort_id)}</div></div>
+    <div class="row"><div><label>Haltbar (Tage)</label>${num("ph", p.haltbarkeit_tage)}</div>
+      <div><label>geöffnet</label>${num("pho", p.haltbarkeit_offen_tage)}</div>
+      <div><label>gefroren</label>${num("phg", p.haltbarkeit_gefroren_tage)}</div>
+      <div><label>aufgetaut</label>${num("pha", p.haltbarkeit_aufgetaut_tage)}</div></div>
+    <label>Variante von</label>${sel("pp", liste.filter((x) => x.id !== p.id).map((x) => [x.id, x.name]), p.parent_id, "keine")}
+    <button class="go" id="psave">Speichern</button></div>
+    <div class="card"><h2>Packungen</h2><p>${p.packung ? `Standard: ${esc(p.packung.einheit)} ${fmt(p.packung.menge)} ${esc(p.einheit)}` : `<span class="muted">Keine Standard-Packung.</span>`}
+      ${p.weitere_packungen.length ? `<br><span class="muted">Weitere: ${p.weitere_packungen.map((w) => `${esc(w.einheit)} ${fmt(w.menge)}`).join(", ")}</span>` : ""}</p>
+      <button class="ghost" id="ppack">Packungen bearbeiten</button></div>
+    <div class="card"><h2>Aliase</h2>${p.aliase.length ? `<table>${p.aliase.map((a) => `<tr><td>${esc(a)}</td>
+      <td style="width:40px"><button class="ghost" data-adel="${esc(a)}">✕</button></td></tr>`).join("")}</table>` : `<p class="muted">Keine.</p>`}
+      <div class="row"><input id="anew" placeholder="Zutatentext, z. B. Spaghetti"><button class="ghost" id="aadd" style="flex:0 0 auto">+ Alias</button></div></div>
+    <div class="card"><h2>Verwendet in</h2>${p.rezepte.length ? `<ul>${p.rezepte.map((r) => `<li>${esc(r.name)} <span class="muted">(${fmt(r.menge)} ${esc(p.einheit)})</span></li>`).join("")}</ul>` : `<p class="muted">Keinem Rezept.</p>`}
+      ${p.varianten.length ? `<p class="muted">Varianten: ${p.varianten.map((v) => esc(v.name)).join(", ")}</p>` : ""}</div>`;
+  $("#pzurueck").onclick = () => guarded(loadProdukte);
+  $("#ppack").onclick = () => { document.querySelector('[data-tab="packungen"]').click(); guarded(() => loadPackungen(id)); };
+  const n = (x) => ($(x).value === "" ? null : +$(x).value);
+  $("#psave").onclick = () => guarded(async () => {
+    const body = {name: $("#pn").value, kategorie: $("#pk").value, toleranz_pct: n("#pt"), g_je_einheit: n("#pg"),
+      mindestbestand: n("#pmin"), haltbarkeit_tage: n("#ph"), haltbarkeit_offen_tage: n("#pho"),
+      haltbarkeit_gefroren_tage: n("#phg"), haltbarkeit_aufgetaut_tage: n("#pha"), parent_id: $("#pp").value};
+    for (const [k, x] of [["tracking_modus", "#pm"], ["fuellstand", "#pf"], ["ablauf_typ", "#pa"], ["lagerort_id", "#pl"]])
+      if ($(x).value) body[k] = $(x).value;
+    Object.keys(body).forEach((k) => body[k] === null && delete body[k]);
+    await api(`produkte/${id}`, {method: "PATCH", body: JSON.stringify(body)});
+    say("Produkt gespeichert"); zeigeProdukt(id);
+  });
+  document.querySelectorAll("[data-adel]").forEach((b) => b.onclick = () => guarded(async () => {
+    await api(`aliase/${encodeURIComponent(b.dataset.adel)}`, {method: "DELETE"}); zeigeProdukt(id); }));
+  $("#aadd").onclick = () => guarded(async () => {
+    await api("aliase", {method: "PUT", body: JSON.stringify({text: $("#anew").value, produkt_id: id})}); zeigeProdukt(id); });
+}
+
 function load(tab) {
   guarded(loadStatus);
-  guarded({heute: loadHeute, woche: loadWoche, bestand: loadBestand, packungen: () => loadPackungen(), import: loadImport}[tab]);
+  guarded({heute: loadHeute, woche: loadWoche, rezepte: loadRezepte, bestand: loadBestand,
+    produkte: loadProdukte, packungen: () => loadPackungen(), import: loadImport}[tab]);
 }
 load("heute");
 </script>

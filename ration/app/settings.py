@@ -16,6 +16,7 @@ class Settings:
     todo_entity: str = ""
     toleranz_default_pct: int = 10
     bon_konfidenz_schwelle: float = 0.85
+    dubletten_schwelle: float = 0.9  # Namensähnlichkeit für den Dubletten-Check
     data_dir: Path = Path("/data")
     supervisor_token: str = ""
 

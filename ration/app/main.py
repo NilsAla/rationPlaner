@@ -16,8 +16,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import API_VERSION, __version__, kueche, llm_import, rezept_import, testdaten
+from app import API_VERSION, __version__, katalog, kueche, llm_import, rezept_import, testdaten
 from app.db import Packung, PlanEintrag, RezeptImport, RezeptMeta, ZutatAlias, make_engine
+from app.deps import backend, home_assistant, session, settings
 from app.ha import HomeAssistant, SupervisorHomeAssistant
 from app.inventory.base import Ingredient, InventoryBackend, NotFoundError
 from app.inventory.grocy import GrocyBackend
@@ -27,32 +28,6 @@ log = logging.getLogger("ration")
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
 
 api = APIRouter(prefix="/api/v1")
-
-
-# --- Abhängigkeiten -----------------------------------------------------------
-
-
-def backend(request: Request) -> InventoryBackend:
-    b = request.app.state.backend
-    if b is None:
-        raise HTTPException(503, "Grocy ist nicht konfiguriert (grocy_url, grocy_api_key)")
-    return b
-
-
-def session(request: Request):
-    with Session(request.app.state.engine) as s:
-        yield s
-
-
-def settings(request: Request) -> Settings:
-    return request.app.state.settings
-
-
-def home_assistant(request: Request) -> HomeAssistant:
-    ha = request.app.state.ha
-    if ha is None:
-        raise HTTPException(503, "Kein Zugriff auf Home Assistant (nur innerhalb von HAOS)")
-    return ha
 
 
 # --- Modelle ------------------------------------------------------------------
@@ -516,6 +491,7 @@ def create_app(
 
     app = FastAPI(title="rationPlaner", version=__version__, lifespan=lifespan)
     app.include_router(api)
+    app.include_router(katalog.router)
 
     @app.exception_handler(NotFoundError)
     async def not_found(request: Request, exc: NotFoundError) -> JSONResponse:

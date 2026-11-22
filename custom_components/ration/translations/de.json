@@ -248,6 +248,180 @@
           "description": "Auch anlegen, wenn schon importiert"
         }
       }
+    },
+    "rezeptbuch": {
+      "name": "Rezeptbuch",
+      "description": "Alle Rezepte mit Tags, Status und fehlenden Zutaten (Antwort)."
+    },
+    "rezept_details": {
+      "name": "Rezept-Details",
+      "description": "Rezept mit skalierten Zutaten, Bestandsampel und Schritten (Antwort).",
+      "fields": {
+        "rezept_id": {
+          "name": "Rezept",
+          "description": "ID des Rezepts"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Auf diese Portionen skalieren"
+        }
+      }
+    },
+    "rezept_aendern": {
+      "name": "Rezept ändern",
+      "description": "Ändert Name, Portionen, Zutaten, Schritte, Tags, Status oder Aufwand.",
+      "fields": {
+        "rezept_id": {
+          "name": "Rezept",
+          "description": "ID des Rezepts"
+        },
+        "name": {
+          "name": "Name",
+          "description": "Neuer Name"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Basis-Portionen"
+        },
+        "zutaten": {
+          "name": "Zutaten",
+          "description": "Ersetzt alle Zutaten: Liste aus produkt_id, menge, notiz"
+        },
+        "schritte": {
+          "name": "Schritte",
+          "description": "Liste der Zubereitungsschritte"
+        },
+        "tags": {
+          "name": "Tags",
+          "description": "Liste von Tags"
+        },
+        "status": {
+          "name": "Status",
+          "description": "getestet oder ungetestet"
+        },
+        "aufwand": {
+          "name": "Aufwand",
+          "description": "schnell, normal, aufwändig"
+        },
+        "rest_haltbarkeit_tage": {
+          "name": "Rest-Haltbarkeit",
+          "description": "Tage, die Reste halten"
+        }
+      }
+    },
+    "produkt_details": {
+      "name": "Produkt-Details",
+      "description": "Produkt mit Attributen, Packungen, Aliasen und Rezepten (Antwort).",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        }
+      }
+    },
+    "produkt_aendern": {
+      "name": "Produkt ändern",
+      "description": "Ändert Attribute eines Produkts.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "name": {
+          "name": "Name",
+          "description": "Neuer Name"
+        },
+        "tracking_modus": {
+          "name": "Tracking-Modus",
+          "description": "Wie der Bestand geführt wird"
+        },
+        "kategorie": {
+          "name": "Kategorie",
+          "description": "z. B. Gemüse"
+        },
+        "fuellstand": {
+          "name": "Füllstand",
+          "description": "Nur Modus Füllstand"
+        },
+        "toleranz_pct": {
+          "name": "Toleranz %",
+          "description": "Mengen-Toleranz"
+        },
+        "g_je_einheit": {
+          "name": "g je Einheit",
+          "description": "Gramm je Bestandseinheit"
+        },
+        "mindestbestand": {
+          "name": "Mindestbestand",
+          "description": "In Bestandseinheit"
+        },
+        "ablauf_typ": {
+          "name": "Ablauf",
+          "description": "MHD oder Verbrauchsdatum"
+        },
+        "haltbarkeit_tage": {
+          "name": "Haltbarkeit",
+          "description": "Tage"
+        },
+        "haltbarkeit_offen_tage": {
+          "name": "Haltbarkeit geöffnet",
+          "description": "Tage"
+        },
+        "haltbarkeit_gefroren_tage": {
+          "name": "Haltbarkeit gefroren",
+          "description": "Tage"
+        },
+        "haltbarkeit_aufgetaut_tage": {
+          "name": "Haltbarkeit aufgetaut",
+          "description": "Tage"
+        },
+        "lagerort_id": {
+          "name": "Lagerort",
+          "description": "ID des Standard-Lagerorts"
+        },
+        "parent_id": {
+          "name": "Variante von",
+          "description": "ID des übergeordneten Produkts, leer = keins"
+        }
+      }
+    },
+    "dubletten": {
+      "name": "Dubletten",
+      "description": "Mögliche doppelte Produkte (Antwort).",
+      "fields": {
+        "schwelle": {
+          "name": "Schwelle",
+          "description": "Namensähnlichkeit 0,5–1"
+        }
+      }
+    },
+    "dubletten_ignorieren": {
+      "name": "Kein Duplikat",
+      "description": "Merkt ein Produktpaar als kein Duplikat.",
+      "fields": {
+        "behalten": {
+          "name": "Produkt A",
+          "description": "ID"
+        },
+        "entfernen": {
+          "name": "Produkt B",
+          "description": "ID"
+        }
+      }
+    },
+    "dubletten_mergen": {
+      "name": "Produkte zusammenführen",
+      "description": "Hängt Bestand, Rezepte und Aliase um und löscht das zweite Produkt in Grocy.",
+      "fields": {
+        "behalten": {
+          "name": "Behalten",
+          "description": "ID des Produkts, das bleibt"
+        },
+        "entfernen": {
+          "name": "Entfernen",
+          "description": "ID des Produkts, das gelöscht wird"
+        }
+      }
     }
   }
 }

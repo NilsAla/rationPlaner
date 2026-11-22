@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import itertools
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import date, timedelta
 
 from app.inventory.base import (
@@ -13,9 +13,15 @@ from app.inventory.base import (
     Location,
     NotFoundError,
     Product,
+    ProductPatch,
     Recipe,
+    RecipePatch,
     consume_order,
 )
+
+
+def _gramm(p: Product) -> float | None:
+    return 1.0 if p.unit.strip().lower() in ("g", "gramm") else p.grams_per_unit
 
 
 class FakeBackend:
@@ -157,3 +163,56 @@ class FakeBackend:
                     location_id=to_location_id,
                 )
             )
+
+    async def update_product(self, product_id: str, patch: ProductPatch) -> Product:
+        product = await self.get_product(product_id)
+        changes = {
+            f.name: getattr(patch, f.name)
+            for f in fields(patch)
+            if getattr(patch, f.name) is not None
+        }
+        if changes.get("parent_id") == "":
+            changes["parent_id"] = None
+        self._products[product_id] = replace(product, **changes)
+        return self._products[product_id]
+
+    async def update_recipe(self, recipe_id: str, patch: RecipePatch) -> Recipe:
+        recipe = await self.get_recipe(recipe_id)
+        changes = {
+            f.name: getattr(patch, f.name)
+            for f in fields(patch)
+            if getattr(patch, f.name) is not None
+        }
+        if "ingredients" in changes:
+            changes["ingredients"] = tuple(changes["ingredients"])
+        if "tags" in changes:
+            changes["tags"] = tuple(changes["tags"])
+        self._recipes[recipe_id] = replace(recipe, **changes)
+        return self._recipes[recipe_id]
+
+    async def merge_products(self, keep_id: str, remove_id: str) -> None:
+        keep, remove = await self.get_product(keep_id), await self.get_product(remove_id)
+        if keep_id == remove_id:
+            raise ValueError("keep_id == remove_id")
+        faktor = 1.0
+        if keep.unit != remove.unit and (gk := _gramm(keep)) and (gr := _gramm(remove)):
+            faktor = gr / gk
+        self._batches = [
+            replace(b, product_id=keep_id, amount=b.amount * faktor)
+            if b.product_id == remove_id
+            else b
+            for b in self._batches
+        ]
+        for rid, r in self._recipes.items():
+            if any(z.product_id == remove_id for z in r.ingredients):
+                zutaten = tuple(
+                    Ingredient(keep_id, z.amount * faktor, z.note)
+                    if z.product_id == remove_id
+                    else z
+                    for z in r.ingredients
+                )
+                self._recipes[rid] = replace(r, ingredients=zutaten)
+        for pid, p in list(self._products.items()):
+            if p.parent_id == remove_id:
+                self._products[pid] = replace(p, parent_id=keep_id)
+        del self._products[remove_id]

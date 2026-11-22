@@ -77,3 +77,25 @@ def make_engine(db_url: str) -> Engine:
             conn.exec_driver_sql("PRAGMA journal_mode=WAL")
     Base.metadata.create_all(engine)
     return engine
+
+
+class DubletteEntscheidung(Base):
+    """Produktpaar mit Entscheidung „nicht mergen“. Wird nie wieder vorgeschlagen."""
+
+    __tablename__ = "dublette_entscheidung"
+
+    produkt_a: Mapped[str] = mapped_column(String, primary_key=True)  # kleinere ID
+    produkt_b: Mapped[str] = mapped_column(String, primary_key=True)
+    entscheidung: Mapped[str] = mapped_column(String, default="nicht_mergen")
+    datum: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ProduktMerge(Base):
+    """Zusammengeführte Produkte: alte ID → neue ID, damit alte Verweise auflösbar bleiben."""
+
+    __tablename__ = "produkt_merge"
+
+    alt_id: Mapped[str] = mapped_column(String, primary_key=True)
+    neu_id: Mapped[str] = mapped_column(String)
+    alt_name: Mapped[str] = mapped_column(String)
+    datum: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

@@ -74,6 +74,16 @@ ordnet die KI offene Zutaten Produkten zu und schätzt fehlende Gewichte; der Co
 rechnet. Per MCP: `ration_rezept_import_vorschau` →
 `ration_rezept_import_uebernehmen`.
 
+## Rezeptbuch, Produkte, Dubletten
+
+Tab *Rezepte*: Suchen, Filter „Jetzt kochbar“ und Tags, Rezeptleser mit Portionen-Skalierung
+und Bestandsampel, „Heute kochen“, Bearbeiten (Zutaten, Schritte, Tags, Status, Aufwand).
+Tab *Produkte*: alle Produkte mit Attributen, Bestand, Packungen, Aliasen und Rezepten,
+Filter „ohne Attribute“, Bearbeiten. Oben stehen mögliche Dubletten (Namensähnlichkeit ab
+Option `dubletten_schwelle`, Standard 0,9) nebeneinander mit **Mergen** (Grocy-Merge: Bestand,
+Rezeptzutaten, Varianten; App: Aliase, Packungen) und **Nicht mergen** (Paar wird gemerkt).
+Mergen gibt es als Service `ration.dubletten_mergen`, bewusst nicht als LLM-Tool.
+
 ## Testrezepte
 
 Button „Testrezepte in Grocy anlegen“ im Tab *Woche* (oder `POST /api/v1/testdaten`) legt

@@ -379,9 +379,13 @@ def zuordnen(rezept: RohRezept, produkte: list[Product], aliase: dict[str, str])
 
 def beschreibung(rezept: RohRezept) -> str:
     """Kein Fremdtext: nur Verweis auf die Quelle. Kurzfassung kommt später per ai_task."""
-    url = escape(rezept.url, quote=True)
+    return quelle_link(rezept.url, rezept.quelle)
+
+
+def quelle_link(url: str, quelle: str) -> str:
     return (
-        f'<p>Zubereitung: siehe <a href="{url}">Originalrezept ({escape(rezept.quelle)})</a>.</p>'
+        f'<p>Zubereitung: siehe <a href="{escape(url, quote=True)}">'
+        f"Originalrezept ({escape(quelle)})</a>.</p>"
     )
 
 

@@ -18,7 +18,9 @@ from app.inventory.base import (
     Location,
     NotFoundError,
     Product,
+    ProductPatch,
     Recipe,
+    RecipePatch,
     TrackingMode,
     consume_order,
 )
@@ -117,6 +119,9 @@ class GrocyBackend:
     async def _put(self, path: str, body: dict) -> Any:
         return await self._request("PUT", path, json=body)
 
+    async def _delete(self, path: str) -> Any:
+        return await self._request("DELETE", path)
+
     # --- Mapping --------------------------------------------------------------
 
     async def _unit_context(self) -> tuple[dict[int, str], dict[tuple[int, int], float], Conv]:
@@ -170,6 +175,8 @@ class GrocyBackend:
             pack_unit=units.get(qu_purchase) if pack_size else None,
             pack_size=pack_size,
             min_stock=float(raw.get("min_stock_amount") or 0),
+            category=uf.get(UF_KATEGORIE) or None,
+            fill_level=uf.get(UF_FUELLSTAND) or None,
         )
 
     @staticmethod
@@ -203,11 +210,17 @@ class GrocyBackend:
 
     @staticmethod
     def _to_recipe(raw: dict, positions: list[dict]) -> Recipe:
+        uf = raw.get("userfields") or {}
+        tags = [t.strip() for t in (uf.get(UF_REZEPT_TAGS) or "").split(",") if t.strip()]
         return Recipe(
             id=str(raw["id"]),
             name=raw["name"],
             servings=int(raw.get("base_servings") or 1),
             description=raw.get("description") or "",
+            tags=tuple(tags),
+            status=uf.get(UF_REZEPT_STATUS) or None,
+            effort=uf.get(UF_REZEPT_AUFWAND) or None,
+            leftover_days=_int_or_none(uf.get(UF_REZEPT_REST_HALTBARKEIT)),
             ingredients=tuple(
                 Ingredient(
                     product_id=str(pos["product_id"]),
@@ -386,24 +399,26 @@ class GrocyBackend:
             changes["min_stock_amount"] = min_stock
         if changes:
             await self._put(f"/objects/products/{product_id}", changes)
-        if qu == stock:
-            return
-        conversions = [
-            c
-            for c in await self._get("/objects/quantity_unit_conversions")
-            if c.get("product_id") == pid
-        ]
-        for von, nach, faktor in ((qu, stock, size), (stock, qu, 1 / size)):
+        if qu != stock:
+            await self._ensure_conversion(pid, qu, stock, size)
+
+    async def _ensure_conversion(self, pid: int, von: int, nach: int, faktor: float) -> None:
+        """Produktspezifische Umrechnung von → nach (und zurück) anlegen oder korrigieren."""
+        for a, b, f in ((von, nach, faktor), (nach, von, 1 / faktor)):
+            # Grocy legt zur neuen Umrechnung teils selbst die Gegenrichtung an: neu lesen.
+            conversions = [
+                c
+                for c in await self._get("/objects/quantity_unit_conversions")
+                if c.get("product_id") == pid
+            ]
             found = next(
-                (c for c in conversions if c["from_qu_id"] == von and c["to_qu_id"] == nach), None
+                (c for c in conversions if c["from_qu_id"] == a and c["to_qu_id"] == b), None
             )
             if found is None:
-                body = {"product_id": pid, "from_qu_id": von, "to_qu_id": nach, "factor": faktor}
+                body = {"product_id": pid, "from_qu_id": a, "to_qu_id": b, "factor": f}
                 await self._create("quantity_unit_conversions", body)
-            elif abs(float(found["factor"]) - faktor) > 1e-9:
-                await self._put(
-                    f"/objects/quantity_unit_conversions/{found['id']}", {"factor": faktor}
-                )
+            elif abs(float(found["factor"]) - f) > 1e-9:
+                await self._put(f"/objects/quantity_unit_conversions/{found['id']}", {"factor": f})
 
     async def set_pack(self, product_id: str, unit: str, size: float) -> None:
         await self.ensure_pack(product_id, await self.ensure_quantity_unit(unit), size)
@@ -464,15 +479,123 @@ class GrocyBackend:
         recipe_id = await self._create(
             "recipes", {"name": name, "base_servings": servings, "description": description}
         )
+        await self._add_positions(recipe_id, ingredients)
+        return await self.get_recipe(str(recipe_id))
+
+    # --- Bearbeiten (Produktdatenbank, Rezeptbuch, Kategorisierung) -----------
+
+    async def update_product(self, product_id: str, patch: ProductPatch) -> Product:
+        raw = await self._get(f"/objects/products/{product_id}")
+        body: dict[str, Any] = {}
+        simple = {
+            "name": patch.name,
+            "min_stock_amount": patch.min_stock,
+            "due_type": int(patch.due_type) if patch.due_type is not None else None,
+            "default_best_before_days": patch.shelf_life_days,
+            "default_best_before_days_after_open": patch.shelf_life_opened_days,
+            "default_best_before_days_after_freezing": patch.shelf_life_frozen_days,
+            "default_best_before_days_after_thawing": patch.shelf_life_thawed_days,
+            "location_id": int(patch.default_location_id) if patch.default_location_id else None,
+        }
+        body = {k: v for k, v in simple.items() if v is not None}
+        if patch.parent_id is not None:
+            body["parent_product_id"] = int(patch.parent_id) if patch.parent_id else None
+        if body:
+            await self._put(f"/objects/products/{product_id}", body)
+        uf: dict[str, Any] = {}
+        if patch.tracking_mode is not None:
+            uf[UF_TRACKING_MODUS] = str(patch.tracking_mode)
+        if patch.category is not None:
+            uf[UF_KATEGORIE] = patch.category
+        if patch.tolerance_pct is not None:
+            uf[UF_TOLERANZ_PCT] = patch.tolerance_pct
+        if patch.fill_level is not None:
+            uf[UF_FUELLSTAND] = patch.fill_level
+        if uf:
+            await self._put(f"/userfields/products/{product_id}", uf)
+        if patch.grams_per_unit:
+            stock = int(raw["qu_id_stock"])
+            gram_id = int(await self.ensure_quantity_unit("g"))
+            if stock != gram_id:
+                await self._ensure_conversion(int(product_id), stock, gram_id, patch.grams_per_unit)
+        return await self.get_product(product_id)
+
+    async def update_recipe(self, recipe_id: str, patch: RecipePatch) -> Recipe:
+        await self._get(f"/objects/recipes/{recipe_id}")  # existiert?
+        body: dict[str, Any] = {}
+        if patch.name is not None:
+            body["name"] = patch.name
+        if patch.servings is not None:
+            body["base_servings"] = patch.servings
+            body["desired_servings"] = patch.servings
+        if patch.description is not None:
+            body["description"] = patch.description
+        if body:
+            await self._put(f"/objects/recipes/{recipe_id}", body)
+        uf: dict[str, Any] = {}
+        if patch.tags is not None:
+            uf[UF_REZEPT_TAGS] = ", ".join(t.strip() for t in patch.tags if t.strip())
+        if patch.status is not None:
+            uf[UF_REZEPT_STATUS] = patch.status
+        if patch.effort is not None:
+            uf[UF_REZEPT_AUFWAND] = patch.effort
+        if patch.leftover_days is not None:
+            uf[UF_REZEPT_REST_HALTBARKEIT] = patch.leftover_days
+        if uf:
+            await self._put(f"/userfields/recipes/{recipe_id}", uf)
+        if patch.ingredients is not None:
+            # Zutatenliste des Rezepts wird als Ganzes ersetzt (Bearbeiten im Rezeptbuch).
+            alt = await self._get("/objects/recipes_pos", **{"query[]": f"recipe_id={recipe_id}"})
+            for pos in alt:
+                await self._delete(f"/objects/recipes_pos/{pos['id']}")
+            await self._add_positions(int(recipe_id), patch.ingredients)
+        return await self.get_recipe(recipe_id)
+
+    async def _add_positions(self, recipe_id: int, ingredients: list[Ingredient]) -> None:
         products = {p["id"]: p for p in await self._get("/objects/products")}
         for zutat in ingredients:
+            pid = int(zutat.product_id)
+            if pid not in products:
+                raise NotFoundError(f"Produkt {zutat.product_id}")
             body = {
                 "recipe_id": recipe_id,
-                "product_id": int(zutat.product_id),
+                "product_id": pid,
                 "amount": zutat.amount,
-                "qu_id": products[int(zutat.product_id)]["qu_id_stock"],
+                "qu_id": products[pid]["qu_id_stock"],
             }
             if zutat.note:
                 body["note"] = zutat.note
             await self._create("recipes_pos", body)
-        return await self.get_recipe(str(recipe_id))
+
+    async def merge_products(self, keep_id: str, remove_id: str) -> None:
+        """Grocy-Merge (/stock/products/{keep}/merge/{remove}) plus, was er auslässt.
+
+        Grocy hängt Bestand, Log, Barcodes, Umrechnungen, Rezeptzutaten und Einkaufsliste um
+        und rechnet Mengen über die Umrechnung um, aber nicht die Varianten
+        (parent_product_id). Doppelte Umrechnungen (gleiches Einheitenpaar) würden beim
+        Umhängen kollidieren und werden vorher am zu löschenden Produkt entfernt, außer die
+        für die Mengen-Umrechnung nötige.
+        """
+        if keep_id == remove_id:
+            raise ValueError("keep_id == remove_id")
+        keep = await self._get(f"/objects/products/{keep_id}")
+        remove = await self._get(f"/objects/products/{remove_id}")
+        for child in await self._get(
+            "/objects/products", **{"query[]": f"parent_product_id={remove_id}"}
+        ):
+            await self._put(f"/objects/products/{child['id']}", {"parent_product_id": int(keep_id)})
+        conversions = await self._get("/objects/quantity_unit_conversions")
+        keep_pairs = {
+            (c["from_qu_id"], c["to_qu_id"])
+            for c in conversions
+            if c.get("product_id") == keep["id"]
+        }
+        noetig = {
+            (remove["qu_id_stock"], keep["qu_id_stock"]),
+            (keep["qu_id_stock"], remove["qu_id_stock"]),
+        }
+        for c in conversions:
+            pair = (c["from_qu_id"], c["to_qu_id"])
+            if c.get("product_id") == remove["id"] and pair in keep_pairs and pair not in noetig:
+                await self._delete(f"/objects/quantity_unit_conversions/{c['id']}")
+        await self._post(f"/stock/products/{keep_id}/merge/{remove_id}", {})

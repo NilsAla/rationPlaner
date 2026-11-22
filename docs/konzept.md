@@ -95,6 +95,7 @@ nur Zuordnungen, Präferenzen, Planungsdaten und Nährwerte und referenziert Gro
 | `tageslog` | App | Datum, Mahlzeit, Portionen, Nährwerte, Flag Schätzung |
 | `id_map` | App | Abgleich Grocy-IDs, Soft-Delete für gelöschte/zusammengeführte Produkte |
 | `dublette_entscheidung` | App | Produktpaar (sortierte IDs), Entscheidung „nicht mergen“, Datum. Wird nie wieder vorgeschlagen |
+| `produkt_merge` | App | Zusammengeführt: alte ID → neue ID, alter Name, Datum |
 
 Der Planer arbeitet auf Ebene der übergeordneten Produkte. Ein periodischer Abgleich-Job
 erkennt gelöschte oder zusammengeführte Grocy-Produkte und markiert App-Referenzen als
@@ -292,7 +293,9 @@ registriert (HACS kann aus einem Repo nicht Integration und Card zugleich instal
 
 ### Rezeptbuch und Produktdatenbank (Web-App)
 
-Wunsch Nils (2026-11-22), umsetzen erst nach Go.
+Wunsch Nils (2026-11-22), Go am selben Abend. Umgesetzt in 0.8.0 (`app/katalog.py`,
+`app/dubletten.py`, Tabs *Rezepte* und *Produkte*). Noch offen: Bewertung/Daumen als Filter,
+Toleranz-Override je Zutat im Editor.
 
 - **Rezeptbuch:** Kachel-/Listenansicht zum Stöbern mit Suche und Filtern (Tags, Aufwand,
   Status getestet/ungetestet, Bewertung, „jetzt kochbar“). Detailansicht als Rezeptleser:
@@ -347,7 +350,7 @@ Planer und Nährwerte), danach Ausbau Phase für Phase.
   einfache Mahlzeiten, „Jetzt kochbar“.
 - **Phase 4 – Rezept-Import + Kuratierung:** Import per Link (erledigt, inkl. KI-Zuordnung),
   Rezeptbuch (Stöbern, Lesen, Bearbeiten), Produktdatenbank-Ansicht, Dubletten-Check mit
-  Mergen/Nicht mergen, Daumen hoch/runter. Rezeptbuch und Dubletten erst nach Go von Nils.
+  Mergen/Nicht mergen (erledigt, 0.8.0), Daumen hoch/runter.
 - **Phase 5 – Optional:** Barcode-Scanner, Statistik, HA Assist mit App-Werkzeugen (ggf. als
   LLM-API der Bridge registriert), Embedding-Matching (sqlite-vec), MCP-Zugriff.
 - **Phase 6 – Angebote und Preise:** Prospekt-Adapter mit Healthcheck, Preistabelle, Scoring-Bonus.

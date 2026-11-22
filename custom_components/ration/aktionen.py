@@ -17,6 +17,7 @@ from .api import RationApi
 DATUM = vol.All(cv.string, vol.Match(r"^\d{4}-\d{2}-\d{2}$", msg="Datum als JJJJ-MM-TT"))
 MENGE = vol.All(vol.Coerce(float), vol.Range(min=0, min_included=False))
 PORTIONEN = vol.All(vol.Coerce(int), vol.Range(min=1, max=12))
+TAGE = vol.All(vol.Coerce(int), vol.Range(min=0, max=3650))
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class Aktion:
     pfad: str
     schema: vol.Schema = field(default_factory=lambda: vol.Schema({}))
     schreibend: bool = False
+    nur_service: bool = False  # nicht als LLM-Tool anbieten (z. B. löschend)
 
     async def ausfuehren(self, api: RationApi, daten: dict[str, Any]) -> dict[str, Any]:
         daten = dict(daten)
@@ -229,5 +231,110 @@ AKTIONEN: tuple[Aktion, ...] = (
             {vol.Optional("tage", default=7): vol.All(vol.Coerce(int), vol.Range(min=1, max=14))}
         ),
         schreibend=True,
+    ),
+    Aktion(
+        "rezeptbuch",
+        "Alle Rezepte mit Tags, Status, Aufwand und welche Zutaten fehlen (kochbar ja/nein).",
+        "GET",
+        "/rezeptbuch",
+    ),
+    Aktion(
+        "rezept_details",
+        "Ein Rezept mit Zutaten (auf portionen skaliert, Bestandsampel) und Schritten.",
+        "GET",
+        "/rezepte/{rezept_id}",
+        vol.Schema({vol.Required("rezept_id"): cv.string, vol.Optional("portionen"): PORTIONEN}),
+    ),
+    Aktion(
+        "rezept_aendern",
+        "Ändert ein Rezept. zutaten ersetzt die ganze Zutatenliste (produkt_id, menge in "
+        "Bestandseinheit für die Basis-Portionen, notiz). schritte: Liste von Texten.",
+        "PATCH",
+        "/rezepte/{rezept_id}",
+        vol.Schema(
+            {
+                vol.Required("rezept_id"): cv.string,
+                vol.Optional("name"): cv.string,
+                vol.Optional("portionen"): PORTIONEN,
+                vol.Optional("schritte"): [cv.string],
+                vol.Optional("zutaten"): [
+                    vol.Schema(
+                        {
+                            vol.Required("produkt_id"): cv.string,
+                            vol.Required("menge"): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                            vol.Optional("notiz"): cv.string,
+                        }
+                    )
+                ],
+                vol.Optional("tags"): [cv.string],
+                vol.Optional("status"): vol.In(["getestet", "ungetestet"]),
+                vol.Optional("aufwand"): vol.In(["schnell", "normal", "aufwaendig"]),
+                vol.Optional("rest_haltbarkeit_tage"): vol.All(
+                    vol.Coerce(int), vol.Range(min=0, max=30)
+                ),
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "produkt_details",
+        "Ein Produkt mit allen Attributen, Bestand, Packungen, Aliasen und Rezepten.",
+        "GET",
+        "/produkte/{produkt_id}",
+        vol.Schema({vol.Required("produkt_id"): cv.string}),
+    ),
+    Aktion(
+        "produkt_aendern",
+        "Ändert Attribute eines Produkts (Name, Modus, Kategorie, Füllstand, Toleranz, g je "
+        "Einheit, Mindestbestand, Haltbarkeiten, Lagerort, Variante von).",
+        "PATCH",
+        "/produkte/{produkt_id}",
+        vol.Schema(
+            {
+                vol.Required("produkt_id"): cv.string,
+                vol.Optional("name"): cv.string,
+                vol.Optional("tracking_modus"): vol.In(
+                    ["exakt", "menge", "fuellstand", "immer_da"]
+                ),
+                vol.Optional("kategorie"): cv.string,
+                vol.Optional("fuellstand"): vol.In(["voll", "knapp", "leer"]),
+                vol.Optional("toleranz_pct"): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+                vol.Optional("g_je_einheit"): MENGE,
+                vol.Optional("mindestbestand"): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                vol.Optional("ablauf_typ"): vol.In(["mhd", "verbrauchsdatum"]),
+                vol.Optional("haltbarkeit_tage"): TAGE,
+                vol.Optional("haltbarkeit_offen_tage"): TAGE,
+                vol.Optional("haltbarkeit_gefroren_tage"): TAGE,
+                vol.Optional("haltbarkeit_aufgetaut_tage"): TAGE,
+                vol.Optional("lagerort_id"): cv.string,
+                vol.Optional("parent_id"): cv.string,
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "dubletten",
+        "Mögliche doppelte Produkte (Namensähnlichkeit ab schwelle, Standard aus den Optionen).",
+        "GET",
+        "/dubletten",
+        vol.Schema(
+            {vol.Optional("schwelle"): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=1))}
+        ),
+    ),
+    Aktion(
+        "dubletten_ignorieren",
+        "Markiert ein Produktpaar als „kein Duplikat“, es wird nie wieder vorgeschlagen.",
+        "POST",
+        "/dubletten/ignorieren",
+        vol.Schema({vol.Required("behalten"): cv.string, vol.Required("entfernen"): cv.string}),
+    ),
+    Aktion(
+        "dubletten_mergen",
+        "Führt Produkt entfernen in behalten zusammen und löscht entfernen in Grocy.",
+        "POST",
+        "/dubletten/mergen",
+        vol.Schema({vol.Required("behalten"): cv.string, vol.Required("entfernen"): cv.string}),
+        schreibend=True,
+        nur_service=True,
     ),
 )

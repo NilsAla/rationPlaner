@@ -64,6 +64,28 @@ class Product:
     pack_unit: str | None = None  # Einkaufseinheit, z. B. "Dose"; None = in Bestandseinheit
     pack_size: float | None = None  # Bestandseinheit je Einkaufseinheit, z. B. 400 (g je Dose)
     min_stock: float = 0  # Mindestbestand in Bestandseinheit, Nachkauf darunter
+    category: str | None = None
+    fill_level: str | None = None  # nur Modus fuellstand: voll/knapp/leer
+
+
+@dataclass(frozen=True)
+class ProductPatch:
+    """Änderungen an einem Produkt. None = unverändert."""
+
+    name: str | None = None
+    tracking_mode: TrackingMode | None = None
+    category: str | None = None
+    tolerance_pct: int | None = None
+    min_stock: float | None = None
+    fill_level: str | None = None
+    grams_per_unit: float | None = None  # Umrechnung Bestandseinheit → g
+    due_type: DueType | None = None
+    shelf_life_days: int | None = None
+    shelf_life_opened_days: int | None = None
+    shelf_life_frozen_days: int | None = None
+    shelf_life_thawed_days: int | None = None
+    default_location_id: str | None = None
+    parent_id: str | None = None  # "" entfernt die Zuordnung
 
 
 @dataclass(frozen=True)
@@ -80,6 +102,24 @@ class Recipe:
     servings: int
     ingredients: tuple[Ingredient, ...]
     description: str = ""  # Zubereitung, in Grocy als HTML
+    tags: tuple[str, ...] = ()
+    status: str | None = None  # getestet/ungetestet
+    effort: str | None = None  # schnell/normal/aufwaendig
+    leftover_days: int | None = None  # Rest-Haltbarkeit in Tagen
+
+
+@dataclass(frozen=True)
+class RecipePatch:
+    """Änderungen an einem Rezept. None = unverändert; ingredients ersetzt alle Zutaten."""
+
+    name: str | None = None
+    servings: int | None = None
+    description: str | None = None
+    ingredients: list[Ingredient] | None = None
+    tags: list[str] | None = None
+    status: str | None = None
+    effort: str | None = None
+    leftover_days: int | None = None
 
 
 @dataclass(frozen=True)
@@ -151,4 +191,16 @@ class InventoryBackend(Protocol):
         self, product_id: str, amount: float, from_location_id: str, to_location_id: str
     ) -> None:
         """Bucht um, inklusive Ablaufdatum-Regel für Gefrierorte."""
+        ...
+
+    async def update_product(self, product_id: str, patch: ProductPatch) -> Product: ...
+
+    async def update_recipe(self, recipe_id: str, patch: RecipePatch) -> Recipe: ...
+
+    async def merge_products(self, keep_id: str, remove_id: str) -> None:
+        """Hängt Bestand, Rezeptzutaten und Varianten von remove auf keep um, löscht remove.
+
+        Mengen werden über die Umrechnung remove-Bestandseinheit → keep-Bestandseinheit
+        umgerechnet. Nur nach ausdrücklicher Bestätigung durch den Nutzer aufrufen.
+        """
         ...

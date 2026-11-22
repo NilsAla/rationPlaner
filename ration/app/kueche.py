@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import math
 import re
 from dataclasses import dataclass, field
@@ -21,9 +22,13 @@ def wird_abgebucht(product: Product) -> bool:
 def schritte(description: str) -> list[str]:
     """Zerlegt Grocys HTML-Beschreibung in einzelne Schritte."""
     text = re.sub(r"(?i)</p>|<br\s*/?>|</li>|</h\d>", "\n", description)
-    text = re.sub(r"<[^>]+>", "", text)
-    text = text.replace("&nbsp;", " ").replace("&amp;", "&")
+    text = html.unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
     return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def beschreibung(schritte_: list[str]) -> str:
+    """Schritte → Grocy-HTML, Umkehrung von schritte()."""
+    return "".join(f"<p>{html.escape(t.strip())}</p>" for t in schritte_ if t.strip())
 
 
 def menge(amount: float) -> str:
