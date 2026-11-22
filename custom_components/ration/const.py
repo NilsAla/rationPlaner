@@ -4,6 +4,7 @@ from datetime import timedelta
 
 DOMAIN = "ration"
 CONF_URL = "url"
+CONF_TOKEN = "token"  # App-Option api_token, leer = App ohne Token
 # Interner Hostname der App im hassio-Netz: <repo-hash>-ration, lokal installiert local-ration.
 DEFAULT_URL = "http://local-ration:8099"
 SUPPORTED_API_MAJOR = 1

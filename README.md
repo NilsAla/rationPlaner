@@ -26,6 +26,10 @@ und eine To-do-Entität für die Einkaufsliste.
 3. **Bridge:** In HACS das Repo als benutzerdefiniertes Repository (Typ Integration)
    hinzufügen, installieren, HA neu starten, Integration „rationPlaner Bridge“ hinzufügen und
    die interne URL der App eintragen (z. B. `http://<repo-hash>-ration:8099`, siehe App-Info).
+4. **Token (empfohlen):** App-Option `api_token` auf einen zufälligen Wert setzen (z. B.
+   `openssl rand -hex 24`) und denselben Wert in der Bridge eintragen. Ohne Token ist die API im
+   internen hassio-Netz offen; die Web-App über Ingress braucht nie ein Token. Setzt man das
+   Token nachträglich, fragt HA per Reparatur-Hinweis („Erneut authentifizieren“) danach.
 
 ## Was die Bridge liefert
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -25,6 +26,7 @@ from app.inventory.grocy import GrocyBackend
 from app.settings import Settings, load_settings
 
 log = logging.getLogger("ration")
+INGRESS_IP = "172.30.32.2"  # Supervisor-Ingress-Proxy
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
 
 api = APIRouter(prefix="/api/v1")
@@ -492,6 +494,24 @@ def create_app(
     app = FastAPI(title="rationPlaner", version=__version__, lifespan=lifespan)
     app.include_router(api)
     app.include_router(katalog.router)
+
+    @app.middleware("http")
+    async def token_pruefen(request: Request, call_next):
+        """Ingress (Supervisor-Proxy) darf immer, alles andere braucht das Token, falls gesetzt."""
+        token = (
+            request.app.state.settings.api_token if hasattr(request.app.state, "settings") else ""
+        )
+        pfad = request.url.path
+        if (
+            token
+            and pfad.startswith("/api/")
+            and pfad != "/api/v1/health"
+            and (request.client.host if request.client else "") != INGRESS_IP
+        ):
+            gesendet = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+            if not hmac.compare_digest(gesendet.encode(), token.encode()):
+                return JSONResponse({"detail": "Token fehlt oder falsch"}, status_code=401)
+        return await call_next(request)
 
     @app.exception_handler(NotFoundError)
     async def not_found(request: Request, exc: NotFoundError) -> JSONResponse:

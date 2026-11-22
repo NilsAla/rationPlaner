@@ -74,6 +74,7 @@ Durchstich (Bon → Gekocht → Einkaufsliste) → Phasen 1–6 laut `docs/konze
 
 ## Offen
 
-- Authentifizierung Bridge → App im internen Netz (Ingress-Requests kommen von 172.30.32.2,
-  Bridge-Requests nicht): Token als App-Option, ab Phase 1.
+- Authentifizierung Bridge → App: App-Option `api_token` (optional). Gesetzt, dann braucht jeder
+  `/api/`-Zugriff außer Ingress (172.30.32.2) und `/api/v1/health` `Authorization: Bearer`. Die
+  Bridge fragt das Token im Config Flow ab, bei 401 startet Reauth.
 - Interner Hostname der App hängt vom Repo-Hash ab, Bridge fragt die URL im Config Flow ab.

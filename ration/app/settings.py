@@ -17,6 +17,7 @@ class Settings:
     toleranz_default_pct: int = 10
     bon_konfidenz_schwelle: float = 0.85
     dubletten_schwelle: float = 0.9  # Namensähnlichkeit für den Dubletten-Check
+    api_token: str = ""  # Pflicht-Token für Zugriffe außerhalb von Ingress (Bridge)
     data_dir: Path = Path("/data")
     supervisor_token: str = ""
 

@@ -4,16 +4,26 @@
       "user": {
         "title": "rationPlaner verbinden",
         "data": {
-          "url": "URL der rationPlaner-App"
+          "url": "URL der rationPlaner-App",
+          "token": "Token (app option api_token, empty if not set)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Renew token",
+        "description": "The app requires a token. Enter the value of the app option api_token.",
+        "data": {
+          "token": "Token"
         }
       }
     },
     "error": {
       "cannot_connect": "App nicht erreichbar",
-      "incompatible_version": "API-Version der App passt nicht zur Bridge"
+      "incompatible_version": "API-Version der App passt nicht zur Bridge",
+      "invalid_auth": "Invalid or missing token"
     },
     "abort": {
-      "already_configured": "Bereits eingerichtet"
+      "already_configured": "Bereits eingerichtet",
+      "reauth_successful": "Token updated"
     }
   },
   "services": {

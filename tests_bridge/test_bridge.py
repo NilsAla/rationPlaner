@@ -40,7 +40,36 @@ async def test_config_flow(hass: HomeAssistant, aioclient_mock):
     )
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"url": URL + "/"})
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {"url": URL}
+    assert result["data"] == {"url": URL, "token": ""}
+
+
+async def test_config_flow_token(hass: HomeAssistant, aioclient_mock):
+    aioclient_mock.get(f"{URL}/api/v1/version", status=401, json={"detail": "Token"})
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"url": URL, "token": "falsch"}
+    )
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_token_header_und_reauth(hass: HomeAssistant, aioclient_mock):
+    mock_app(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data={"url": URL, "token": "geheim"}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    headers = [call[3] for call in aioclient_mock.mock_calls if str(call[1]).endswith("/heute")]
+    assert headers and headers[0]["Authorization"] == "Bearer geheim"
+    # App verlangt plötzlich ein anderes Token: Reauth-Flow startet
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{URL}/api/v1/heute", status=401, json={"detail": "Token"})
+    coordinator = entry.runtime_data
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert flows and flows[0]["context"]["source"] == "reauth"
 
 
 async def test_config_flow_falsche_version(hass: HomeAssistant, aioclient_mock):
