@@ -21,6 +21,9 @@ URL = "https://www.hellofresh.de/recipes/testpfanne-mit-paprika-0123456789abcdef
         ("1 Packung(en) Mozzarella", 1, "packung(en)", "Mozzarella"),
         ("0,5 kg Kartoffeln", 0.5, "kg", "Kartoffeln"),
         ("Salz", None, None, "Salz"),
+        ("1 Esslöffel Öl", 1, "el", "Öl"),
+        ("2 Teelöffel Zucker", 2, "tl", "Zucker"),
+        ("1 Stk. Ei", 1, "stück", "Ei"),
     ],
 )
 def test_zutat_parsen(text, menge, einheit, name):
@@ -123,3 +126,10 @@ def test_uebernehmen_ohne_produkt(client):
         f"/api/v1/import/{v['import_id']}/uebernehmen", json={"zutaten": [{"index": 0, "menge": 1}]}
     )
     assert resp.status_code == 422
+
+
+def test_gramm_esslöffel_oel():
+    z = ri.zutat_parsen("1 Esslöffel Öl")
+    assert ri.gramm(z, z.name)[0] == pytest.approx(13.8)
+    z = ri.zutat_parsen("2 Teelöffel Zucker")
+    assert ri.gramm(z, z.name)[:2] == (8.0, "schaetzung")

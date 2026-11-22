@@ -55,6 +55,29 @@ EINHEITEN = (
 )
 
 
+# Ausgeschriebene und abgekürzte Einheiten → Normalform
+EINHEIT_ALIAS = {
+    "esslöffel": "el",
+    "essl": "el",
+    "eßl": "el",
+    "teelöffel": "tl",
+    "teel": "tl",
+    "gramm": "g",
+    "kilogramm": "kg",
+    "kilo": "kg",
+    "milliliter": "ml",
+    "liter": "l",
+    "stk": "stück",
+    "stücke": "stück",
+    "stück(e)": "stück",
+    "prisen": "prise",
+    "zentiliter": "cl",
+    "deziliter": "dl",
+    "bünde": "bund",
+    "bund(e)": "bund",
+}
+
+
 class ImportError_(Exception):
     """Quelle nicht lesbar oder kein Rezept gefunden."""
 
@@ -176,6 +199,7 @@ def zutat_parsen(text: str) -> RohZutat:
     m = re.match(rf"^{zahl}\s*(?:-\s*[\d.,]+\s*)?([^\d\s]+\.?)?\s+(.+)$", clean)
     if m and (menge := _zahl(m.group(1))) is not None:
         einheit = (m.group(2) or "").lower().rstrip(".")
+        einheit = EINHEIT_ALIAS.get(einheit, einheit)
         name = m.group(3)
         if einheit and einheit not in EINHEITEN:  # "2 Zwiebeln" → keine Einheit
             name, einheit = f"{m.group(2)} {name}", ""
@@ -265,6 +289,9 @@ def gramm(z: RohZutat, name: str, stueck_g: float | None = None) -> tuple[float 
         return 0.0, "ok", "ohne Mengenangabe"
     staemme = _staemme(name)
     e = z.einheit
+    if e in ("cl", "dl"):
+        z = RohZutat(z.text, z.menge * (10 if e == "cl" else 100), "ml", z.name)
+        e = "ml"
     if e in MASSE:
         basis, faktor = MASSE[e]
         if basis == "g":
