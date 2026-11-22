@@ -358,3 +358,34 @@ class GrocyBackend:
 
     async def set_product_userfields(self, product_id: str, values: dict[str, Any]) -> None:
         await self._put(f"/userfields/products/{product_id}", values)
+
+    async def ensure_recipe(
+        self,
+        name: str,
+        *,
+        servings: int,
+        description: str,
+        ingredients: list[tuple[str, float]],
+        userfields: dict[str, Any] | None = None,
+    ) -> tuple[str, bool]:
+        """Legt ein Rezept mit Zutaten (Produkt-ID, Menge in Bestandseinheit) an, falls es fehlt."""
+        found = await self._find("recipes", name=name)
+        if found:
+            return str(found["id"]), False
+        recipe_id = await self._create(
+            "recipes", {"name": name, "base_servings": servings, "description": description}
+        )
+        products = {p["id"]: p for p in await self._get("/objects/products")}
+        for product_id, amount in ingredients:
+            await self._create(
+                "recipes_pos",
+                {
+                    "recipe_id": recipe_id,
+                    "product_id": int(product_id),
+                    "amount": amount,
+                    "qu_id": products[int(product_id)]["qu_id_stock"],
+                },
+            )
+        if userfields:
+            await self._put(f"/userfields/recipes/{recipe_id}", userfields)
+        return str(recipe_id), True

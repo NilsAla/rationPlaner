@@ -26,7 +26,8 @@ nicht stillschweigend aufweichen. Nutzer ist erfahrener Sysadmin (HAOS auf N100,
    nutzt Domain-Objekte. `FakeBackend` bildet die Grocy-Semantik nach (FEFO, Parent-Produkte,
    Gefrieren) und wird mit denselben Contract-Tests geprüft.
 3. **Keine Daten im Repo.** Keine Rezept-, Produkt- oder BLS-Daten committen. Erlaubt sind
-   1–3 Testrezepte als Fixtures unter `ration/tests/fixtures/`.
+   1–3 Testrezepte als Fixtures unter `ration/tests/fixtures/` und die mitgelieferten
+   Testrezepte in `ration/app/fixtures/testdaten.json` (Button „Testrezepte anlegen“).
 4. **Nichts automatisch übernehmen,** was das LLM an Stammdaten vorschlägt: immer Diff + Review.
 5. **API-Vertrag:** App-Endpunkte unter `/api/v1/`. Inkompatible Änderung → Major-Version in
    `ration/app/__init__.py` (`API_VERSION`) und `SUPPORTED_API_MAJOR` der Bridge anheben.

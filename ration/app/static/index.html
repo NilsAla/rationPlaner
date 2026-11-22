@@ -113,6 +113,7 @@ async function loadWoche() {
       <td style="width:70px"><input type="number" min="1" max="12" value="${p?.portionen ?? 1}" data-por="${k}"></td>
       <td class="muted">${p?.status === "gekocht" ? "✓" : ""}</td></tr>`; }).join("")}</table>
     ${rezepte.length ? "" : `<p class="muted">Noch keine Rezepte in Grocy.</p>`}
+    <button class="go" id="testdaten" style="background:none;color:var(--accent);border:1px solid var(--line)">Testrezepte in Grocy anlegen</button>
     <button class="go" id="einkauf">Einkaufsliste erzeugen</button></div>`;
   const save = (k) => guarded(async () => {
     const id = $(`[data-day="${k}"]`).value;
@@ -121,6 +122,10 @@ async function loadWoche() {
     say("Plan gespeichert");
   });
   document.querySelectorAll("[data-day],[data-por]").forEach((x) => x.onchange = () => save(x.dataset.day ?? x.dataset.por));
+  $("#testdaten").onclick = () => guarded(async () => {
+    const e = await api("testdaten", {method: "POST"});
+    say(`${e.rezepte.filter((r) => r.neu).length} Testrezepte angelegt`); load("woche");
+  });
   $("#einkauf").onclick = () => guarded(async () => {
     const e = await api("einkaufsliste", {method: "POST", body: JSON.stringify({tage: 7})});
     say(e.hinzugefuegt.length ? `${e.hinzugefuegt.length} Einträge hinzugefügt` : "Nichts fehlt");

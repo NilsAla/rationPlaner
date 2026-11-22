@@ -6,6 +6,7 @@ from datetime import date
 
 import pytest
 
+from app import testdaten
 from app.inventory.base import DueType, TrackingMode
 from app.inventory.contract import prepare_grocy
 from app.inventory.grocy import UF_TOLERANZ_PCT, UF_TRACKING_MODUS, GrocyBackend
@@ -76,3 +77,19 @@ def test_list_products_echtes_grocy():
     assert child.tolerance_pct == 30
     assert child.unit == "g" and child.grams_per_unit == 1.0
     assert locations[setup.freezer_id].is_freezer
+
+
+@pytest.mark.skipif(not GROCY_URL, reason="RATION_TEST_GROCY_URL nicht gesetzt")
+def test_testdaten_idempotent():
+    async def run():
+        async with GrocyBackend(GROCY_URL, GROCY_KEY) as backend:
+            erst = await testdaten.anlegen(backend)
+            zweit = await testdaten.anlegen(backend)
+            rezepte = {r.name: r for r in await backend.list_recipes()}
+            return erst, zweit, rezepte
+
+    erst, zweit, rezepte = asyncio.run(run())
+    assert erst["produkte"] == 6
+    assert not any(r["neu"] for r in zweit["rezepte"])
+    pasta = rezepte["Test: Paprika-Pasta"]
+    assert pasta.servings == 2 and len(pasta.ingredients) == 3

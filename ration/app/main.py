@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import API_VERSION, __version__, kueche
+from app import API_VERSION, __version__, kueche, testdaten
 from app.db import PlanEintrag, make_engine
 from app.ha import HomeAssistant, SupervisorHomeAssistant
 from app.inventory.base import InventoryBackend
@@ -256,6 +256,14 @@ async def einkaufsliste(
         await ha.todo_add(todo, text)
         neu.append(text)
     return {"hinzugefuegt": neu, "schon_auf_liste": schon_da, "gerichte": len(geplant)}
+
+
+@api.post("/testdaten")
+async def testdaten_anlegen(b: InventoryBackend = Depends(backend)) -> dict:
+    """Legt 2 Testrezepte samt Produkten in Grocy an (idempotent, löscht nichts)."""
+    if not isinstance(b, GrocyBackend):
+        raise HTTPException(501, "Nur mit Grocy-Backend")
+    return await testdaten.anlegen(b)
 
 
 @api.get("/status")

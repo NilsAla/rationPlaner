@@ -10,3 +10,7 @@ def test_index_relativ_fuer_ingress(client):
     resp = client.get("/", headers={"X-Ingress-Path": "/api/hassio_ingress/abc"})
     assert resp.status_code == 200
     assert 'fetch("api/v1/" + path' in resp.text
+
+
+def test_testdaten_nur_mit_grocy(client):
+    assert client.post("/api/v1/testdaten").status_code == 501
