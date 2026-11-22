@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rationPlaner</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #fff; --text: #1c1c1c; --muted: #6b6b6b; --line: #e3e3df;
+    --accent: #2f6f4f; --warn: #b4531a; --bad: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161716; --card: #202221; --text: #e8e8e6; --muted: #9a9a96; --line: #333532;
+            --accent: #6cc093; --warn: #e39a5c; --bad: #ef7d75; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 14px 16px; display: flex; justify-content: space-between; align-items: baseline; }
+  header h1 { font-size: 18px; margin: 0; }
+  header small, .muted { color: var(--muted); }
+  nav { display: flex; gap: 6px; padding: 0 16px 10px; overflow-x: auto; }
+  nav button { border: 1px solid var(--line); background: var(--card); color: var(--text);
+               padding: 7px 14px; border-radius: 999px; font: inherit; cursor: pointer; }
+  nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  main { padding: 0 16px 32px; max-width: 760px; }
+  section { display: none; } section.on { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  h2 { font-size: 16px; margin: 0 0 8px; }
+  ol, ul { margin: 6px 0; padding-left: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+  .nw { white-space: nowrap; }
+  .soon { color: var(--warn); } .over { color: var(--bad); }
+  label { display: block; font-size: 13px; color: var(--muted); margin-top: 8px; }
+  input, select { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--line);
+                  border-radius: 8px; background: var(--bg); color: var(--text); }
+  .row { display: flex; gap: 8px; } .row > * { flex: 1; }
+  button.go { margin-top: 12px; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent);
+              color: #fff; font: inherit; font-weight: 600; cursor: pointer; width: 100%; }
+  #msg { position: fixed; left: 16px; right: 16px; bottom: 16px; padding: 10px 14px; border-radius: 8px;
+         background: var(--text); color: var(--bg); display: none; max-width: 728px; }
+</style>
+</head>
+<body>
+<header><h1>rationPlaner</h1><small id="statusline">v{{version}}</small></header>
+<nav>
+  <button data-tab="heute" class="on">Heute</button>
+  <button data-tab="woche">Woche</button>
+  <button data-tab="bestand">Bestand</button>
+</nav>
+<main>
+  <section id="heute" class="on"></section>
+  <section id="woche"></section>
+  <section id="bestand"></section>
+</main>
+<div id="msg"></div>
+<script>
+// Alle Pfade relativ, damit es hinter Ingress funktioniert.
+const $ = (s) => document.querySelector(s);
+const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = (n) => Number(n).toLocaleString("de-DE", {maximumFractionDigits: 1});
+const iso = (d) => d.toISOString().slice(0, 10);
+const dmy = (s) => s ? new Date(s).toLocaleDateString("de-DE", {day: "2-digit", month: "2-digit", year: "2-digit"}) : "";
+async function api(path, opts = {}) {
+  const r = await fetch("api/v1/" + path, {headers: {"Content-Type": "application/json"}, ...opts});
+  const body = r.status === 204 ? null : await r.json();
+  if (!r.ok) throw new Error(body?.detail ?? r.statusText);
+  return body;
+}
+function say(text) { const m = $("#msg"); m.textContent = text; m.style.display = "block";
+  clearTimeout(say.t); say.t = setTimeout(() => (m.style.display = "none"), 4000); }
+async function guarded(fn) { try { await fn(); } catch (e) { say(e.message); } }
+
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button, section").forEach((x) => x.classList.remove("on"));
+  b.classList.add("on"); $("#" + b.dataset.tab).classList.add("on"); load(b.dataset.tab);
+});
+
+async function loadStatus() { const s = await api("status"); $("#statusline").textContent = s.text; }
+
+async function loadHeute() {
+  const h = await api("heute"); const el = $("#heute");
+  if (!h.rezept) { el.innerHTML = `<div class="card"><h2>Heute ist nichts geplant</h2>
+    <p class="muted">Im Tab „Woche“ ein Rezept für heute eintragen.</p></div>`; return; }
+  const r = h.rezept;
+  el.innerHTML = `<div class="card"><h2>${esc(r.name)}</h2>
+    <p class="muted">${r.portionen} Portion(en)${h.status === "gekocht" ? " · gekocht" : ""}</p>
+    <ul>${r.zutaten.map((z) => `<li>${fmt(z.menge)} ${esc(z.einheit)} ${esc(z.name)}</li>`).join("")}</ul>
+    ${r.schritte.length ? `<ol>${r.schritte.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>` : ""}</div>
+    <div class="card"><h2>Gekocht</h2><div class="row">
+      <div><label>Gekocht (Portionen)</label><input id="pg" type="number" min="1" max="12" value="${r.portionen}"></div>
+      <div><label>Gegessen (Portionen)</label><input id="pe" type="number" min="0" max="12" value="${r.portionen}"></div></div>
+      <button class="go" id="kochen">Gekocht buchen</button></div>`;
+  $("#kochen").onclick = () => guarded(async () => {
+    const e = await api("gekocht", {method: "POST", body: JSON.stringify({
+      rezept_id: r.id, portionen_gekocht: +$("#pg").value, portionen_gegessen: +$("#pe").value})});
+    const fehl = e.fehlend.map((p) => `${p.name} ${fmt(p.menge)} ${p.einheit}`).join(", ");
+    say(`${e.abgebucht.length} Zutaten abgebucht` + (fehl ? ` · fehlte: ${fehl}` : ""));
+    load("heute");
+  });
+}
+
+async function loadWoche() {
+  const [plan, rezepte] = await Promise.all([api("plan?tage=7"), api("rezepte")]);
+  const byDay = Object.fromEntries(plan.map((p) => [p.datum, p]));
+  const days = [...Array(7)].map((_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; });
+  const opts = (sel) => `<option value="">–</option>` + rezepte.map((r) =>
+    `<option value="${r.id}" ${r.id === sel ? "selected" : ""}>${esc(r.name)}</option>`).join("");
+  $("#woche").innerHTML = `<div class="card"><h2>Diese Woche</h2><table>${days.map((d) => {
+    const k = iso(d), p = byDay[k];
+    return `<tr><td>${d.toLocaleDateString("de-DE", {weekday: "short", day: "2-digit", month: "2-digit"})}</td>
+      <td><select data-day="${k}">${opts(p?.rezept_id)}</select></td>
+      <td style="width:70px"><input type="number" min="1" max="12" value="${p?.portionen ?? 1}" data-por="${k}"></td>
+      <td class="muted">${p?.status === "gekocht" ? "✓" : ""}</td></tr>`; }).join("")}</table>
+    ${rezepte.length ? "" : `<p class="muted">Noch keine Rezepte in Grocy.</p>`}
+    <button class="go" id="einkauf">Einkaufsliste erzeugen</button></div>`;
+  const save = (k) => guarded(async () => {
+    const id = $(`[data-day="${k}"]`).value;
+    if (!id) await api(`plan/${k}`, {method: "DELETE"});
+    else await api(`plan/${k}`, {method: "PUT", body: JSON.stringify({rezept_id: id, portionen: +$(`[data-por="${k}"]`).value})});
+    say("Plan gespeichert");
+  });
+  document.querySelectorAll("[data-day],[data-por]").forEach((x) => x.onchange = () => save(x.dataset.day ?? x.dataset.por));
+  $("#einkauf").onclick = () => guarded(async () => {
+    const e = await api("einkaufsliste", {method: "POST", body: JSON.stringify({tage: 7})});
+    say(e.hinzugefuegt.length ? `${e.hinzugefuegt.length} Einträge hinzugefügt` : "Nichts fehlt");
+  });
+}
+
+async function loadBestand() {
+  const [bestand, produkte, orte] = await Promise.all([api("bestand"), api("produkte"), api("lagerorte")]);
+  const today = iso(new Date()), soon = iso(new Date(Date.now() + 3 * 864e5));
+  $("#bestand").innerHTML = `<div class="card"><h2>Einbuchen</h2>
+    <label>Produkt</label><select id="ep">${produkte.map((p) => `<option value="${p.id}">${esc(p.name)} (${esc(p.einheit)})</option>`).join("")}</select>
+    <div class="row"><div><label>Menge</label><input id="em" type="number" min="0" step="any"></div>
+      <div><label>MHD (leer = Standard)</label><input id="ed" type="date"></div></div>
+    <label>Lagerort</label><select id="el"><option value="">Standard des Produkts</option>
+      ${orte.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>
+    <button class="go" id="buchen">Einbuchen</button></div>
+    <div class="card"><h2>Bestand</h2>${bestand.length ? `<table>${bestand.map((b) => {
+      const cls = b.mhd && b.mhd < today ? "over" : b.mhd && b.mhd <= soon ? "soon" : "";
+      return `<tr><td>${esc(b.name)}</td><td class="nw">${fmt(b.menge)} ${esc(b.einheit)}</td>
+        <td class="muted">${esc(b.lagerort)}</td><td class="nw ${cls}">${dmy(b.mhd)}</td></tr>`; }).join("")}</table>`
+      : `<p class="muted">Leer.</p>`}</div>`;
+  $("#buchen").onclick = () => guarded(async () => {
+    await api("bestand", {method: "POST", body: JSON.stringify({produkt_id: $("#ep").value,
+      menge: +$("#em").value, mhd: $("#ed").value || null, lagerort_id: $("#el").value || null})});
+    say("Eingebucht"); load("bestand");
+  });
+}
+
+function load(tab) {
+  guarded(loadStatus);
+  guarded({heute: loadHeute, woche: loadWoche, bestand: loadBestand}[tab]);
+}
+load("heute");
+</script>
+</body>
+</html>

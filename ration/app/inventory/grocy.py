@@ -13,9 +13,11 @@ import httpx
 from app.inventory.base import (
     Batch,
     DueType,
+    Ingredient,
     InsufficientStockError,
     Location,
     Product,
+    Recipe,
     TrackingMode,
     consume_order,
 )
@@ -143,6 +145,7 @@ class GrocyBackend:
             shelf_life_opened_days=int(raw.get("default_best_before_days_after_open") or 0),
             shelf_life_frozen_days=int(raw.get("default_best_before_days_after_freezing") or 0),
             shelf_life_thawed_days=int(raw.get("default_best_before_days_after_thawing") or 0),
+            default_location_id=str(raw["location_id"]) if raw.get("location_id") else None,
         )
 
     @staticmethod
@@ -173,6 +176,39 @@ class GrocyBackend:
             for r in await self._get("/objects/locations")
             if int(r.get("active", 1))
         ]
+
+    @staticmethod
+    def _to_recipe(raw: dict, positions: list[dict]) -> Recipe:
+        return Recipe(
+            id=str(raw["id"]),
+            name=raw["name"],
+            servings=int(raw.get("base_servings") or 1),
+            description=raw.get("description") or "",
+            ingredients=tuple(
+                Ingredient(
+                    product_id=str(pos["product_id"]),
+                    amount=float(pos["amount"]),
+                    note=pos.get("note"),
+                )
+                for pos in positions
+                if pos["recipe_id"] == raw["id"]
+            ),
+        )
+
+    async def list_recipes(self) -> list[Recipe]:
+        # Grocy legt intern auch Rezepte für Essensplan-Tage an (type != normal).
+        raws = [r for r in await self._get("/objects/recipes") if r.get("type") == "normal"]
+        positions = await self._get("/objects/recipes_pos")
+        return [self._to_recipe(r, positions) for r in raws]
+
+    async def get_recipe(self, recipe_id: str) -> Recipe:
+        raw = await self._get(f"/objects/recipes/{recipe_id}")
+        positions = await self._get("/objects/recipes_pos", **{"query[]": f"recipe_id={recipe_id}"})
+        return self._to_recipe(raw, positions)
+
+    async def list_all_batches(self) -> list[Batch]:
+        raws = await self._get("/objects/stock")
+        return sorted((self._to_batch(r) for r in raws), key=consume_order)
 
     async def get_batches(self, product_id: str, *, include_children: bool = False) -> list[Batch]:
         params = {"include_sub_products": "true"} if include_children else {}

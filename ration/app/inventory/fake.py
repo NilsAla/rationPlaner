@@ -11,14 +11,21 @@ from app.inventory.base import (
     InsufficientStockError,
     Location,
     Product,
+    Recipe,
     consume_order,
 )
 
 
 class FakeBackend:
-    def __init__(self, products: list[Product], locations: list[Location]):
+    def __init__(
+        self,
+        products: list[Product],
+        locations: list[Location],
+        recipes: list[Recipe] | None = None,
+    ):
         self._products = {p.id: p for p in products}
         self._locations = {loc.id: loc for loc in locations}
+        self._recipes = {r.id: r for r in recipes or []}
         self._batches: list[Batch] = []
         self._ids = itertools.count(1)
 
@@ -36,6 +43,15 @@ class FakeBackend:
 
     async def list_locations(self) -> list[Location]:
         return list(self._locations.values())
+
+    async def list_recipes(self) -> list[Recipe]:
+        return list(self._recipes.values())
+
+    async def get_recipe(self, recipe_id: str) -> Recipe:
+        return self._recipes[recipe_id]
+
+    async def list_all_batches(self) -> list[Batch]:
+        return sorted(self._batches, key=consume_order)
 
     def _family(self, product_id: str) -> set[str]:
         children = {p.id for p in self._products.values() if p.parent_id == product_id}

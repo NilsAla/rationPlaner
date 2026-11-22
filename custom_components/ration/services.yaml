@@ -1,20 +1,31 @@
 gekocht:
   fields:
     rezept_id:
-      required: true
+      required: false
       selector:
         text:
     portionen_gekocht:
       required: true
+      default: 1
       selector:
         number:
           min: 1
           max: 12
     portionen_gegessen:
       required: true
+      default: 1
       selector:
         number:
           min: 0
           max: 12
+einkaufsliste_erzeugen:
+  fields:
+    tage:
+      required: false
+      default: 7
+      selector:
+        number:
+          min: 1
+          max: 14
 plan_erzeugen:
 kategorisieren:

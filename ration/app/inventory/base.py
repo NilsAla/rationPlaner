@@ -56,6 +56,23 @@ class Product:
     shelf_life_opened_days: int = 0
     shelf_life_frozen_days: int = 0
     shelf_life_thawed_days: int = 0
+    default_location_id: str | None = None
+
+
+@dataclass(frozen=True)
+class Ingredient:
+    product_id: str
+    amount: float  # in der Bestandseinheit des Produkts
+    note: str | None = None
+
+
+@dataclass(frozen=True)
+class Recipe:
+    id: str
+    name: str
+    servings: int
+    ingredients: tuple[Ingredient, ...]
+    description: str = ""  # Zubereitung, in Grocy als HTML
 
 
 @dataclass(frozen=True)
@@ -79,6 +96,14 @@ class InventoryBackend(Protocol):
     async def get_product(self, product_id: str) -> Product: ...
 
     async def list_locations(self) -> list[Location]: ...
+
+    async def list_recipes(self) -> list[Recipe]: ...
+
+    async def get_recipe(self, recipe_id: str) -> Recipe: ...
+
+    async def list_all_batches(self) -> list[Batch]:
+        """Alle Chargen aller Produkte (für Übersicht und Status)."""
+        ...
 
     async def get_batches(self, product_id: str, *, include_children: bool = False) -> list[Batch]:
         """Chargen in Verbrauchsreihenfolge (geöffnet, dann frühestes Ablaufdatum)."""
