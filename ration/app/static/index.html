@@ -65,6 +65,7 @@
   <button data-tab="bestand">Bestand</button>
   <button data-tab="produkte">Produkte</button>
   <button data-tab="packungen">Packungen</button>
+  <button data-tab="bon">Bon</button>
   <button data-tab="import">Import</button>
 </nav>
 <main>
@@ -74,6 +75,7 @@
   <section id="bestand"></section>
   <section id="produkte"></section>
   <section id="packungen"></section>
+  <section id="bon"></section>
   <section id="import"></section>
 </main>
 <div id="msg"></div>
@@ -82,10 +84,12 @@
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const fmt = (n) => Number(n).toLocaleString("de-DE", {maximumFractionDigits: 1});
+const eur = (n) => Number(n).toLocaleString("de-DE", {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " €";
 const iso = (d) => d.toISOString().slice(0, 10);
 const dmy = (s) => s ? new Date(s).toLocaleDateString("de-DE", {day: "2-digit", month: "2-digit", year: "2-digit"}) : "";
 async function api(path, opts = {}) {
-  const r = await fetch("api/v1/" + path, {headers: {"Content-Type": "application/json"}, ...opts});
+  const headers = opts.body instanceof FormData ? {} : {"Content-Type": "application/json"};
+  const r = await fetch("api/v1/" + path, {headers, ...opts});
   const body = r.status === 204 ? null : await r.json();
   if (!r.ok) throw new Error(Array.isArray(body?.detail) ? body.detail.map((d) => d.msg).join(", ") : body?.detail ?? r.statusText);
   return body;
@@ -515,10 +519,82 @@ async function zeigeProdukt(id) {
     await api("aliase", {method: "PUT", body: JSON.stringify({text: $("#anew").value, produkt_id: id})}); zeigeProdukt(id); });
 }
 
+// --- Kassenbon -------------------------------------------------------------------------
+async function loadBon(offen) {
+  const liste = await api("bon"), el = $("#bon");
+  el.innerHTML = `<div class="card"><h2>Kassenbon fotografieren</h2>
+    <input id="bf" type="file" accept="image/*" capture="environment">
+    <button class="go" id="bup">Hochladen</button>
+    <p class="muted" style="font-size:13px">Die KI liest den Bon im Hintergrund (ca. 30 s). Du bekommst eine Benachrichtigung.</p></div>
+    <div id="bdet"></div>
+    <div class="card"><h2>Letzte Bons</h2>${liste.length ? `<div class="list">${liste.map((b) => `<div data-bon="${b.id}">
+      <b>${esc(b.markt ?? "Bon " + b.id)}</b> <span class="muted">· ${dmy(b.datum ?? b.angelegt)}${b.summe ? " · " + eur(b.summe) : ""}</span>
+      <span class="tag ${b.status === "fehler" ? "pruefen" : b.status === "review" ? "schaetzung" : ""}">${esc(b.status)}</span></div>`).join("")}</div>`
+      : `<p class="muted">Noch keine.</p>`}</div>`;
+  $("#bup").onclick = () => guarded(async () => {
+    const f = $("#bf").files[0]; if (!f) throw new Error("Erst ein Foto wählen");
+    const fd = new FormData(); fd.append("datei", f);
+    const r = await api("bon", {method: "POST", body: fd});
+    say("Hochgeladen, wird gelesen …"); loadBon(r.id);
+  });
+  document.querySelectorAll("[data-bon]").forEach((d) => d.onclick = () => guarded(() => zeigeBon(+d.dataset.bon)));
+  if (offen) zeigeBon(offen);
+}
+
+async function zeigeBon(id) {
+  const [bon, produkte] = await Promise.all([api(`bon/${id}`), api("produkte")]);
+  const el = $("#bdet");
+  if (bon.status === "verarbeitung") {
+    el.innerHTML = `<div class="card"><h2>Bon ${id}</h2><p class="muted">Wird gelesen …</p></div>`;
+    clearTimeout(zeigeBon.t); zeigeBon.t = setTimeout(() => guarded(() => zeigeBon(id)), 3000); return;
+  }
+  if (bon.status !== "review") {
+    el.innerHTML = `<div class="card"><h2>${esc(bon.markt ?? "Bon " + id)}</h2><p class="${bon.status === "fehler" ? "over" : "muted"}">
+      ${esc(bon.status)}${bon.fehler ? ": " + esc(bon.fehler) : ""}</p></div>`; return;
+  }
+  const einheit = Object.fromEntries(produkte.map((p) => [p.id, p.einheit]));
+  const opts = (z) => `<option value="+neu" ${z.aktion === "neu" ? "selected" : ""}>+ neues Produkt</option>` +
+    produkte.map((p) => `<option value="${p.id}" ${p.id === z.produkt_id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+  const zeilen = bon.positionen.filter((z) => z.aktion !== "weglassen");
+  el.innerHTML = `<div class="card"><h2>${esc(bon.markt ?? "Bon")} <span class="muted">· ${dmy(bon.datum)} · ${eur(bon.summe ?? 0)}</span></h2>
+    <p class="muted" style="font-size:13px">Haken = wird gebucht. Vorausgewählt sind bekannte Bon-Texte und sichere KI-Treffer.
+      ${bon.positionen.length - zeilen.length} Zeilen (Pfand, Rabatt …) ignoriert.</p>
+    <table>${zeilen.map((z) => `<tr><td colspan="3" style="padding-bottom:0">
+        <label style="display:flex;gap:6px;margin:0;color:var(--text)"><input type="checkbox" data-bc="${z.index}" ${z.vorausgewaehlt ? "checked" : ""} style="width:auto">
+        ${esc(z.text)}</label> <span class="tag ${z.status === "sicher" ? "" : z.status === "vorschlag" ? "schaetzung" : "pruefen"}">${esc(z.quelle)}</span>
+        ${z.hinweis ? `<span class="muted" style="font-size:12px">${esc(z.hinweis)}</span>` : ""}</td></tr>
+      <tr><td style="border:0"><select data-bp="${z.index}">${opts(z)}</select>
+        <input data-bn="${z.index}" value="${esc(z.neu_name ?? "")}" style="display:${z.aktion === "neu" ? "block" : "none"};margin-top:4px"></td>
+        <td style="border:0;width:85px"><input data-bm="${z.index}" type="number" min="0" step="any" value="${z.menge ?? ""}"></td>
+        <td style="border:0;width:70px" class="muted"><span data-be="${z.index}">${esc(z.einheit ?? "g")}</span><br>${z.preis != null ? eur(z.preis) : ""}</td></tr>`).join("")}</table>
+    <div class="row"><button class="go" id="bbuchen">Ausgewählte buchen</button>
+      <button class="go" id="bweg" style="background:none;color:var(--accent);border:1px solid var(--line)">Verwerfen</button></div></div>`;
+  document.querySelectorAll("[data-bp]").forEach((sel) => sel.onchange = () => {
+    const i = sel.dataset.bp;
+    $(`[data-bn="${i}"]`).style.display = sel.value === "+neu" ? "block" : "none";
+    $(`[data-be="${i}"]`).textContent = einheit[sel.value] ?? "g";
+    $(`[data-bc="${i}"]`).checked = true;
+  });
+  $("#bbuchen").onclick = () => guarded(async () => {
+    const positionen = [];
+    for (const z of zeilen) {
+      if (!$(`[data-bc="${z.index}"]`).checked) continue;
+      const sel = $(`[data-bp="${z.index}"]`).value, menge = $(`[data-bm="${z.index}"]`).value;
+      if (!menge) throw new Error(`Menge fehlt: ${z.text}`);
+      positionen.push({index: z.index, menge: +menge, preis: z.preis,
+        ...(sel === "+neu" ? {neu_anlegen: $(`[data-bn="${z.index}"]`).value} : {produkt_id: sel})});
+    }
+    const e = await api(`bon/${id}/buchen`, {method: "POST", body: JSON.stringify({positionen})});
+    say(`${e.gebucht.length} Positionen eingebucht` + (e.neue_produkte.length ? ` · ${e.neue_produkte.length} neue Produkte` : ""));
+    loadBon();
+  });
+  $("#bweg").onclick = () => guarded(async () => { await api(`bon/${id}/verwerfen`, {method: "POST"}); loadBon(); });
+}
+
 function load(tab) {
   guarded(loadStatus);
   return guarded({heute: loadHeute, woche: loadWoche, rezepte: loadRezepte, bestand: loadBestand,
-    produkte: loadProdukte, packungen: () => loadPackungen(), import: loadImport}[tab]);
+    produkte: loadProdukte, packungen: () => loadPackungen(), bon: () => loadBon(), import: loadImport}[tab]);
 }
 load("heute");
 </script>

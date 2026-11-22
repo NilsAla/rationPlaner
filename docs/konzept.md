@@ -182,6 +182,21 @@ Der Planer startet erst, wenn alle Produkte Attribute haben.
 6. Jede Bestätigung schreibt einen Alias. Bonpreise gehen in `preis`. Füllstand-Produkte auf voll.
    Abweichende Packungsgröße → Vorschlag für `packung` (siehe Packungsgrößen).
 
+**Umsetzung (0.10.0, `app/bon.py`):** Ein `ai_task`-Aufruf je Bon mit Bild und Katalog
+(id|name|einheit, ohne Reste). Das LLM liefert Markt, Datum, Summe und je Zeile Text, Anzahl,
+Preis, aufgedruckte Größe, Produkt-ID oder neuen Namen und Konfidenz. Der Code verwirft
+Pfand/Tüten/Rabatte/Summen per Regex, prüft IDs, nimmt zuerst `bon_alias` (Markt + Text) und
+rechnet die Menge: Größe laut Bon × Anzahl, sonst Standard-Packung × Anzahl, sonst Stück.
+**Annahme (abweichend von Schritt 5):** Gebucht wird nie ohne Review. Vorausgewählt sind
+Alias-Treffer und KI-Treffer mit Konfidenz ≥ `bon_konfidenz_schwelle`, der Nutzer bestätigt mit
+einem Klick. Grund: Das OpenAI-Modell hat beim Import live Fehlgriffe geliefert (Salz → Olivenöl).
+Füllstand-Produkte werden nur auf voll gesetzt (kein Bestand), Immer-da gar nicht gebucht.
+Weicht die Größe laut Bon von allen bekannten Packungen ab, entsteht eine Packung mit Quelle
+`bon`. Hinweis per `persistent_notification`, optional zusätzlich `notify_service`.
+Fotos liegen unter `/media/ration/bons`. Alternativ `POST /bon/media` für ein Bild unter
+`/media` (z. B. per Automation). Live gegen OpenAI noch nicht getestet (kein Weg, ein
+Testbild in Nils' `/media` zu legen, ohne die neue App-Version).
+
 **Barcode-Scanner (optional):** Open Food Facts, je Barcode einmal einem übergeordneten Produkt zuordnen.
 
 **Manuelle Buttons:** Frischware ohne Bon, plus wöchentlicher Kühlschrank-Check (~30 s).

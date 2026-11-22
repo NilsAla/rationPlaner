@@ -472,6 +472,54 @@
           "description": "Als verdorben ausbuchen"
         }
       }
+    },
+    "bon_aus_media": {
+      "name": "Kassenbon aus Medien",
+      "description": "Liest einen Kassenbon aus einem Bild unter /media.",
+      "fields": {
+        "pfad": {
+          "name": "Pfad",
+          "description": "Relativ zu /media, z. B. upload/bon.jpg"
+        }
+      }
+    },
+    "bons": {
+      "name": "Kassenbons",
+      "description": "Letzte Kassenbons mit Status (Antwort)."
+    },
+    "bon_details": {
+      "name": "Kassenbon-Details",
+      "description": "Zeilen mit Vorschlag (Antwort).",
+      "fields": {
+        "bon_id": {
+          "name": "Bon",
+          "description": "ID des Bons"
+        }
+      }
+    },
+    "bon_buchen": {
+      "name": "Kassenbon buchen",
+      "description": "Bucht bestätigte Zeilen ein.",
+      "fields": {
+        "bon_id": {
+          "name": "Bon",
+          "description": "ID des Bons"
+        },
+        "positionen": {
+          "name": "Positionen",
+          "description": "Liste aus index, menge, produkt_id oder neu_anlegen, preis"
+        }
+      }
+    },
+    "bon_verwerfen": {
+      "name": "Kassenbon verwerfen",
+      "description": "Verwirft einen nicht gebuchten Bon.",
+      "fields": {
+        "bon_id": {
+          "name": "Bon",
+          "description": "ID des Bons"
+        }
+      }
     }
   }
 }

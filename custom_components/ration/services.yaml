@@ -382,3 +382,38 @@ abbuchen:
     verdorben:
       selector:
         boolean:
+bon_aus_media:
+  fields:
+    pfad:
+      required: true
+      selector:
+        text:
+bons:
+bon_details:
+  fields:
+    bon_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+bon_buchen:
+  fields:
+    bon_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    positionen:
+      required: true
+      selector:
+        object:
+bon_verwerfen:
+  fields:
+    bon_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box

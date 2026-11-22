@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import API_VERSION, __version__, katalog, kueche, llm_import, rezept_import, testdaten
+from app import API_VERSION, __version__, bon, katalog, kueche, llm_import, rezept_import, testdaten
 from app.db import (
     FuellstandAbfrage,
     Packung,
@@ -580,6 +580,7 @@ def create_app(
     app = FastAPI(title="rationPlaner", version=__version__, lifespan=lifespan)
     app.include_router(api)
     app.include_router(katalog.router)
+    app.include_router(bon.router)
 
     @app.middleware("http")
     async def token_pruefen(request: Request, call_next):

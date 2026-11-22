@@ -108,3 +108,47 @@ class FuellstandAbfrage(Base):
 
     produkt_id: Mapped[str] = mapped_column(String, primary_key=True)
     zuletzt: Mapped[date] = mapped_column(Date)
+
+
+class BonImport(Base):
+    """Ein Kassenbon: Foto, LLM-Rohantwort, Positionen mit Vorschlag, Review-Status."""
+
+    __tablename__ = "bon_import"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    datei: Mapped[str] = mapped_column(String)  # relativ zu <media_dir>/ration/bons
+    status: Mapped[str] = mapped_column(
+        String, default="verarbeitung"
+    )  # +review/gebucht/fehler/verworfen
+    markt: Mapped[str | None] = mapped_column(String, nullable=True)
+    datum: Mapped[date | None] = mapped_column(Date, nullable=True)
+    summe: Mapped[float | None] = mapped_column(Float, nullable=True)
+    roh: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # LLM-Antwort
+    positionen: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    fehler: Mapped[str | None] = mapped_column(String, nullable=True)
+    angelegt: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class BonAlias(Base):
+    """Bon-Text je Markt → Produkt. Entsteht aus jeder bestätigten Position."""
+
+    __tablename__ = "bon_alias"
+
+    markt: Mapped[str] = mapped_column(String, primary_key=True)  # normalisiert, "" = unbekannt
+    text: Mapped[str] = mapped_column(String, primary_key=True)  # normalisiert
+    produkt_id: Mapped[str] = mapped_column(String)
+    menge: Mapped[float | None] = mapped_column(Float, nullable=True)  # je Stück, Bestandseinheit
+
+
+class Preis(Base):
+    """Gezahlter oder angebotener Preis. Quelle bon/angebot/streichpreis."""
+
+    __tablename__ = "preis"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    produkt_id: Mapped[str] = mapped_column(String, index=True)
+    preis: Mapped[float] = mapped_column(Float)  # gesamt, EUR
+    menge: Mapped[float] = mapped_column(Float)  # in Bestandseinheit
+    markt: Mapped[str | None] = mapped_column(String, nullable=True)
+    datum: Mapped[date] = mapped_column(Date)
+    quelle: Mapped[str] = mapped_column(String, default="bon")

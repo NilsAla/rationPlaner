@@ -42,6 +42,8 @@ class FakeHomeAssistant:
         self.items = list(items or [])
         self.ki_antwort: dict | Exception = {}
         self.ki_anfragen: list[str] = []
+        self.ki_anhaenge: list = []
+        self.hinweise: list[tuple[str, str]] = []
 
     async def todo_items(self, entity_id: str) -> list[str]:
         return list(self.items)
@@ -49,10 +51,19 @@ class FakeHomeAssistant:
     async def todo_add(self, entity_id: str, item: str) -> None:
         self.items.append(item)
 
+    async def notify(self, title: str, message: str, service: str = "") -> None:
+        self.hinweise.append((title, message))
+
     async def ai_task(
-        self, entity_id: str, task_name: str, instructions: str, structure: dict
+        self,
+        entity_id: str,
+        task_name: str,
+        instructions: str,
+        structure: dict,
+        attachments: list[dict] | None = None,
     ) -> dict:
         self.ki_anfragen.append(instructions)
+        self.ki_anhaenge.append(attachments)
         if isinstance(self.ki_antwort, Exception):
             raise self.ki_antwort
         return self.ki_antwort

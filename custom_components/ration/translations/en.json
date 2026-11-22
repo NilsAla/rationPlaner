@@ -472,6 +472,54 @@
           "description": "Book as spoiled"
         }
       }
+    },
+    "bon_aus_media": {
+      "name": "Receipt from media",
+      "description": "Reads a receipt from an image under /media.",
+      "fields": {
+        "pfad": {
+          "name": "Path",
+          "description": "Relative to /media, e.g. upload/bon.jpg"
+        }
+      }
+    },
+    "bons": {
+      "name": "Receipts",
+      "description": "Recent receipts with status (response)."
+    },
+    "bon_details": {
+      "name": "Receipt details",
+      "description": "Lines with suggestion (response).",
+      "fields": {
+        "bon_id": {
+          "name": "Receipt",
+          "description": "Receipt ID"
+        }
+      }
+    },
+    "bon_buchen": {
+      "name": "Book receipt",
+      "description": "Books confirmed lines.",
+      "fields": {
+        "bon_id": {
+          "name": "Receipt",
+          "description": "Receipt ID"
+        },
+        "positionen": {
+          "name": "Lines",
+          "description": "List of index, menge, produkt_id or neu_anlegen, preis"
+        }
+      }
+    },
+    "bon_verwerfen": {
+      "name": "Discard receipt",
+      "description": "Discards an unbooked receipt.",
+      "fields": {
+        "bon_id": {
+          "name": "Receipt",
+          "description": "Receipt ID"
+        }
+      }
     }
   }
 }

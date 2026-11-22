@@ -17,9 +17,21 @@ class HomeAssistant(Protocol):
     async def todo_add(self, entity_id: str, item: str) -> None: ...
 
     async def ai_task(
-        self, entity_id: str, task_name: str, instructions: str, structure: dict
+        self,
+        entity_id: str,
+        task_name: str,
+        instructions: str,
+        structure: dict,
+        attachments: list[dict] | None = None,
     ) -> dict:
-        """ai_task.generate_data mit Structured Output, liefert das data-Objekt."""
+        """ai_task.generate_data mit Structured Output, liefert das data-Objekt.
+
+        attachments: [{"media_content_id": "media-source://…", "media_content_type": "image/jpeg"}]
+        """
+        ...
+
+    async def notify(self, title: str, message: str, service: str = "") -> None:
+        """Hinweis an den Nutzer: persistent_notification, zusätzlich notify.<service>."""
         ...
 
 
@@ -51,17 +63,28 @@ class SupervisorHomeAssistant:
         await self._service("todo", "add_item", {"entity_id": entity_id, "item": item})
 
     async def ai_task(
-        self, entity_id: str, task_name: str, instructions: str, structure: dict
+        self,
+        entity_id: str,
+        task_name: str,
+        instructions: str,
+        structure: dict,
+        attachments: list[dict] | None = None,
     ) -> dict:
-        result = await self._service(
-            "ai_task",
-            "generate_data",
-            {
-                "entity_id": entity_id,
-                "task_name": task_name,
-                "instructions": instructions,
-                "structure": structure,
-            },
-            response=True,
-        )
+        data: dict[str, Any] = {
+            "entity_id": entity_id,
+            "task_name": task_name,
+            "instructions": instructions,
+            "structure": structure,
+        }
+        if attachments:
+            data["attachments"] = attachments
+        result = await self._service("ai_task", "generate_data", data, response=True)
         return result.get("service_response", {}).get("data") or {}
+
+    async def notify(self, title: str, message: str, service: str = "") -> None:
+        await self._service(
+            "persistent_notification", "create", {"title": title, "message": message}
+        )
+        if service:
+            domain, _, name = service.partition(".")
+            await self._service(domain, name, {"title": title, "message": message})

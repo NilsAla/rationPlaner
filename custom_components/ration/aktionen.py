@@ -369,4 +369,55 @@ AKTIONEN: tuple[Aktion, ...] = (
         ),
         schreibend=True,
     ),
+    Aktion(
+        "bon_aus_media",
+        "Liest einen Kassenbon aus einem Bild unter /media (Pfad relativ, z. B. upload/bon.jpg). "
+        "Läuft im Hintergrund, danach Review mit bon_details und bon_buchen.",
+        "POST",
+        "/bon/media",
+        vol.Schema({vol.Required("pfad"): cv.string}),
+    ),
+    Aktion(
+        "bons", "Die letzten Kassenbons mit Status (verarbeitung/review/gebucht).", "GET", "/bon"
+    ),
+    Aktion(
+        "bon_details",
+        "Ein Kassenbon mit allen Zeilen, Vorschlag (produkt_id, menge) und ob vorausgewählt.",
+        "GET",
+        "/bon/{bon_id}",
+        vol.Schema({vol.Required("bon_id"): vol.Coerce(int)}),
+    ),
+    Aktion(
+        "bon_buchen",
+        "Bucht bestätigte Bon-Zeilen ein: Liste aus index, menge und produkt_id oder "
+        "neu_anlegen, optional preis, mhd, lagerort_id. Merkt Aliase und Preise.",
+        "POST",
+        "/bon/{bon_id}/buchen",
+        vol.Schema(
+            {
+                vol.Required("bon_id"): vol.Coerce(int),
+                vol.Required("positionen"): [
+                    vol.Schema(
+                        {
+                            vol.Required("index"): vol.Coerce(int),
+                            vol.Required("menge"): MENGE,
+                            vol.Optional("produkt_id"): cv.string,
+                            vol.Optional("neu_anlegen"): cv.string,
+                            vol.Optional("preis"): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                            vol.Optional("mhd"): DATUM,
+                            vol.Optional("lagerort_id"): cv.string,
+                        }
+                    )
+                ],
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "bon_verwerfen",
+        "Verwirft einen noch nicht gebuchten Kassenbon.",
+        "POST",
+        "/bon/{bon_id}/verwerfen",
+        vol.Schema({vol.Required("bon_id"): vol.Coerce(int)}),
+    ),
 )

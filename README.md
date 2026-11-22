@@ -97,6 +97,15 @@ den Füllstand verwendeter Füllstand-Zutaten ab, je Produkt höchstens alle 14 
 kommen mit einer Packung auf die Einkaufsliste. API: `GET /reste`, `GET/PUT /fuellstand`,
 `POST /bestand/abbuchen`.
 
+## Kassenbon
+
+Tab *Bon*: Foto aufnehmen oder wählen, hochladen. Die KI (`ai_task_entity`) liest den Bon im
+Hintergrund, danach kommt eine HA-Benachrichtigung (optional zusätzlich an `notify_service`,
+z. B. `notify.mobile_app_handy`). In der Review sind bekannte Bon-Texte und sichere KI-Treffer
+vorausgewählt; Menge, Produkt und „neues Produkt“ lassen sich ändern, dann „Ausgewählte buchen“.
+Jede gebuchte Zeile wird als Alias (Markt + Bon-Text) und mit Preis gemerkt. Per Service:
+`ration.bon_aus_media` (Bild unter `/media`), `ration.bon_details`, `ration.bon_buchen`.
+
 ## Testrezepte
 
 Button „Testrezepte in Grocy anlegen“ im Tab *Woche* (oder `POST /api/v1/testdaten`) legt
