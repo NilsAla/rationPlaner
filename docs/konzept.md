@@ -94,6 +94,7 @@ nur Zuordnungen, Präferenzen, Planungsdaten und Nährwerte und referenziert Gro
 | `bls` | App | Importierte BLS-Tabelle (zur Laufzeit geladen, nicht im Repo) |
 | `tageslog` | App | Datum, Mahlzeit, Portionen, Nährwerte, Flag Schätzung |
 | `id_map` | App | Abgleich Grocy-IDs, Soft-Delete für gelöschte/zusammengeführte Produkte |
+| `dublette_entscheidung` | App | Produktpaar (sortierte IDs), Entscheidung „nicht mergen“, Datum. Wird nie wieder vorgeschlagen |
 
 Der Planer arbeitet auf Ebene der übergeordneten Produkte. Ein periodischer Abgleich-Job
 erkennt gelöschte oder zusammengeführte Grocy-Produkte und markiert App-Referenzen als
@@ -289,6 +290,30 @@ eine normale `todo`-Entität. Abhaken ≠ Einbuchen.
 Die Card wird von der Bridge per Static Path ausgeliefert und als Lovelace-Resource
 registriert (HACS kann aus einem Repo nicht Integration und Card zugleich installieren).
 
+### Rezeptbuch und Produktdatenbank (Web-App)
+
+Wunsch Nils (2026-11-22), umsetzen erst nach Go.
+
+- **Rezeptbuch:** Kachel-/Listenansicht zum Stöbern mit Suche und Filtern (Tags, Aufwand,
+  Status getestet/ungetestet, Bewertung, „jetzt kochbar“). Detailansicht als Rezeptleser:
+  Zutaten skaliert auf Portionen mit Bestandsampel, Schritte, Quelle. Bearbeiten: Name,
+  Portionen, Zutaten (Produkt, Menge, Toleranz-Override), Schritte, Tags. Schreibt über
+  `InventoryBackend` nach Grocy bzw. in `rezept_meta`.
+- **Produktdatenbank:** Liste aller Produkte mit Tracking-Modus, Kategorie, Einheit/Gramm-
+  Umrechnung, Standard-Packung und weiteren Größen, Mindestbestand, Aliasen (Rezept/Bon),
+  Nährwert-Zuordnung, Verwendung in Rezepten. Inline bearbeiten, Aliase umhängen.
+- **Dubletten-Check:** Kandidatenpaare aus Namensähnlichkeit (normalisierter Name/Kern-Name,
+  Schwelle ca. 0,90–0,95, konfigurierbar) plus gleiche Aliase. Ansicht zeigt beide Produkte
+  nebeneinander (Bestand, Packungen, Aliase, Rezepte, Attribute) mit zwei Buttons:
+  - **Mergen:** Nutzer wählt das Ziel. Bestand, Rezeptzutaten, Packungen, Aliase, Preise und
+    Nährwert-Zuordnung werden auf das Ziel umgehängt, das andere Produkt wird in Grocy
+    entfernt (Grocy-Merge-Endpunkt `/stock/products/{keep}/merge/{remove}` per Contract-Test
+    prüfen, sonst schrittweise). Der Klick ist die Bestätigung fürs Löschen; `id_map` hält den
+    Verweis, damit alte IDs (Pläne, Logs) auflösbar bleiben.
+  - **Nicht mergen:** Paar landet in `dublette_entscheidung` und taucht nie wieder auf.
+  Läuft nach jedem Import und im monatlichen Kategorisierungslauf; das LLM darf Paare
+  vorschlagen, entscheidet aber nie selbst.
+
 ## KI-Einsatz und Kosten
 
 Alle KI-Aufrufe laufen über eine AI-Task-Entität in HA (OpenAI oder Anthropic, wählbar per
@@ -320,7 +345,9 @@ Planer und Nährwerte), danach Ausbau Phase für Phase.
 - **Phase 3 – Wochenplaner:** Kategorisierungslauf (vorgezogen, sobald Daten da sind),
   Scoring, Auswahl, Simulation mit Toleranz, Repair-Loop, Einkauf, Plan-Ansicht, Nährwerte,
   einfache Mahlzeiten, „Jetzt kochbar“.
-- **Phase 4 – Rezept-Import + Kuratierung.**
+- **Phase 4 – Rezept-Import + Kuratierung:** Import per Link (erledigt, inkl. KI-Zuordnung),
+  Rezeptbuch (Stöbern, Lesen, Bearbeiten), Produktdatenbank-Ansicht, Dubletten-Check mit
+  Mergen/Nicht mergen, Daumen hoch/runter. Rezeptbuch und Dubletten erst nach Go von Nils.
 - **Phase 5 – Optional:** Barcode-Scanner, Statistik, HA Assist mit App-Werkzeugen (ggf. als
   LLM-API der Bridge registriert), Embedding-Matching (sqlite-vec), MCP-Zugriff.
 - **Phase 6 – Angebote und Preise:** Prospekt-Adapter mit Healthcheck, Preistabelle, Scoring-Bonus.
