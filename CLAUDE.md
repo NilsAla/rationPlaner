@@ -33,6 +33,16 @@ nicht stillschweigend aufweichen. Nutzer ist erfahrener Sysadmin (HAOS auf N100,
 6. **Name ist Platzhalter.** Slug/Domain `ration` nur in `ration/config.yaml` und
    `custom_components/ration/const.py` definieren, nirgends sonst hart codieren.
 
+## Grocy
+
+- Getestet gegen Grocy 4.7.1. Verhalten, auf das wir bauen, ist in
+  `ration/app/inventory/contract.py` festgehalten und läuft in CI gegen Grocy im Container.
+- Userfield-Namen stehen nur in `ration/app/inventory/grocy.py` (`UF_*`) und werden per
+  `scripts/grocy_setup.py` angelegt, nie von Hand.
+- Abbuchen nutzt `allow_subproduct_substitution`, damit Parent-Produkte durch Varianten erfüllt werden.
+- Verwaltungsmethoden (`ensure_*`) sind idempotent und löschen nie. Vor jedem Löschen in Grocy
+  den Nutzer fragen.
+
 ## Tracking-Modi
 
 `exakt` (Menge + Ablauf je Charge), `menge` (Menge ohne Ablaufdruck), `fuellstand`

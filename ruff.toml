@@ -1,0 +1,9 @@
+# Für scripts/ und custom_components/. Die App nutzt ration/pyproject.toml.
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+
+[lint.isort]
+known-first-party = ["app"]

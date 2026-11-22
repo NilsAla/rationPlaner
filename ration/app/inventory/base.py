@@ -2,14 +2,25 @@
 
 Planer, Bon-Import und Gekocht-Flow arbeiten ausschließlich hiermit. Grocy-IDs,
 Endpunkte, Userfields und Einheitenlogik bleiben in app/inventory/grocy.py.
+
+Semantik, die jedes Backend einhalten muss (geprüft durch app/inventory/contract.py):
+- Abbuchen nimmt zuerst geöffnete Chargen, dann die mit dem frühesten Ablaufdatum.
+- Ein übergeordnetes Produkt wird durch den Bestand seiner Varianten erfüllt; Abbuchen
+  auf dem übergeordneten Produkt bucht Varianten ab.
+- Umbuchen in einen Gefrierort setzt das Ablaufdatum auf heute + Haltbarkeit
+  eingefroren, Umbuchen heraus auf heute + Haltbarkeit aufgetaut (jeweils wenn > 0).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import Protocol
+
+
+class InsufficientStockError(Exception):
+    """Mehr abbuchen oder umbuchen als vorhanden."""
 
 
 class TrackingMode(StrEnum):
@@ -17,6 +28,11 @@ class TrackingMode(StrEnum):
     MENGE = "menge"
     FUELLSTAND = "fuellstand"
     IMMER_DA = "immer_da"
+
+
+class DueType(IntEnum):
+    MHD = 1  # weiche Grenze
+    VERBRAUCHSDATUM = 2  # harte Grenze
 
 
 @dataclass(frozen=True)
@@ -35,6 +51,11 @@ class Product:
     tracking_mode: TrackingMode | None = None  # None = noch nicht kategorisiert
     grams_per_unit: float | None = None  # Pflicht für Nährwerte, setzt der Kategorisierungslauf
     tolerance_pct: int | None = None
+    due_type: DueType = DueType.MHD
+    shelf_life_days: int = 0
+    shelf_life_opened_days: int = 0
+    shelf_life_frozen_days: int = 0
+    shelf_life_thawed_days: int = 0
 
 
 @dataclass(frozen=True)
@@ -47,12 +68,25 @@ class Batch:
     opened: bool = False
 
 
+def consume_order(batch: Batch) -> tuple:
+    """Grocy-Standard: geöffnet zuerst, dann frühestes Ablaufdatum, dann Einbuchreihenfolge."""
+    return (not batch.opened, batch.best_before or date.max, int(batch.id))
+
+
 class InventoryBackend(Protocol):
     async def list_products(self) -> list[Product]: ...
 
+    async def get_product(self, product_id: str) -> Product: ...
+
     async def list_locations(self) -> list[Location]: ...
 
-    async def get_batches(self, product_id: str) -> list[Batch]: ...
+    async def get_batches(self, product_id: str, *, include_children: bool = False) -> list[Batch]:
+        """Chargen in Verbrauchsreihenfolge (geöffnet, dann frühestes Ablaufdatum)."""
+        ...
+
+    async def get_stock_amount(self, product_id: str) -> float:
+        """Bestand inklusive aller Varianten, falls es ein übergeordnetes Produkt ist."""
+        ...
 
     async def add_stock(
         self,
@@ -63,6 +97,12 @@ class InventoryBackend(Protocol):
         price: float | None = None,
     ) -> None: ...
 
-    async def consume(self, product_id: str, amount: float, *, fefo: bool = True) -> None:
-        """Bucht ab. Mit fefo=True immer zuerst die Charge, die am frühesten abläuft."""
+    async def consume(self, product_id: str, amount: float, *, spoiled: bool = False) -> None:
+        """Bucht ab, Reihenfolge wie get_batches. Wirft InsufficientStockError."""
+        ...
+
+    async def transfer(
+        self, product_id: str, amount: float, from_location_id: str, to_location_id: str
+    ) -> None:
+        """Bucht um, inklusive Ablaufdatum-Regel für Gefrierorte."""
         ...

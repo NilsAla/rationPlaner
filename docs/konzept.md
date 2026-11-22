@@ -278,7 +278,7 @@ Planer und Nährwerte), danach Ausbau Phase für Phase.
 | Punkt | Umgang |
 |---|---|
 | Bestandsdrift | Kühlschrank-Check, Drift-Kennzahl, nur Frischware exakt |
-| Grocy-API-Grenzen | Probe/Contract-Tests in Phase 0 |
+| Grocy-API-Grenzen | Probe/Contract-Tests: auf Grocy 4.7.1 verhalten sich Parent-Erfüllung, FEFO, Einfrieren und Auftauen wie benötigt. Auf der eigenen Instanz per `scripts/grocy_probe.py` prüfen |
 | Grocy-ID-Drift | Abgleich-Job, Soft-Delete |
 | Bon-Qualität | Regel-Vorverarbeitung, Alias je Markt, Test-Bons, Konfidenz-Schwelle |
 | Planer-Qualität | Abwechslungsregeln, Bewertungen, Tausch per Klick |
