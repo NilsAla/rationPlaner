@@ -13,6 +13,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -58,7 +59,8 @@ from app.settings import Settings, load_settings
 log = logging.getLogger("ration")
 INGRESS_IP = "172.30.32.2"  # Supervisor-Ingress-Proxy
 FUELLSTAND_TAGE = 14  # Füllstand je Produkt höchstens so oft abfragen
-INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
+STATIC_DIR = Path(__file__).parent / "static"
+INDEX_HTML = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 api = APIRouter(prefix="/api/v1")
 
@@ -186,8 +188,10 @@ async def rezepte(b: InventoryBackend = Depends(backend)) -> list[dict]:
 
 
 @api.get("/plan")
-async def plan(tage: int = 7, s: Session = Depends(session)) -> list[dict]:
-    von = date.today()
+async def plan(tage: int = 7, von: date | None = None, s: Session = Depends(session)) -> list[dict]:
+    """Planeinträge ab `von` (Standard: heute) für `tage` Tage."""
+    von = von or date.today()
+    tage = max(1, min(tage, 120))
     rows = s.scalars(
         select(PlanEintrag)
         .where(PlanEintrag.datum >= von, PlanEintrag.datum < von + timedelta(days=tage))
@@ -640,6 +644,16 @@ def create_app(
     @app.exception_handler(NotFoundError)
     async def not_found(request: Request, exc: NotFoundError) -> JSONResponse:
         return JSONResponse({"detail": f"Nicht gefunden: {exc}"}, status_code=404)
+
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.middleware("http")
+    async def static_nicht_cachen(request: Request, call_next):
+        """Nach einem Update sollen Browser die neue Oberfläche laden (ETag-Prüfung)."""
+        antwort = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            antwort.headers["Cache-Control"] = "no-cache"
+        return antwort
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def index() -> str:
