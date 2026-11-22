@@ -37,7 +37,7 @@ nicht stillschweigend aufweichen. Nutzer ist erfahrener Sysadmin (HAOS auf N100,
 
 - Getestet gegen Grocy 4.7.1. Verhalten, auf das wir bauen, ist in
   `ration/app/inventory/contract.py` festgehalten und läuft in CI gegen Grocy im Container.
-- Userfield-Namen stehen nur in `ration/app/inventory/grocy.py` (`UF_*`) und werden per
+- Userfield-Namen und Struktur stehen nur in `ration/app/inventory/grocy.py` (`UF_*`, `USERFIELDS`), angelegt per
   `scripts/grocy_setup.py` angelegt, nie von Hand.
 - Abbuchen nutzt `allow_subproduct_substitution`, damit Parent-Produkte durch Varianten erfüllt werden.
 - Verwaltungsmethoden (`ensure_*`) sind idempotent und löschen nie. Vor jedem Löschen in Grocy

@@ -60,6 +60,7 @@ def test_to_batch_nie_ablaufend():
 def test_list_products_echtes_grocy():
     async def run():
         async with GrocyBackend(GROCY_URL, GROCY_KEY) as backend:
+            await backend.ensure_structure()
             setup = await prepare_grocy(backend)
             await backend.set_product_userfields(
                 setup.child_id, {UF_TRACKING_MODUS: "exakt", UF_TOLERANZ_PCT: 30}

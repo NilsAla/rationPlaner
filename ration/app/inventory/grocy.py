@@ -35,6 +35,21 @@ UF_REZEPT_TAGS = "tags"
 UF_REZEPT_REST_HALTBARKEIT = "rest_haltbarkeit_tage"
 
 
+# Was scripts/grocy_setup.py anlegt: Lagerorte (Name, Gefrierort) und Userfields
+# (Entität, Name, Beschriftung, Typ, Optionen).
+LOCATIONS = [("Kühlschrank", False), ("Vorrat", False), ("Gefrierschrank", True)]
+USERFIELDS: list[tuple[str, str, str, str, list[str] | None]] = [
+    ("products", UF_TRACKING_MODUS, "Tracking-Modus", "preset-list", list(TrackingMode)),
+    ("products", UF_KATEGORIE, "Kategorie", "text-single-line", None),
+    ("products", UF_FUELLSTAND, "Füllstand", "preset-list", ["voll", "knapp", "leer"]),
+    ("products", UF_TOLERANZ_PCT, "Toleranz %", "number-integral", None),
+    ("recipes", UF_REZEPT_STATUS, "Status", "preset-list", ["getestet", "ungetestet"]),
+    ("recipes", UF_REZEPT_AUFWAND, "Aufwand", "preset-list", ["schnell", "normal", "aufwaendig"]),
+    ("recipes", UF_REZEPT_TAGS, "Tags", "text-single-line", None),
+    ("recipes", UF_REZEPT_REST_HALTBARKEIT, "Rest-Haltbarkeit (Tage)", "number-integral", None),
+]
+
+
 class GrocyError(Exception):
     pass
 
@@ -292,6 +307,18 @@ class GrocyBackend:
         if parent_id:
             body["parent_product_id"] = int(parent_id)
         return str(await self._create("products", body))
+
+    async def ensure_structure(self) -> list[tuple[str, str, str]]:
+        """Einheit g, Lagerorte und Userfields. Gibt (Art, Name, Status) je Objekt zurück."""
+        rows = [("Einheit", "g", "ok")]
+        await self.ensure_quantity_unit("g")
+        for name, is_freezer in LOCATIONS:
+            _, changed = await self.ensure_location(name, is_freezer=is_freezer)
+            rows.append(("Lagerort", name, "angelegt/korrigiert" if changed else "vorhanden"))
+        for entity, name, caption, field_type, options in USERFIELDS:
+            created = await self.ensure_userfield(entity, name, caption, field_type, options)
+            rows.append((f"Userfield {entity}", name, "angelegt" if created else "vorhanden"))
+        return rows
 
     async def set_product_userfields(self, product_id: str, values: dict[str, Any]) -> None:
         await self._put(f"/userfields/products/{product_id}", values)
