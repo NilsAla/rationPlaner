@@ -79,15 +79,23 @@ ordnet die KI offene Zutaten Produkten zu und schätzt fehlende Gewichte; der Co
 rechnet. Per MCP: `ration_rezept_import_vorschau` →
 `ration_rezept_import_uebernehmen`.
 
-## Rezeptbuch, Produkte, Dubletten
+## Web-App
 
-Tab *Rezepte*: Suchen, Filter „Jetzt kochbar“ und Tags, Rezeptleser mit Portionen-Skalierung
-und Bestandsampel, „Heute kochen“, Bearbeiten (Zutaten, Schritte, Tags, Status, Aufwand).
-Tab *Produkte*: alle Produkte mit Attributen, Bestand, Packungen, Aliasen und Rezepten,
-Filter „ohne Attribute“, Bearbeiten. Oben stehen mögliche Dubletten (Namensähnlichkeit ab
-Option `dubletten_schwelle`, Standard 0,9) nebeneinander mit **Mergen** (Grocy-Merge: Bestand,
-Rezeptzutaten, Varianten; App: Aliase, Packungen) und **Nicht mergen** (Paar wird gemerkt).
-Mergen gibt es als Service `ration.dubletten_mergen`, bewusst nicht als LLM-Tool.
+Seitenleiste mit Gruppen (auf dem Handy Burgermenü), globale Suche mit `/`:
+
+- **Küche:** Übersicht, Heute kochen (mit 👍/😐/👎 danach), Wochenplan als Kalender, Einkauf.
+- **Rezepte:** Rezeptbuch (Tabelle/Karten, Filter, Favoriten, Massenaktionen), Leser mit
+  Meinung und Verlauf, Editor, Import per Link.
+- **Vorrat:** Inventar je Charge mit Massenaktionen (verbraucht, verdorben, umlagern, geöffnet,
+  Ablauf verschieben), Einbuchen von Hand und per Bon, Reste und Füllstand.
+- **Datenbank:** alle Produkte, auch „bekannt, nicht da“, Massen setzen (Kategorie, Modus,
+  Lagerort, Haltbarkeit …), gezielt KI kategorisieren, Löschen nur ohne Bestand/Rezepte.
+  Dubletten Feld für Feld mit **Zusammenführen** (Grocy-Merge plus Aliase, Packungen) und
+  **Kein Duplikat**. Packungsgrößen, KI-Vorschläge als Diff.
+- **System:** Einstellungen, Änderungsprotokoll (jeder schreibende Aufruf, Quelle UI/Bridge/
+  extern), KI-Protokoll (Anweisung, Schema, Rohantwort, Dauer).
+
+Mergen gibt es auch als Service `ration.dubletten_mergen`, bewusst nicht als LLM-Tool.
 
 ## Reste und Füllstand
 
@@ -117,10 +125,13 @@ siehe Konzept, Abschnitt „Stammdaten-Aufbau“.
 
 ## Wochenplaner
 
-Tab *Woche* → *Plan vorschlagen* (oder Service `ration.plan_erzeugen`): Der Code bewertet alle
-Rezepte (läuft bald ab, Bestand, Packungen, Abwechslung), die KI wählt je Tag aus, der Code
-simuliert Einkauf mit Toleranz und Verderb. Feste Tage bleiben. Der Vorschlag kommt erst mit
-*Übernehmen* in den Plan; ⇄ tauscht einen Tag ohne KI. Für die Wochen-Automation:
+*Wochenplan*: Kochtage im Kalender anklicken, Regler setzen (weniger Fleisch ↔ gern Fleisch,
+günstiger ↔ teurer, Vorrat abbauen ↔ extravagant, Lieblinge ↔ Neues), Tags ausschließen,
+*Plan vorschlagen* (oder Service `ration.plan_erzeugen`). Der Code bewertet alle Rezepte (läuft
+bald ab, Bestand, Packungen, Abwechslung, Regler, Aufwand je Wochentag), die KI wählt je Tag
+aus, der Code simuliert Einkauf mit Toleranz und Verderb. Feste Tage bleiben. Der Vorschlag
+kommt erst mit *Übernehmen* in den Plan; ✎ → ⇄ tauscht einen Tag ohne KI. Standard-Kochtage,
+Aufwand je Wochentag und Regler stehen unter *Einstellungen*. Für die Wochen-Automation:
 
 ```yaml
 action: ration.plan_erzeugen

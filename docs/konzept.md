@@ -298,7 +298,30 @@ mit „Übernehmen“ (oder `uebernehmen: true`, für die Wochen-Automation).
   Bestand, ohne LLM. `GET /plan/simulation` rechnet den aktuellen Plan durch.
 - **Annahmen:** Standard 2 Portionen je Tag (1 essen, 1 Rest mittags), nur Abendessen.
   Offen: einfache Mahlzeiten (Frühstück/Abendbrot), Reste-Tage, Makro-Fit (braucht
-  Nährwerte), Bewertungen (Daumen); `/einkaufsliste` rechnet noch ohne Toleranz.
+  Nährwerte); `/einkaufsliste` rechnet noch ohne Toleranz (die Einkaufsseite der Web-App
+  zeigt die Simulation mit Toleranz).
+
+**Präferenzen und Wochenrhythmus (0.14.0, Wunsch Nils):** Einstellungen liegen in der App-DB
+(`einstellung`, Gruppen `planer`, `praeferenzen`, `anzeige`, `GET/PUT/DELETE /einstellungen`),
+`plan/erzeugen` nimmt sie als Standard und erlaubt je Lauf Abweichungen (`praeferenzen`,
+`max_ungetestet`, `daten` = beliebige Tage aus dem Kalender statt `start` + `tage`).
+- **Regler** −1 … 1, alle als zusätzliche Score-Terme, die LLM-Auswahl bleibt unverändert:
+  - *Fleisch ↔ Gemüse:* + 1,5 · Regler · (Fleischanteil − Gemüseanteil) der Zutaten, Anteile
+    über die Produktkategorie (Fleisch/Fisch vs. Gemüse/Obst/Hülsenfrüchte/Kräuter).
+  - *Günstiger ↔ teurer:* + 1,0 · Regler · relative Kosten je Portion gegenüber dem Median.
+  - *Vorrat abbauen ↔ extravagant:* Bestandsterme (Aufbrauch, Deckung, Fit) werden mit
+    (1 − 0,5 · Regler) gewichtet, bei > 0 zusätzlich + Regler · (1 − Deckung).
+  - *Lieblinge ↔ Neues:* − 1,5 · Regler · Beliebtheit (Favorit, Daumen, wie oft gekocht) und bei
+    > 0 + Regler für nie gekochte Rezepte. Daumen zählen immer mit + 0,5 · Bewertung.
+- **Ausschluss-Tags:** Rezepte mit diesen Tags sind keine Kandidaten.
+- **Aufwand je Wochentag:** höchster Aufwand (schnell/normal/aufwändig). Zu aufwändige Rezepte
+  kosten − 2 im Score und sind für das LLM ein Fehler im Repair-Loop.
+- **Kochtage:** Standard-Wochentage für die Vorauswahl im Kalender; im Kalender lassen sich
+  beliebige Tage an- und abwählen.
+- **Bewertung nach dem Kochen:** 👍/😐/👎 je Kochvorgang (`kochvorgang`), letzte Bewertung gilt
+  als Meinung zum Rezept (`rezept_bewertung` mit Favorit und Notiz).
+- **Annahme:** Rezepte ohne Kategorie-Treffer zählen beim Fleisch-Regler neutral; ohne Preise
+  wirkt der Preis-Regler nicht.
 
 ## Kochen und Abbuchung
 
@@ -350,6 +373,39 @@ eine normale `todo`-Entität. Abhaken ≠ Einbuchen.
 
 Die Card wird von der Bridge per Static Path ausgeliefert und als Lovelace-Resource
 registriert (HACS kann aus einem Repo nicht Integration und Card zugleich installieren).
+
+### Web-App (0.14.0)
+
+Neu aufgebaut auf Wunsch Nils: Vanilla-ES-Module ohne Build (`app/static/`), Hash-Router,
+jede Seite ein Modul unter `static/js/views/`, gemeinsame Helfer in `static/js/lib.js`. Alle
+Pfade relativ (Ingress), statische Dateien mit `Cache-Control: no-cache`, Module mit `?v=`.
+
+- **Navigation:** Seitenleiste mit Gruppen und Unterpunkten (einklappbar, gemerkt im Browser),
+  auf dem Handy als Burgermenü. Globale Suche (Taste `/`) über Seiten, Rezepte und Produkte.
+  Badges für offene Dubletten und KI-Vorschläge. Hell/Dunkel/System.
+- **Küche:** Übersicht (Heute, läuft bald ab, Woche, Zu tun, Reste, Vorrat), Heute kochen mit
+  Bewertung, Wochenplan als Kalender (Tage anklicken, Schnellwahl, Rezept direkt eintragen,
+  Planer mit Reglern und Ausschluss-Tags), Einkauf nach Kategorie gruppiert mit Kosten.
+- **Rezepte:** Rezeptbuch (Tabelle oder Karten, Suche, Tags, kochbar, Favoriten, „Rezepte mit
+  Produkt X“), Massenaktionen (Tags, Aufwand, Status, Favorit, Löschen), Leser mit Meinung und
+  Verlauf, Editor, Import per Link.
+- **Vorrat:** Inventar je Charge (Filter bald/abgelaufen/gefroren/geöffnet, bearbeiten, Massen:
+  verbraucht, verdorben, umlagern, geöffnet, Ablauf verschieben), Einbuchen mehrzeilig und Bon,
+  Reste und Füllstand.
+- **Datenbank:** alle Produkte inkl. „bekannt, nicht da“ und „in keinem Rezept“, Massen setzen
+  (Kategorie, Modus, Lagerort, Toleranz, Haltbarkeiten, Variante), gezielt KI kategorisieren,
+  Löschen mit Schutz; Dubletten Feld für Feld; Packungsgrößen; KI-Vorschläge als Diff.
+- **System:** Einstellungen (Wochenrhythmus, Planer, Präferenzen, Anzeige, App-Optionen nur
+  lesend), Änderungsprotokoll, KI-Protokoll.
+
+**Protokolle (`app/protokoll.py`):** Jeder schreibende `/api/v1/`-Aufruf landet in
+`aenderung_log` (Quelle `ui`/`bridge`/`extern` über Header `X-Ration-Client` bzw. Ingress-IP,
+Body ohne Geheimnisse, max. 8 kB, die letzten 3000). Jede `ai_task`-Anfrage landet mit
+Anweisung, Schema, Anhängen, Rohantwort, Fehler und Dauer in `ki_log` (die letzten 500).
+
+**Löschen:** Produkte nur ohne Bestand, Varianten und Rezeptverwendung (Grocy löscht sonst
+kaskadierend mit); Rezepte entfernen geplante, nicht gekochte Tage. Beides nur nach Rückfrage
+in der UI.
 
 ### Rezeptbuch und Produktdatenbank (Web-App)
 
@@ -413,7 +469,7 @@ Planer und Nährwerte), danach Ausbau Phase für Phase.
   einfache Mahlzeiten, „Jetzt kochbar“.
 - **Phase 4 – Rezept-Import + Kuratierung:** Import per Link (erledigt, inkl. KI-Zuordnung),
   Rezeptbuch (Stöbern, Lesen, Bearbeiten), Produktdatenbank-Ansicht, Dubletten-Check mit
-  Mergen/Nicht mergen (erledigt, 0.8.0), Daumen hoch/runter.
+  Mergen/Nicht mergen (erledigt, 0.8.0), Daumen hoch/runter (erledigt, 0.14.0).
 - **Phase 5 – Optional:** Barcode-Scanner, Statistik, HA Assist mit App-Werkzeugen (ggf. als
   LLM-API der Bridge registriert), Embedding-Matching (sqlite-vec), MCP-Zugriff.
 - **Phase 6 – Angebote und Preise:** Prospekt-Adapter mit Healthcheck, Preistabelle, Scoring-Bonus.
