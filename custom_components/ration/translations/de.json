@@ -1,0 +1,28 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "rationPlaner verbinden",
+        "data": { "url": "URL der rationPlaner-App" }
+      }
+    },
+    "error": {
+      "cannot_connect": "App nicht erreichbar",
+      "incompatible_version": "API-Version der App passt nicht zur Bridge"
+    },
+    "abort": { "already_configured": "Bereits eingerichtet" }
+  },
+  "services": {
+    "gekocht": {
+      "name": "Gekocht",
+      "description": "Bucht ein gekochtes Rezept ab.",
+      "fields": {
+        "rezept_id": { "name": "Rezept", "description": "ID des Rezepts" },
+        "portionen_gekocht": { "name": "Portionen gekocht", "description": "Gekochte Portionen" },
+        "portionen_gegessen": { "name": "Portionen gegessen", "description": "Gegessene Portionen, der Rest wird als Rest eingebucht" }
+      }
+    },
+    "plan_erzeugen": { "name": "Plan erzeugen", "description": "Erzeugt den Wochenplan." },
+    "kategorisieren": { "name": "Kategorisieren", "description": "Startet den Kategorisierungslauf (Ergebnis als Diff zur Review)." }
+  }
+}

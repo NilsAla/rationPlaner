@@ -1,0 +1,8 @@
+#!/bin/sh
+# Wird vom Supervisor vor jedem Backup aufgerufen (backup_pre).
+# Erzeugt eine konsistente Kopie der SQLite-DB, auch wenn gerade geschrieben wird.
+set -e
+DB=/data/ration.db
+if [ -f "$DB" ]; then
+  sqlite3 "$DB" ".backup /data/ration.backup.db"
+fi

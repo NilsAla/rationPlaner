@@ -1,0 +1,33 @@
+# Slug "ration" ist ein Platzhalter. Bei Umbenennung auch custom_components/ration/const.py anpassen.
+name: rationPlaner
+version: "0.1.0"
+slug: ration
+description: Küchenbestand, Wochenplan und Einkaufsliste auf Basis von Grocy
+url: https://github.com/NilsAla/rationPlaner
+arch:
+  - amd64
+  - aarch64
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:silverware-fork-knife
+panel_title: rationPlaner
+homeassistant_api: true
+map:
+  - type: media
+    read_only: false
+backup_pre: /usr/local/bin/ration-backup
+options:
+  grocy_url: ""
+  grocy_api_key: ""
+  ai_task_entity: ""
+  todo_entity: ""
+  toleranz_default_pct: 10
+  bon_konfidenz_schwelle: 0.85
+schema:
+  grocy_url: str
+  grocy_api_key: password
+  ai_task_entity: str
+  todo_entity: str
+  toleranz_default_pct: int(0,100)
+  bon_konfidenz_schwelle: float(0,1)
