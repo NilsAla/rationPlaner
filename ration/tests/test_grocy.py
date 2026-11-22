@@ -105,3 +105,33 @@ def test_to_product_packung_und_mindestbestand():
     assert (p.pack_unit, p.pack_size, p.min_stock) == ("Dose", 400.0, 400.0)
     ohne = GrocyBackend._to_product({**raw, "qu_id_purchase": 1}, {1: "g"}, {}, {})
     assert ohne.pack_unit is None and ohne.pack_size is None
+
+
+@pytest.mark.skipif(not GROCY_URL, reason="RATION_TEST_GROCY_URL nicht gesetzt")
+def test_set_pack_beide_richtungen():
+    async def run():
+        async with GrocyBackend(GROCY_URL, GROCY_KEY) as backend:
+            await testdaten.anlegen(backend)
+            nudeln = next(p for p in await backend.list_products() if p.name == "Nudeln")
+            await backend.set_pack(nudeln.id, "Großpackung", 1000)
+            await backend.set_pack(nudeln.id, "Großpackung", 1000)  # idempotent
+            neu = await backend.get_product(nudeln.id)
+            resolved = await backend._get("/objects/quantity_unit_conversions")
+            units = {u["name"]: u["id"] for u in await backend._get("/objects/quantity_units")}
+            await backend.set_pack(nudeln.id, "Packung", 500)  # zurück für andere Tests
+            return neu, resolved, units
+
+    neu, resolved, units = asyncio.run(run())
+    assert (neu.pack_unit, neu.pack_size) == ("Großpackung", 1000)
+    faktoren = {
+        (c["from_qu_id"], c["to_qu_id"]): float(c["factor"])
+        for c in resolved
+        if c["product_id"] == int(neu.id)
+    }
+    gross, g = units["Großpackung"], units["g"]
+    assert faktoren[(gross, g)] == 1000 and faktoren[(g, gross)] == 0.001
+
+
+def test_unbekanntes_rezept_404(client):
+    resp = client.put("/api/v1/plan/2026-01-01", json={"rezept_id": "gibtsnicht"})
+    assert resp.status_code == 404

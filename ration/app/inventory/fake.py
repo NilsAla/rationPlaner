@@ -10,6 +10,7 @@ from app.inventory.base import (
     Batch,
     InsufficientStockError,
     Location,
+    NotFoundError,
     Product,
     Recipe,
     consume_order,
@@ -39,7 +40,13 @@ class FakeBackend:
         return list(self._products.values())
 
     async def get_product(self, product_id: str) -> Product:
+        if product_id not in self._products:
+            raise NotFoundError(f"Produkt {product_id}")
         return self._products[product_id]
+
+    async def set_pack(self, product_id: str, unit: str, size: float) -> None:
+        product = await self.get_product(product_id)
+        self._products[product_id] = replace(product, pack_unit=unit, pack_size=size)
 
     async def list_locations(self) -> list[Location]:
         return list(self._locations.values())
@@ -48,6 +55,8 @@ class FakeBackend:
         return list(self._recipes.values())
 
     async def get_recipe(self, recipe_id: str) -> Recipe:
+        if recipe_id not in self._recipes:
+            raise NotFoundError(f"Rezept {recipe_id}")
         return self._recipes[recipe_id]
 
     async def list_all_batches(self) -> list[Batch]:

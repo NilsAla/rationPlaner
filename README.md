@@ -40,8 +40,9 @@ und eine To-do-Entität für die Einkaufsliste.
 Beide Services liefern eine Antwort (`response_variable`), z. B. was gefehlt hat.
 
 Lesend (nur mit Antwort): `ration.heute`, `ration.status`, `ration.bestand`, `ration.produkte`,
-`ration.lagerorte`, `ration.rezepte`, `ration.plan`. Schreibend: `ration.plan_setzen`,
-`ration.plan_loeschen`, `ration.einbuchen`. Listen kommen als `{"items": [...]}`.
+`ration.lagerorte`, `ration.rezepte`, `ration.plan`, `ration.packungen`. Schreibend:
+`ration.plan_setzen`, `ration.plan_loeschen`, `ration.einbuchen`, `ration.packung_setzen`,
+`ration.packung_hinzufuegen`, `ration.packung_loeschen`. Listen kommen als `{"items": [...]}`.
 
 ## LLM und MCP
 
@@ -55,6 +56,12 @@ Die Bridge registriert die LLM-API **rationPlaner**. Jede Aktion oben ist dort e
 - **ha-mcp o. Ä.:** die Services oben mit `return_response` aufrufen.
 
 Test: `ration.rezepte` unter Entwicklerwerkzeuge → Aktionen mit „Antwort“ ausführen.
+
+## Packungsgrößen
+
+Eingekauft wird in ganzen Packungen. Standard-Packung je Produkt = Einkaufseinheit in Grocy
+(mit Umrechnung), weitere Größen (400/800 g, Angebote mit Ablauf) in der App. Pflege im Tab
+*Packungen* oder per Service. Die Einkaufsliste wählt die Kombination mit dem kleinsten Überhang.
 
 ## Testrezepte
 

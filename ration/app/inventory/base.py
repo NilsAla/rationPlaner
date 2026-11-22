@@ -23,6 +23,10 @@ class InsufficientStockError(Exception):
     """Mehr abbuchen oder umbuchen als vorhanden."""
 
 
+class NotFoundError(Exception):
+    """Produkt, Rezept o. Ä. existiert im Backend nicht."""
+
+
 class TrackingMode(StrEnum):
     EXAKT = "exakt"
     MENGE = "menge"
@@ -127,6 +131,10 @@ class InventoryBackend(Protocol):
 
     async def consume(self, product_id: str, amount: float, *, spoiled: bool = False) -> None:
         """Bucht ab, Reihenfolge wie get_batches. Wirft InsufficientStockError."""
+        ...
+
+    async def set_pack(self, product_id: str, unit: str, size: float) -> None:
+        """Setzt die Standard-Packung: Einkaufseinheit `unit` mit `size` Bestandseinheiten."""
         ...
 
     async def transfer(

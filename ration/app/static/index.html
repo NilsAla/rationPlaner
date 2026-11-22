@@ -47,11 +47,13 @@
   <button data-tab="heute" class="on">Heute</button>
   <button data-tab="woche">Woche</button>
   <button data-tab="bestand">Bestand</button>
+  <button data-tab="packungen">Packungen</button>
 </nav>
 <main>
   <section id="heute" class="on"></section>
   <section id="woche"></section>
   <section id="bestand"></section>
+  <section id="packungen"></section>
 </main>
 <div id="msg"></div>
 <script>
@@ -64,7 +66,7 @@ const dmy = (s) => s ? new Date(s).toLocaleDateString("de-DE", {day: "2-digit", 
 async function api(path, opts = {}) {
   const r = await fetch("api/v1/" + path, {headers: {"Content-Type": "application/json"}, ...opts});
   const body = r.status === 204 ? null : await r.json();
-  if (!r.ok) throw new Error(body?.detail ?? r.statusText);
+  if (!r.ok) throw new Error(Array.isArray(body?.detail) ? body.detail.map((d) => d.msg).join(", ") : body?.detail ?? r.statusText);
   return body;
 }
 function say(text) { const m = $("#msg"); m.textContent = text; m.style.display = "block";
@@ -159,9 +161,46 @@ async function loadBestand() {
   });
 }
 
+async function loadPackungen(auswahl) {
+  const liste = await api("packungen"), el = $("#packungen");
+  if (!liste.length) { el.innerHTML = `<div class="card"><p class="muted">Keine Produkte.</p></div>`; return; }
+  const p = liste.find((x) => x.produkt_id === auswahl) ?? liste[0];
+  const groesse = (g) => `${esc(g.einheit)} ${fmt(g.menge)} ${esc(p.einheit)}`;
+  el.innerHTML = `<div class="card"><h2>Packungsgrößen</h2>
+    <label>Produkt</label><select id="pp">${liste.map((x) =>
+      `<option value="${x.produkt_id}" ${x.produkt_id === p.produkt_id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>
+    <label>Standard (meistverkaufte Größe)</label>
+    <div class="row"><input id="se" placeholder="Einheit, z. B. Dose" value="${esc(p.standard?.einheit ?? "")}">
+      <input id="sm" type="number" min="0" step="any" placeholder="Menge in ${esc(p.einheit)}" value="${p.standard?.menge ?? ""}"></div>
+    <button class="go" id="sstd">Standard speichern</button>
+    <label>Weitere Größen</label>
+    ${p.weitere.length ? `<table>${p.weitere.map((w) => `<tr><td>${groesse(w)}</td>
+      <td class="muted">${esc(w.quelle)}${w.gueltig_bis ? " bis " + dmy(w.gueltig_bis) : ""}</td>
+      <td style="width:40px"><button data-del="${w.id}" style="border:0;background:none;color:var(--bad);cursor:pointer">✕</button></td></tr>`).join("")}</table>`
+      : `<p class="muted">Keine.</p>`}
+    <div class="row"><input id="we" placeholder="Einheit"><input id="wm" type="number" min="0" step="any" placeholder="Menge in ${esc(p.einheit)}"></div>
+    <button class="go" id="wadd" style="background:none;color:var(--accent);border:1px solid var(--line)">Größe hinzufügen</button></div>
+    <div class="card"><h2>Übersicht</h2><table>${liste.map((x) => `<tr><td>${esc(x.name)}</td>
+      <td>${x.standard ? `${esc(x.standard.einheit)} ${fmt(x.standard.menge)} ${esc(x.einheit)}` : `<span class="muted">–</span>`}</td>
+      <td class="muted">${x.weitere.map((w) => fmt(w.menge)).join(", ")}</td></tr>`).join("")}</table></div>`;
+  const id = p.produkt_id;
+  $("#pp").onchange = () => guarded(() => loadPackungen($("#pp").value));
+  $("#sstd").onclick = () => guarded(async () => {
+    await api(`produkte/${id}/packung`, {method: "PUT", body: JSON.stringify({einheit: $("#se").value, menge: +$("#sm").value})});
+    say("Standard gespeichert"); loadPackungen(id);
+  });
+  $("#wadd").onclick = () => guarded(async () => {
+    await api(`produkte/${id}/packungen`, {method: "POST", body: JSON.stringify({einheit: $("#we").value, menge: +$("#wm").value})});
+    say("Größe hinzugefügt"); loadPackungen(id);
+  });
+  document.querySelectorAll("[data-del]").forEach((b) => b.onclick = () => guarded(async () => {
+    await api(`packungen/${b.dataset.del}`, {method: "DELETE"}); loadPackungen(id);
+  }));
+}
+
 function load(tab) {
   guarded(loadStatus);
-  guarded({heute: loadHeute, woche: loadWoche, bestand: loadBestand}[tab]);
+  guarded({heute: loadHeute, woche: loadWoche, bestand: loadBestand, packungen: () => loadPackungen()}[tab]);
 }
 load("heute");
 </script>

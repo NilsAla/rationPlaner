@@ -135,3 +135,12 @@ async def test_llm_api(hass: HomeAssistant, aioclient_mock):
 
     await hass.config_entries.async_unload(entry.entry_id)
     assert DOMAIN not in {api.id for api in llm.async_get_apis(hass)}
+
+
+async def test_service_packung_loeschen_pfad(hass: HomeAssistant, aioclient_mock):
+    await _setup(hass, aioclient_mock)
+    aioclient_mock.delete(f"{URL}/api/v1/packungen/7", status=204)
+    await hass.services.async_call(DOMAIN, "packung_loeschen", {"packung_id": 7}, blocking=True)
+    assert any(
+        c[0] == "DELETE" and str(c[1]).endswith("/packungen/7") for c in aioclient_mock.mock_calls
+    )

@@ -16,6 +16,7 @@ from app.inventory.base import (
     Ingredient,
     InsufficientStockError,
     Location,
+    NotFoundError,
     Product,
     Recipe,
     TrackingMode,
@@ -98,6 +99,8 @@ class GrocyBackend:
                 message = resp.json().get("error_message", resp.text)
             except ValueError:
                 message = resp.text
+            if resp.status_code == 404 or message == "Object not found":
+                raise NotFoundError(f"{method} {path}: {message}")
             if "cannot be >" in message or "not enough" in message.lower():
                 raise InsufficientStockError(message)
             raise GrocyError(f"{method} {path}: {resp.status_code} {message}")
@@ -366,32 +369,44 @@ class GrocyBackend:
         return str(await self._create("products", body))
 
     async def ensure_pack(
-        self, product_id: str, unit_id: str, size: float, *, min_stock: float = 0
+        self, product_id: str, unit_id: str, size: float, *, min_stock: float | None = None
     ) -> None:
         """Setzt Einkaufseinheit, Packungsgröße (in Bestandseinheit) und Mindestbestand.
 
-        Idempotent: legt die produktspezifische Umrechnung an oder korrigiert ihren Faktor.
+        Idempotent. Grocy legt beim Wechsel der Einkaufseinheit selbst Umrechnungen mit
+        Faktor 1 in beide Richtungen an, deshalb erst die Einheit setzen, dann beide
+        Richtungen anlegen oder korrigieren.
         """
         product = await self._get(f"/objects/products/{product_id}")
         pid, qu, stock = int(product_id), int(unit_id), int(product["qu_id_stock"])
-        if qu != stock:
-            found = await self._find(
-                "quantity_unit_conversions", product_id=pid, from_qu_id=qu, to_qu_id=stock
-            )
-            if found is None:
-                body = {"product_id": pid, "from_qu_id": qu, "to_qu_id": stock, "factor": size}
-                await self._create("quantity_unit_conversions", body)
-            elif float(found["factor"]) != size:
-                await self._put(
-                    f"/objects/quantity_unit_conversions/{found['id']}", {"factor": size}
-                )
         changes: dict[str, Any] = {}
         if int(product["qu_id_purchase"]) != qu:
             changes["qu_id_purchase"] = qu
-        if float(product.get("min_stock_amount") or 0) != min_stock:
+        if min_stock is not None and float(product.get("min_stock_amount") or 0) != min_stock:
             changes["min_stock_amount"] = min_stock
         if changes:
             await self._put(f"/objects/products/{product_id}", changes)
+        if qu == stock:
+            return
+        conversions = [
+            c
+            for c in await self._get("/objects/quantity_unit_conversions")
+            if c.get("product_id") == pid
+        ]
+        for von, nach, faktor in ((qu, stock, size), (stock, qu, 1 / size)):
+            found = next(
+                (c for c in conversions if c["from_qu_id"] == von and c["to_qu_id"] == nach), None
+            )
+            if found is None:
+                body = {"product_id": pid, "from_qu_id": von, "to_qu_id": nach, "factor": faktor}
+                await self._create("quantity_unit_conversions", body)
+            elif abs(float(found["factor"]) - faktor) > 1e-9:
+                await self._put(
+                    f"/objects/quantity_unit_conversions/{found['id']}", {"factor": faktor}
+                )
+
+    async def set_pack(self, product_id: str, unit: str, size: float) -> None:
+        await self.ensure_pack(product_id, await self.ensure_quantity_unit(unit), size)
 
     async def ensure_structure(self) -> list[tuple[str, str, str]]:
         """Einheit g, Lagerorte und Userfields. Gibt (Art, Name, Status) je Objekt zurück."""

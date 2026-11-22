@@ -8,17 +8,18 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import API_VERSION, __version__, kueche, testdaten
-from app.db import PlanEintrag, make_engine
+from app.db import Packung, PlanEintrag, make_engine
 from app.ha import HomeAssistant, SupervisorHomeAssistant
-from app.inventory.base import InventoryBackend
+from app.inventory.base import InventoryBackend, NotFoundError
 from app.inventory.grocy import GrocyBackend
 from app.settings import Settings, load_settings
 
@@ -74,6 +75,16 @@ class GekochtIn(BaseModel):
     rezept_id: str | None = None  # None = Rezept aus dem Plan für heute
     portionen_gekocht: int = Field(ge=1, le=12)
     portionen_gegessen: int = Field(ge=0, le=12)
+
+
+class PackungIn(BaseModel):
+    einheit: str = Field(min_length=1, max_length=40)
+    menge: float = Field(gt=0)
+
+
+class WeiterePackungIn(PackungIn):
+    quelle: Literal["manuell", "bon", "angebot", "llm"] = "manuell"
+    gueltig_bis: date | None = None
 
 
 class EinkaufslisteIn(BaseModel):
@@ -224,6 +235,82 @@ async def gekocht(
     return {"rezept": recipe.name, **asdict(ergebnis)}
 
 
+def weitere_packungen(s: Session) -> dict[str, list[kueche.Groesse]]:
+    """Weitere Packungsgrößen je Produkt, abgelaufene Angebote ausgenommen."""
+    heute = date.today()
+    result: dict[str, list[kueche.Groesse]] = {}
+    for p in s.scalars(select(Packung)):
+        if p.gueltig_bis is None or p.gueltig_bis >= heute:
+            result.setdefault(p.produkt_id, []).append(kueche.Groesse(p.einheit, p.menge, p.quelle))
+    return result
+
+
+@api.get("/packungen")
+async def packungen(
+    s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+) -> list[dict]:
+    """Je Produkt Standard-Packung (Grocy) und weitere Größen (App)."""
+    weitere: dict[str, list[dict]] = {}
+    for p in s.scalars(select(Packung).order_by(Packung.menge)):
+        weitere.setdefault(p.produkt_id, []).append(
+            {
+                "id": p.id,
+                "einheit": p.einheit,
+                "menge": p.menge,
+                "quelle": p.quelle,
+                "gueltig_bis": p.gueltig_bis,
+            }
+        )
+    return [
+        {
+            "produkt_id": p.id,
+            "name": p.name,
+            "einheit": p.unit,
+            "standard": {"einheit": p.pack_unit, "menge": p.pack_size} if p.pack_size else None,
+            "weitere": weitere.get(p.id, []),
+        }
+        for p in sorted(await b.list_products(), key=lambda p: p.name.lower())
+    ]
+
+
+@api.put("/produkte/{produkt_id}/packung")
+async def packung_setzen(
+    produkt_id: str, data: PackungIn, b: InventoryBackend = Depends(backend)
+) -> dict:
+    """Setzt die Standard-Packung (meistverkaufte Größe) in Grocy."""
+    await b.get_product(produkt_id)
+    await b.set_pack(produkt_id, data.einheit.strip(), data.menge)
+    return {"produkt_id": produkt_id, "einheit": data.einheit.strip(), "menge": data.menge}
+
+
+@api.post("/produkte/{produkt_id}/packungen", status_code=201)
+async def packung_hinzufuegen(
+    produkt_id: str,
+    data: WeiterePackungIn,
+    s: Session = Depends(session),
+    b: InventoryBackend = Depends(backend),
+) -> dict:
+    """Weitere Packungsgröße, z. B. 800-g-Dose oder Angebotsgröße mit Ablauf."""
+    await b.get_product(produkt_id)
+    p = Packung(
+        produkt_id=produkt_id,
+        einheit=data.einheit.strip(),
+        menge=data.menge,
+        quelle=data.quelle,
+        gueltig_bis=data.gueltig_bis,
+    )
+    s.add(p)
+    s.commit()
+    return {"id": p.id, "produkt_id": produkt_id, "einheit": p.einheit, "menge": p.menge}
+
+
+@api.delete("/packungen/{packung_id}", status_code=204)
+async def packung_loeschen(packung_id: int, s: Session = Depends(session)) -> None:
+    if p := s.get(Packung, packung_id):
+        s.delete(p)
+        s.commit()
+
+
 @api.post("/einkaufsliste")
 async def einkaufsliste(
     data: EinkaufslisteIn,
@@ -245,7 +332,7 @@ async def einkaufsliste(
         )
     ).all()
     geplant = [(await b.get_recipe(r.rezept_id), r.portionen) for r in rows]
-    fehlend = await kueche.bedarf(b, geplant)
+    fehlend = await kueche.bedarf(b, geplant, weitere_packungen(s))
     vorhanden = [item.lower() for item in await ha.todo_items(todo)]
     neu, schon_da = [], []
     for pos in fehlend:
@@ -309,6 +396,10 @@ def create_app(
 
     app = FastAPI(title="rationPlaner", version=__version__, lifespan=lifespan)
     app.include_router(api)
+
+    @app.exception_handler(NotFoundError)
+    async def not_found(request: Request, exc: NotFoundError) -> JSONResponse:
+        return JSONResponse({"detail": f"Nicht gefunden: {exc}"}, status_code=404)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def index() -> str:

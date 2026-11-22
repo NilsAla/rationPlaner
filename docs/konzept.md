@@ -74,11 +74,13 @@ nur Zuordnungen, Präferenzen, Planungsdaten und Nährwerte und referenziert Gro
 | Übergeordnetes Produkt | Grocy | Gruppiert Varianten (Brokkoli → frisch, TK) |
 | Einheiten + Umrechnung | Grocy | Stück ↔ g, Packung ↔ g, EL ↔ g, produktspezifisch. **Gramm-Umrechnung ist für jedes Produkt Pflicht** |
 | Barcode | Grocy | Mehrere je Produkt, jeweils mit eigener Menge |
+| Standard-Packung | Grocy | Einkaufseinheit des Produkts + produktspezifische Umrechnung (Dose = 400 g) |
 | Charge | Grocy | Menge, Einkaufsdatum, Ablaufdatum, Lagerort, geöffnet |
 | Lagerort | Grocy | Kühlschrank, Vorrat, Gefrierschrank (Gefrierort) |
 | Rezept | Grocy | Zutaten mit Mengen, Grundportionen, Schritte |
 | Produkt-Userfields | Grocy | `tracking_modus`, `kategorie`, `fuellstand`, `toleranz_pct` |
 | Rezept-Userfields | Grocy | `status`, `aufwand`, `tags`, `rest_haltbarkeit_tage` |
+| `packung` | App | Weitere Packungsgrößen je Produkt: Einheit, Menge, Quelle (manuell/bon/angebot/llm), gültig bis (Angebot) |
 | `bon_alias` | App | Bon-Text je Markt → Produkt + Standardmenge |
 | `praeferenz` | App | Pro übergeordnetem Produkt/Kategorie: TK / frisch / egal |
 | `rezept_meta` | App | Quelle, „muss frisch sein“ je Zutat, `toleranz_pct`-Override je Zutat |
@@ -126,6 +128,24 @@ Die Simulation skaliert deterministisch innerhalb der Toleranz: nach oben, um Re
 vor Ablauf zu verbrauchen; nach unten, wenn ein kleiner Rest sonst eine neue Packung
 auslöst. Card und Abbuchung verwenden die angepasste Menge.
 
+### Packungsgrößen
+
+Eingekauft werden ganze Packungen, nie Grammmengen.
+
+- **Standard-Packung** je Produkt = die meistverkaufte Größe (Schokolade 100 g, Ravioli 800 g).
+  Liegt in Grocy als Einkaufseinheit mit Umrechnung in die Bestandseinheit, in der App-UI
+  (Bestand → Packungen) und per Service/MCP änderbar.
+- **Weitere Größen** (Bohnen 400 g und 800 g) in der App-Tabelle `packung`, mit Quelle:
+  `manuell`, `bon` (auf dem Bon gekaufte Größe), `angebot` (Prospektgröße, gilt bis Ende der
+  Aktion), `llm` (Vorschlag aus dem Kategorisierungslauf).
+- **Bon:** Gekaufte Größe wird mit ihrer echten Menge eingebucht. Weicht sie ab, schlägt
+  das Review sie als weitere Größe oder neuen Standard vor (nie automatisch).
+- **Kategorisierungslauf:** schlägt die Standard-Packung mit vor (Diff + Review).
+- **Einkauf (Code):** Fehlmenge + Mindestbestand − Bestand, dann die Kombination aus
+  höchstens zwei Größen mit dem kleinsten Überhang; bei Gleichstand weniger Packungen,
+  dann laufendes Angebot, dann Standard. Ohne Packungsgröße: ganze Bestandseinheiten.
+  Später (Planer) zusätzlich Toleranz-Skalierung und Preis.
+
 ## Stammdaten-Aufbau (Bootstrap)
 
 Das System startet leer. Der Nutzer füllt es selbst, automatisiert per LLM:
@@ -135,7 +155,7 @@ Das System startet leer. Der Nutzer füllt es selbst, automatisiert per LLM:
    gemappt oder neu angelegt, mehr nicht.
 2. **Kategorisierungslauf** (ab ca. 50 Rezepten / 200 Zutaten): LLM-Batch setzt je Produkt
    Tracking-Modus, Kategorie, Haltbarkeiten, MHD/Verbrauchsdatum, Gramm-Umrechnung,
-   `toleranz_pct` und BLS-/OFF-Zuordnung. Rezepte: Tags, Aufwand, „muss frisch sein“,
+   `toleranz_pct`, Standard-Packung und BLS-/OFF-Zuordnung. Rezepte: Tags, Aufwand, „muss frisch sein“,
    Rest-Haltbarkeit, Dubletten. Ergebnis als **Diff mit Review**, nie automatisch übernommen.
 3. **Monatlich** per HA-Automation über `ration.kategorisieren`: inkrementell für neue oder
    geänderte Produkte, Diff in die Review-Liste mit Push. Prüft zusätzlich Werte gegen echte
@@ -156,6 +176,7 @@ Der Planer startet erst, wenn alle Produkte Attribute haben.
    dafür unter `/media` und wird als `media-source://media_source/local/...` übergeben.
 5. Validierung (ID existiert, Menge plausibel). Konfidenz ≥ Schwelle → buchen, sonst Review + Push.
 6. Jede Bestätigung schreibt einen Alias. Bonpreise gehen in `preis`. Füllstand-Produkte auf voll.
+   Abweichende Packungsgröße → Vorschlag für `packung` (siehe Packungsgrößen).
 
 **Barcode-Scanner (optional):** Open Food Facts, je Barcode einmal einem übergeordneten Produkt zuordnen.
 
@@ -220,7 +241,8 @@ Samstags lädt die App die Online-Prospekte der 2–3 genutzten Märkte:
   (eigene App oder Browserless), damit die Kern-App schlank bleibt.
 - **Healthcheck je Adapter:** kaputte Adapter fallen auf (Sensor + Push).
 - Seiten per Vision-Modell auslesen, auf Produkte mappen. Angebote sind nur ein Overlay;
-  Normalpreise kommen aus eigenen Bons.
+  Normalpreise kommen aus eigenen Bons. Nennt ein Angebot eine andere Größe, wird sie als
+  `packung` mit Quelle `angebot` und Ablauf zum Aktionsende angelegt.
 - Offen: Märkte, Quellen je Markt, Nutzungsbedingungen, Blockaden.
 
 ## Oberflächen

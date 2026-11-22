@@ -15,6 +15,7 @@ from homeassistant.helpers import config_validation as cv
 from .api import RationApi
 
 DATUM = vol.All(cv.string, vol.Match(r"^\d{4}-\d{2}-\d{2}$", msg="Datum als JJJJ-MM-TT"))
+MENGE = vol.All(vol.Coerce(float), vol.Range(min=0, min_included=False))
 PORTIONEN = vol.All(vol.Coerce(int), vol.Range(min=1, max=12))
 
 
@@ -113,6 +114,52 @@ AKTIONEN: tuple[Aktion, ...] = (
                 vol.Optional("preis"): vol.All(vol.Coerce(float), vol.Range(min=0)),
             }
         ),
+        schreibend=True,
+    ),
+    Aktion(
+        "packungen",
+        "Packungsgrößen je Produkt: Standard (meistverkaufte Größe) und weitere Größen.",
+        "GET",
+        "/packungen",
+    ),
+    Aktion(
+        "packung_setzen",
+        "Setzt die Standard-Packung eines Produkts, z. B. Dose mit 400 (Menge in Bestandseinheit).",
+        "PUT",
+        "/produkte/{produkt_id}/packung",
+        vol.Schema(
+            {
+                vol.Required("produkt_id"): cv.string,
+                vol.Required("einheit"): cv.string,
+                vol.Required("menge"): MENGE,
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "packung_hinzufuegen",
+        "Fügt eine weitere Packungsgröße hinzu (z. B. 800-g-Dose). Angebote mit gueltig_bis.",
+        "POST",
+        "/produkte/{produkt_id}/packungen",
+        vol.Schema(
+            {
+                vol.Required("produkt_id"): cv.string,
+                vol.Required("einheit"): cv.string,
+                vol.Required("menge"): MENGE,
+                vol.Optional("quelle", default="manuell"): vol.In(
+                    ["manuell", "bon", "angebot", "llm"]
+                ),
+                vol.Optional("gueltig_bis"): DATUM,
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "packung_loeschen",
+        "Entfernt eine weitere Packungsgröße (ID aus packungen).",
+        "DELETE",
+        "/packungen/{packung_id}",
+        vol.Schema({vol.Required("packung_id"): vol.Coerce(int)}),
         schreibend=True,
     ),
     Aktion(

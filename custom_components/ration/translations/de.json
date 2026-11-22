@@ -146,6 +146,64 @@
           "description": "Optional"
         }
       }
+    },
+    "packungen": {
+      "name": "Packungen",
+      "description": "Packungsgrößen je Produkt (Antwort)."
+    },
+    "packung_setzen": {
+      "name": "Standard-Packung setzen",
+      "description": "Meistverkaufte Größe eines Produkts.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "einheit": {
+          "name": "Einheit",
+          "description": "Einkaufseinheit, z. B. Dose"
+        },
+        "menge": {
+          "name": "Menge",
+          "description": "In der Bestandseinheit des Produkts"
+        }
+      }
+    },
+    "packung_hinzufuegen": {
+      "name": "Packungsgröße hinzufügen",
+      "description": "Weitere Größe, z. B. 800-g-Dose oder Angebot.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "einheit": {
+          "name": "Einheit",
+          "description": "Einkaufseinheit, z. B. Dose"
+        },
+        "menge": {
+          "name": "Menge",
+          "description": "In der Bestandseinheit des Produkts"
+        },
+        "quelle": {
+          "name": "Quelle",
+          "description": "manuell, bon, angebot oder llm"
+        },
+        "gueltig_bis": {
+          "name": "Gültig bis",
+          "description": "Für Angebote"
+        }
+      }
+    },
+    "packung_loeschen": {
+      "name": "Packungsgröße entfernen",
+      "description": "Entfernt eine weitere Größe.",
+      "fields": {
+        "packung_id": {
+          "name": "Packung",
+          "description": "ID aus Packungen"
+        }
+      }
     }
   }
 }

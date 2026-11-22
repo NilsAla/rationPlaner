@@ -82,7 +82,7 @@ def test_einkaufsliste_summiert_und_dedupliziert(client, fake_ha):
     assert e["schon_auf_liste"] == ["Paprika rot, 4 × Stück (160 g)"]
     assert "Nudeln, 1 × Packung (500 g)" in fake_ha.items
     nudeln = next(p for p in e["positionen"] if p["name"] == "Nudeln")
-    assert nudeln["packungen"] == 1 and nudeln["menge"] == 500
+    assert nudeln["packungen"][0]["anzahl"] == 1 and nudeln["menge"] == 500
 
 
 def test_einkaufsliste_ohne_packung_ganze_einheiten(client, fake_backend, fake_ha):

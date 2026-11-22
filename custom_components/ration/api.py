@@ -29,7 +29,7 @@ class RationApi:
                 params=params,
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:
-                body = await resp.json(content_type=None)
+                body = None if resp.status == 204 else await resp.json(content_type=None)
                 if resp.status >= 400:
                     detail = body.get("detail") if isinstance(body, dict) else body
                     raise RationApiError(f"{resp.status}: {detail}")

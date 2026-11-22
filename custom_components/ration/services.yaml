@@ -97,3 +97,54 @@ einbuchen:
           min: 0
           step: 0.01
           mode: box
+packungen:
+packung_setzen:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+    einheit:
+      required: true
+      selector:
+        text:
+    menge:
+      required: true
+      selector:
+        number:
+          min: 0
+          step: any
+          mode: box
+packung_hinzufuegen:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+    einheit:
+      required: true
+      selector:
+        text:
+    menge:
+      required: true
+      selector:
+        number:
+          min: 0
+          step: any
+          mode: box
+    quelle:
+      default: manuell
+      selector:
+        select:
+          options: [manuell, bon, angebot, llm]
+    gueltig_bis:
+      selector:
+        date:
+packung_loeschen:
+  fields:
+    packung_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box

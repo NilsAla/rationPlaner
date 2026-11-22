@@ -146,6 +146,64 @@
           "description": "Optional"
         }
       }
+    },
+    "packungen": {
+      "name": "Packages",
+      "description": "Package sizes per product (response)."
+    },
+    "packung_setzen": {
+      "name": "Set default package",
+      "description": "Most common size of a product.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "einheit": {
+          "name": "Unit",
+          "description": "Purchase unit, e.g. can"
+        },
+        "menge": {
+          "name": "Amount",
+          "description": "In the product's stock unit"
+        }
+      }
+    },
+    "packung_hinzufuegen": {
+      "name": "Add package size",
+      "description": "Additional size, e.g. offer.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "einheit": {
+          "name": "Unit",
+          "description": "Purchase unit, e.g. can"
+        },
+        "menge": {
+          "name": "Amount",
+          "description": "In the product's stock unit"
+        },
+        "quelle": {
+          "name": "Source",
+          "description": "manual, receipt, offer or llm"
+        },
+        "gueltig_bis": {
+          "name": "Valid until",
+          "description": "For offers"
+        }
+      }
+    },
+    "packung_loeschen": {
+      "name": "Remove package size",
+      "description": "Removes an additional size.",
+      "fields": {
+        "packung_id": {
+          "name": "Package",
+          "description": "ID from packages"
+        }
+      }
     }
   }
 }

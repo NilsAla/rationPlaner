@@ -38,36 +38,88 @@ class Position:
     einheit: str
 
 
+@dataclass(frozen=True)
+class Groesse:
+    """Eine kaufbare Packungsgröße: Einheit und Menge in Bestandseinheit."""
+
+    einheit: str
+    menge: float
+    quelle: str = "standard"  # standard/manuell/bon/angebot/llm
+
+
+@dataclass
+class PackAnzahl:
+    anzahl: int
+    einheit: str
+    menge: float  # je Packung, in Bestandseinheit
+    quelle: str = "standard"
+
+
 @dataclass
 class Einkauf(Position):
-    """Fehlmenge, aufgerundet auf ganze Packungen (Einkaufseinheit aus Grocy)."""
+    """Fehlmenge, aufgerundet auf ganze Packungen. Leere Liste = keine Packungsgröße bekannt."""
 
-    packungen: int | None = None
-    packung: str | None = None  # Einkaufseinheit, z. B. "Dose"
-    packung_menge: float | None = None  # Bestandseinheit je Packung
+    packungen: list[PackAnzahl] = field(default_factory=list)
 
     @property
     def text(self) -> str:
-        if self.packungen is None:
+        if not self.packungen:
             return f"{self.name} {menge(math.ceil(self.menge - EPS))} {self.einheit}".strip()
-        groesse = f"{menge(self.packung_menge)} {self.einheit}".strip()
-        return f"{self.name}, {self.packungen} × {self.packung} ({groesse})"
+        teile = [
+            f"{p.anzahl} × {p.einheit} ({menge(p.menge)} {self.einheit})".replace(" )", ")")
+            for p in self.packungen
+        ]
+        return f"{self.name}, {' + '.join(teile)}"
 
 
-def auf_packungen(product: Product, fehlmenge: float) -> Einkauf:
+def groessen(product: Product, weitere: list[Groesse] | None = None) -> list[Groesse]:
+    """Standard-Packung aus Grocy plus weitere Größen, ohne Dubletten."""
+    alle = []
+    if product.pack_size:
+        alle.append(Groesse(product.pack_unit or "Packung", product.pack_size))
+    for g in weitere or []:
+        if g.menge > EPS and not any(abs(g.menge - x.menge) < EPS for x in alle):
+            alle.append(g)
+    return alle
+
+
+def waehle_packungen(fehlmenge: float, auswahl: list[Groesse]) -> list[PackAnzahl]:
+    """Kombination aus höchstens zwei Größen mit kleinstem Überhang.
+
+    Gleichstand: weniger Packungen, dann mehr Angebotspackungen, dann mehr Standardpackungen.
+    """
+    beste: tuple | None = None
+    for i, a in enumerate(auswahl):
+        for b in auswahl[i:]:
+            max_a = math.ceil(fehlmenge / a.menge - EPS)
+            for na in range(1 if a is b else 0, max_a + 1):
+                rest = fehlmenge - na * a.menge
+                nb = 0 if a is b else max(math.ceil(rest / b.menge - EPS), 0)
+                if a is b and na != max_a:
+                    continue
+                kombi = [(n, g) for n, g in ((na, a), (nb, b)) if n > 0]
+                ueberhang = sum(n * g.menge for n, g in kombi) - fehlmenge
+                key = (
+                    round(ueberhang, 6),
+                    sum(n for n, _ in kombi),
+                    -sum(n for n, g in kombi if g.quelle == "angebot"),
+                    -sum(n for n, g in kombi if g.quelle == "standard"),
+                )
+                if beste is None or key < beste[0]:
+                    beste = (key, kombi)
+    if beste is None:
+        return []
+    kombi = sorted(beste[1], key=lambda x: -x[1].menge)
+    return [PackAnzahl(n, g.einheit, g.menge, g.quelle) for n, g in kombi]
+
+
+def auf_packungen(
+    product: Product, fehlmenge: float, weitere: list[Groesse] | None = None
+) -> Einkauf:
     """Rundet eine Fehlmenge auf ganze Packungen. Ohne Packungsgröße bleibt die Menge."""
-    if not product.pack_size:
-        return Einkauf(product.id, product.name, fehlmenge, product.unit)
-    n = max(math.ceil(fehlmenge / product.pack_size - EPS), 1)
-    return Einkauf(
-        product.id,
-        product.name,
-        n * product.pack_size,
-        product.unit,
-        packungen=n,
-        packung=product.pack_unit,
-        packung_menge=product.pack_size,
-    )
+    packungen = waehle_packungen(fehlmenge, groessen(product, weitere))
+    gesamt = sum(p.anzahl * p.menge for p in packungen) or fehlmenge
+    return Einkauf(product.id, product.name, gesamt, product.unit, packungen=packungen)
 
 
 @dataclass
@@ -107,7 +159,11 @@ async def gekocht(
     return ergebnis
 
 
-async def bedarf(backend: InventoryBackend, geplant: list[tuple[Recipe, int]]) -> list[Einkauf]:
+async def bedarf(
+    backend: InventoryBackend,
+    geplant: list[tuple[Recipe, int]],
+    weitere: dict[str, list[Groesse]] | None = None,
+) -> list[Einkauf]:
     """Was zu kaufen ist: Bedarf der geplanten Gerichte plus Mindestbestand, minus Bestand,
     aufgerundet auf ganze Packungen. Produkte mit Mindestbestand kommen auch ungeplant drauf.
     """
@@ -126,7 +182,7 @@ async def bedarf(backend: InventoryBackend, geplant: list[tuple[Recipe, int]]) -
         p = products[product_id]
         differenz = benoetigt + p.min_stock - await backend.get_stock_amount(product_id)
         if differenz > EPS:
-            einkauf.append(auf_packungen(p, differenz))
+            einkauf.append(auf_packungen(p, differenz, (weitere or {}).get(product_id)))
     return sorted(einkauf, key=lambda x: x.name)
 
 
