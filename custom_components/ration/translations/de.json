@@ -3,26 +3,149 @@
     "step": {
       "user": {
         "title": "rationPlaner verbinden",
-        "data": { "url": "URL der rationPlaner-App" }
+        "data": {
+          "url": "URL der rationPlaner-App"
+        }
       }
     },
     "error": {
       "cannot_connect": "App nicht erreichbar",
       "incompatible_version": "API-Version der App passt nicht zur Bridge"
     },
-    "abort": { "already_configured": "Bereits eingerichtet" }
+    "abort": {
+      "already_configured": "Bereits eingerichtet"
+    }
   },
   "services": {
     "gekocht": {
       "name": "Gekocht",
-      "description": "Bucht ein gekochtes Rezept ab.",
+      "description": "Bucht ein gekochtes Rezept ab (ohne Rezept: das für heute geplante).",
       "fields": {
-        "rezept_id": { "name": "Rezept", "description": "ID des Rezepts" },
-        "portionen_gekocht": { "name": "Portionen gekocht", "description": "Gekochte Portionen" },
-        "portionen_gegessen": { "name": "Portionen gegessen", "description": "Gegessene Portionen, der Rest wird als Rest eingebucht" }
+        "rezept_id": {
+          "name": "Rezept",
+          "description": "ID des Rezepts, leer = Rezept aus dem Plan für heute"
+        },
+        "portionen_gekocht": {
+          "name": "Portionen gekocht",
+          "description": "Gekochte Portionen"
+        },
+        "portionen_gegessen": {
+          "name": "Portionen gegessen",
+          "description": "Gegessene Portionen, der Rest wird als Rest eingebucht"
+        }
       }
     },
-    "plan_erzeugen": { "name": "Plan erzeugen", "description": "Erzeugt den Wochenplan." },
-    "kategorisieren": { "name": "Kategorisieren", "description": "Startet den Kategorisierungslauf (Ergebnis als Diff zur Review)." }
+    "plan_erzeugen": {
+      "name": "Plan erzeugen",
+      "description": "Erzeugt den Wochenplan."
+    },
+    "kategorisieren": {
+      "name": "Kategorisieren",
+      "description": "Startet den Kategorisierungslauf (Ergebnis als Diff zur Review)."
+    },
+    "einkaufsliste_erzeugen": {
+      "name": "Einkaufsliste erzeugen",
+      "description": "Schreibt fehlende Zutaten der geplanten Gerichte in die To-do-Liste.",
+      "fields": {
+        "tage": {
+          "name": "Tage",
+          "description": "Wie viele Tage ab heute berücksichtigt werden"
+        }
+      }
+    },
+    "heute": {
+      "name": "Heute",
+      "description": "Rezept für heute (Antwort)."
+    },
+    "bestand": {
+      "name": "Bestand",
+      "description": "Alle Chargen im Bestand (Antwort)."
+    },
+    "produkte": {
+      "name": "Produkte",
+      "description": "Alle Produkte (Antwort)."
+    },
+    "lagerorte": {
+      "name": "Lagerorte",
+      "description": "Alle Lagerorte (Antwort)."
+    },
+    "rezepte": {
+      "name": "Rezepte",
+      "description": "Alle Rezepte (Antwort)."
+    },
+    "status": {
+      "name": "Status",
+      "description": "Statuszeile und bald ablaufende Chargen (Antwort).",
+      "fields": {
+        "tage": {
+          "name": "Tage",
+          "description": "Wie viele Tage ab heute"
+        }
+      }
+    },
+    "plan": {
+      "name": "Plan",
+      "description": "Wochenplan ab heute (Antwort).",
+      "fields": {
+        "tage": {
+          "name": "Tage",
+          "description": "Wie viele Tage ab heute"
+        }
+      }
+    },
+    "plan_setzen": {
+      "name": "Plan setzen",
+      "description": "Plant ein Rezept für einen Tag.",
+      "fields": {
+        "datum": {
+          "name": "Datum",
+          "description": "Tag des Plans"
+        },
+        "rezept_id": {
+          "name": "Rezept",
+          "description": "ID des Rezepts"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Anzahl Portionen"
+        }
+      }
+    },
+    "plan_loeschen": {
+      "name": "Plan löschen",
+      "description": "Entfernt den Planeintrag eines Tages.",
+      "fields": {
+        "datum": {
+          "name": "Datum",
+          "description": "Tag des Plans"
+        }
+      }
+    },
+    "einbuchen": {
+      "name": "Einbuchen",
+      "description": "Bucht eine Menge eines Produkts ein.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "menge": {
+          "name": "Menge",
+          "description": "In der Bestandseinheit des Produkts"
+        },
+        "mhd": {
+          "name": "MHD",
+          "description": "Leer = Standard-Haltbarkeit"
+        },
+        "lagerort_id": {
+          "name": "Lagerort",
+          "description": "Leer = Standard des Produkts"
+        },
+        "preis": {
+          "name": "Preis",
+          "description": "Optional"
+        }
+      }
+    }
   }
 }

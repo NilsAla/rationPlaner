@@ -261,7 +261,9 @@ Planer und Nährwerte), danach Ausbau Phase für Phase.
 - **Phase 0 – Technik:** Grocy installieren, API-Key, Erreichbarkeit. `grocy_setup.py`
   (Lagerorte, Userfields inkl. `toleranz_pct`), Grocy-Probe als Contract-Tests, CSV-Import,
   BLS-Lizenz prüfen und Import. Keine Stammdaten.
-- **Durchstich:** Bon-Upload minimal, Gekocht minimal, Einkaufsliste in HA-To-do.
+- **Durchstich:** Manuelles Einbuchen, Plan von Hand, Gekocht mit FEFO-Abbuchung, Einkaufsliste in
+  HA-To-do, Sensoren „Rezept heute“, Status und „läuft ab“. Bon-Upload folgt mit der AI-Task-Entität.
+  Noch offen im Durchstich: Reste als Rest-Produkt einbuchen, Füllstand-Abfrage.
 - **Phase 1 – Grundgerüst + Kochen:** Ingress-UI, Bestandsansicht, manuelles Einbuchen,
   Gekocht-Flow mit Portionen und Resten, Bridge-Entitäten, Küchen-Card, Statuszeile, Widgets.
 - **Phase 2 – Kassenbon:** Vorverarbeitung, Alias, `ai_task`, Review, Push.

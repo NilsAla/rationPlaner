@@ -13,9 +13,11 @@ import httpx
 from app.inventory.base import (
     Batch,
     DueType,
+    Ingredient,
     InsufficientStockError,
     Location,
     Product,
+    Recipe,
     TrackingMode,
     consume_order,
 )
@@ -48,6 +50,10 @@ USERFIELDS: list[tuple[str, str, str, str, list[str] | None]] = [
     ("recipes", UF_REZEPT_TAGS, "Tags", "text-single-line", None),
     ("recipes", UF_REZEPT_REST_HALTBARKEIT, "Rest-Haltbarkeit (Tage)", "number-integral", None),
 ]
+
+
+# (product_id oder None für global, von Einheit, nach Einheit) → Faktor
+Conv = dict[tuple[int | None, int, int], float]
 
 
 class GrocyError(Exception):
@@ -110,19 +116,25 @@ class GrocyBackend:
 
     # --- Mapping --------------------------------------------------------------
 
-    async def _unit_context(self) -> tuple[dict[int, str], dict[tuple[int, int], float]]:
-        """Einheitennamen und je Produkt der Faktor Bestandseinheit → Gramm."""
+    async def _unit_context(self) -> tuple[dict[int, str], dict[tuple[int, int], float], Conv]:
+        """Einheitennamen, je Produkt der Faktor Bestandseinheit → Gramm, alle Umrechnungen."""
         units = {u["id"]: u["name"] for u in await self._get("/objects/quantity_units")}
         gram_ids = {uid for uid, name in units.items() if name.strip().lower() in GRAM_UNIT_NAMES}
         factors: dict[tuple[int, int], float] = {}
+        conversions: Conv = {}
         for conv in await self._get("/objects/quantity_unit_conversions_resolved"):
+            key = (conv["product_id"], conv["from_qu_id"], conv["to_qu_id"])
+            conversions[key] = float(conv["factor"])
             if conv["to_qu_id"] in gram_ids:
                 factors[(conv["product_id"], conv["from_qu_id"])] = float(conv["factor"])
-        return units, factors
+        return units, factors, conversions
 
     @staticmethod
     def _to_product(
-        raw: dict, units: dict[int, str], factors: dict[tuple[int, int], float]
+        raw: dict,
+        units: dict[int, str],
+        factors: dict[tuple[int, int], float],
+        conversions: Conv | None = None,
     ) -> Product:
         uf = raw.get("userfields") or {}
         mode = uf.get(UF_TRACKING_MODUS)
@@ -130,6 +142,14 @@ class GrocyBackend:
         grams = factors.get((raw["id"], qu_stock))
         if grams is None and units.get(qu_stock, "").strip().lower() in GRAM_UNIT_NAMES:
             grams = 1.0
+        # Packung = Einkaufseinheit, wenn sie von der Bestandseinheit abweicht und umrechenbar ist.
+        qu_purchase = raw.get("qu_id_purchase") or qu_stock
+        pack_size = None
+        if qu_purchase != qu_stock:
+            conv = conversions or {}
+            pack_size = conv.get((raw["id"], qu_purchase, qu_stock))
+            if pack_size is None:
+                pack_size = conv.get((None, qu_purchase, qu_stock))
         return Product(
             id=str(raw["id"]),
             name=raw["name"],
@@ -143,6 +163,10 @@ class GrocyBackend:
             shelf_life_opened_days=int(raw.get("default_best_before_days_after_open") or 0),
             shelf_life_frozen_days=int(raw.get("default_best_before_days_after_freezing") or 0),
             shelf_life_thawed_days=int(raw.get("default_best_before_days_after_thawing") or 0),
+            default_location_id=str(raw["location_id"]) if raw.get("location_id") else None,
+            pack_unit=units.get(qu_purchase) if pack_size else None,
+            pack_size=pack_size,
+            min_stock=float(raw.get("min_stock_amount") or 0),
         )
 
     @staticmethod
@@ -159,13 +183,13 @@ class GrocyBackend:
     # --- InventoryBackend -----------------------------------------------------
 
     async def list_products(self) -> list[Product]:
-        units, factors = await self._unit_context()
+        ctx = await self._unit_context()
         raws = await self._get("/objects/products")
-        return [self._to_product(r, units, factors) for r in raws if int(r.get("active", 1))]
+        return [self._to_product(r, *ctx) for r in raws if int(r.get("active", 1))]
 
     async def get_product(self, product_id: str) -> Product:
-        units, factors = await self._unit_context()
-        return self._to_product(await self._get(f"/objects/products/{product_id}"), units, factors)
+        ctx = await self._unit_context()
+        return self._to_product(await self._get(f"/objects/products/{product_id}"), *ctx)
 
     async def list_locations(self) -> list[Location]:
         return [
@@ -173,6 +197,39 @@ class GrocyBackend:
             for r in await self._get("/objects/locations")
             if int(r.get("active", 1))
         ]
+
+    @staticmethod
+    def _to_recipe(raw: dict, positions: list[dict]) -> Recipe:
+        return Recipe(
+            id=str(raw["id"]),
+            name=raw["name"],
+            servings=int(raw.get("base_servings") or 1),
+            description=raw.get("description") or "",
+            ingredients=tuple(
+                Ingredient(
+                    product_id=str(pos["product_id"]),
+                    amount=float(pos["amount"]),
+                    note=pos.get("note"),
+                )
+                for pos in positions
+                if pos["recipe_id"] == raw["id"]
+            ),
+        )
+
+    async def list_recipes(self) -> list[Recipe]:
+        # Grocy legt intern auch Rezepte für Essensplan-Tage an (type != normal).
+        raws = [r for r in await self._get("/objects/recipes") if r.get("type") == "normal"]
+        positions = await self._get("/objects/recipes_pos")
+        return [self._to_recipe(r, positions) for r in raws]
+
+    async def get_recipe(self, recipe_id: str) -> Recipe:
+        raw = await self._get(f"/objects/recipes/{recipe_id}")
+        positions = await self._get("/objects/recipes_pos", **{"query[]": f"recipe_id={recipe_id}"})
+        return self._to_recipe(raw, positions)
+
+    async def list_all_batches(self) -> list[Batch]:
+        raws = await self._get("/objects/stock")
+        return sorted((self._to_batch(r) for r in raws), key=consume_order)
 
     async def get_batches(self, product_id: str, *, include_children: bool = False) -> list[Batch]:
         params = {"include_sub_products": "true"} if include_children else {}
@@ -308,6 +365,34 @@ class GrocyBackend:
             body["parent_product_id"] = int(parent_id)
         return str(await self._create("products", body))
 
+    async def ensure_pack(
+        self, product_id: str, unit_id: str, size: float, *, min_stock: float = 0
+    ) -> None:
+        """Setzt Einkaufseinheit, Packungsgröße (in Bestandseinheit) und Mindestbestand.
+
+        Idempotent: legt die produktspezifische Umrechnung an oder korrigiert ihren Faktor.
+        """
+        product = await self._get(f"/objects/products/{product_id}")
+        pid, qu, stock = int(product_id), int(unit_id), int(product["qu_id_stock"])
+        if qu != stock:
+            found = await self._find(
+                "quantity_unit_conversions", product_id=pid, from_qu_id=qu, to_qu_id=stock
+            )
+            if found is None:
+                body = {"product_id": pid, "from_qu_id": qu, "to_qu_id": stock, "factor": size}
+                await self._create("quantity_unit_conversions", body)
+            elif float(found["factor"]) != size:
+                await self._put(
+                    f"/objects/quantity_unit_conversions/{found['id']}", {"factor": size}
+                )
+        changes: dict[str, Any] = {}
+        if int(product["qu_id_purchase"]) != qu:
+            changes["qu_id_purchase"] = qu
+        if float(product.get("min_stock_amount") or 0) != min_stock:
+            changes["min_stock_amount"] = min_stock
+        if changes:
+            await self._put(f"/objects/products/{product_id}", changes)
+
     async def ensure_structure(self) -> list[tuple[str, str, str]]:
         """Einheit g, Lagerorte und Userfields. Gibt (Art, Name, Status) je Objekt zurück."""
         rows = [("Einheit", "g", "ok")]
@@ -322,3 +407,34 @@ class GrocyBackend:
 
     async def set_product_userfields(self, product_id: str, values: dict[str, Any]) -> None:
         await self._put(f"/userfields/products/{product_id}", values)
+
+    async def ensure_recipe(
+        self,
+        name: str,
+        *,
+        servings: int,
+        description: str,
+        ingredients: list[tuple[str, float]],
+        userfields: dict[str, Any] | None = None,
+    ) -> tuple[str, bool]:
+        """Legt ein Rezept mit Zutaten (Produkt-ID, Menge in Bestandseinheit) an, falls es fehlt."""
+        found = await self._find("recipes", name=name)
+        if found:
+            return str(found["id"]), False
+        recipe_id = await self._create(
+            "recipes", {"name": name, "base_servings": servings, "description": description}
+        )
+        products = {p["id"]: p for p in await self._get("/objects/products")}
+        for product_id, amount in ingredients:
+            await self._create(
+                "recipes_pos",
+                {
+                    "recipe_id": recipe_id,
+                    "product_id": int(product_id),
+                    "amount": amount,
+                    "qu_id": products[int(product_id)]["qu_id_stock"],
+                },
+            )
+        if userfields:
+            await self._put(f"/userfields/recipes/{recipe_id}", userfields)
+        return str(recipe_id), True
