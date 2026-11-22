@@ -195,11 +195,14 @@ Der Planer startet erst, wenn alle Produkte Attribute haben.
 
 **Import per Link:** Vorschau liest Name, Portionen und Zutaten aus dem JSON-LD der Seite.
 Herkunft und Quell-ID (HelloFresh: 24-stellige Hex-ID am URL-Ende) landen in `rezept_meta`,
-darüber werden Dubletten erkannt. Jede Zutat bekommt einen Vorschlag (Alias aus
-`zutat_alias`, exakter Name, Token-Ähnlichkeit) samt Menge in Bestandseinheit (g/kg/ml/l
-direkt, Stück und Packungen über die Standard-Packung, EL/TL als markierte Schätzung).
-Übernommen wird erst nach Review (UI oder MCP); bestätigte Zuordnungen werden Aliase,
-unbekannte Zutaten werden als Produkte ohne Attribute angelegt. Statt der Zubereitung steht
+darüber werden Dubletten erkannt. **Ziel: ein Klick.** Sicher zugeordnet wird nur über Alias
+(`zutat_alias`), gleichen Namen oder gleichen Kern-Namen (ohne vorangestellte Adjektive,
+„rote Zwiebeln“ → Zwiebel). Alles andere wird standardmäßig als **neues Produkt ohne
+Attribute** angelegt; ähnliche Produkte erscheinen nur als Alternative („Frühlingszwiebel“
+ist keine „Zwiebel“). Mengen gehen in g: g/kg direkt, ml/l über Dichte, Stück/Bund/EL/TL
+über eingebaute Richtwerte (`app/mengen.py`, z. B. Knoblauchzehe 4 g, Aubergine 300 g),
+als Schätzung markiert. Neue Stück-Produkte bekommen das Stückgewicht als Standard-Packung.
+Review nur bei echten Zweifeln (Menge nicht bestimmbar). Wasser wird weggelassen. Statt der Zubereitung steht
 ein Link zur Quelle in der Beschreibung; eine eigene Kurzfassung erzeugt später `ai_task`.
 Blockt eine Seite den Abruf, kann der Quelltext eingefügt werden. Später übernimmt das LLM
 die Zuordnung unbekannter Zutaten (wählt Produkt-IDs, Code rechnet Mengen).

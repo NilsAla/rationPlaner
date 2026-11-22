@@ -36,7 +36,7 @@ def test_quelle_hellofresh_id():
 def test_rezept_aus_html():
     r = ri.rezept_aus_html(HTML, URL)
     assert r.name == "Testpfanne mit Paprika & Nudeln"
-    assert r.portionen == 2 and len(r.zutaten) == 6
+    assert r.portionen == 2 and len(r.zutaten) == 11
     assert "Fremdtext" not in ri.beschreibung(r)
 
 
@@ -45,33 +45,74 @@ def test_kein_rezept():
         ri.rezept_aus_html("<html></html>", URL)
 
 
-def test_import_vorschau_und_uebernehmen(client):
-    v = client.post("/api/v1/import/vorschau", json={"url": URL, "html": HTML}).json()
-    assert v["quelle"] == "hellofresh" and v["dublette"] is None
-    z = {x["name"]: x for x in v["zutaten"]}
-    # Teilwort-Treffer, Stück-Packung 160 g wird nicht genutzt, weil g angegeben ist
-    assert z["Spitzpaprika"]["produkt"] == "Paprika rot"
-    assert z["Spitzpaprika"]["status"] == "vorschlag" and z["Spitzpaprika"]["menge_bestand"] == 250
-    assert z["Nudeln"]["status"] == "ok" and z["Nudeln"]["menge_bestand"] == 200
-    assert z["Olivenöl"]["menge_bestand"] == 1.5  # Produkt führt EL
-    assert z["Salz"]["status"] == "unbekannt"
+@pytest.mark.parametrize(
+    ("text", "kern"),
+    [
+        ("vegane weiße Misopaste", "Misopaste"),
+        ("rote Zwiebeln", "Zwiebeln"),
+        ("Hähnchenbrust (ca. 300 g), gewürfelt", "Hähnchenbrust"),
+        ("frische Petersilie", "Petersilie"),
+    ],
+)
+def test_kern_name(text, kern):
+    assert ri.kern_name(text) == kern
 
+
+def _zwiebel(fake_backend):
+    from app.inventory.base import Product
+
+    fake_backend.add_product(Product(id="zwiebel", name="Zwiebel", unit="g"))
+
+
+def test_vorschau_ein_klick(client, fake_backend):
+    _zwiebel(fake_backend)
+    v = client.post("/api/v1/import/vorschau", json={"url": URL, "html": HTML}).json()
+    z = {x["name"]: x for x in v["zutaten"]}
+
+    def zeile(name):
+        x = z[name]
+        return x["aktion"], x["produkt"] or x["neu_name"], x["menge_bestand"], x["status"]
+
+    # Ähnlich ist nicht gleich: neues Produkt, das vorhandene nur als Alternative
+    assert zeile("Spitzpaprika") == ("neu", "Spitzpaprika", 250, "ok")
+    assert "Paprika rot" in [a["name"] for a in z["Spitzpaprika"]["alternativen"]]
+    assert zeile("Frühlingszwiebel") == ("neu", "Frühlingszwiebel", 15, "schaetzung")
+    assert z["Frühlingszwiebel"]["stueck_g"] == 15
+    # Kern-Name trifft vorhandenes Produkt, Stückgewicht aus der Tabelle
+    assert zeile("rote Zwiebeln") == ("zuordnen", "Zwiebel", 160, "schaetzung")
+    assert zeile("Nudeln") == ("zuordnen", "Nudeln", 200, "ok")
+    assert zeile("Olivenöl") == ("zuordnen", "Olivenöl", 1.5, "ok")  # Produkt führt EL
+    # Knoblauchzehe → Knoblauch mit 4 g je Zehe, ohne Stückgewicht fürs Produkt
+    assert zeile("Knoblauchzehe") == ("neu", "Knoblauch", 4, "schaetzung")
+    assert z["Knoblauchzehe"]["stueck_g"] is None
+    assert zeile("Sesamöl") == ("neu", "Sesamöl", 9.2, "ok")
+    assert zeile("vegane weiße Misopaste") == ("neu", "Misopaste", 25, "ok")
+    assert zeile("Salz") == ("neu", "Salz", 0, "ok")
+    assert z["Wasser"]["aktion"] == "weglassen"
+    assert zeile("Testkäse")[3] == "pruefen"  # Packung ohne bekannte Größe
+
+
+def test_import_uebernehmen(client, fake_backend):
+    v = client.post("/api/v1/import/vorschau", json={"url": URL, "html": HTML}).json()
     auswahl = [
-        {"index": 0, "produkt_id": "paprika", "menge": 250},
         {"index": 1, "produkt_id": "nudeln", "menge": 200},
+        {"index": 6, "neu_anlegen": "Frühlingszwiebel", "menge": 15, "stueck_g": 15},
         {"index": 4, "neu_anlegen": "Testkäse", "menge": 125},
     ]
     resp = client.post(f"/api/v1/import/{v['import_id']}/uebernehmen", json={"zutaten": auswahl})
     assert resp.status_code == 201, resp.text
     e = resp.json()
-    assert e["neue_produkte"] == ["Testkäse"] and e["weggelassen"] == 3
+    assert e["neue_produkte"] == ["Frühlingszwiebel", "Testkäse"] and e["weggelassen"] == 8
+    fz = next(p for p in client.get("/api/v1/packungen").json() if p["name"] == "Frühlingszwiebel")
+    assert fz["standard"] == {"einheit": "Stück", "menge": 15}
     rezepte = {r["name"]: r for r in client.get("/api/v1/rezepte").json()}
     assert rezepte["Testpfanne mit Paprika & Nudeln"]["portionen"] == 2
 
-    # Zweite Vorschau: Dublette erkannt, bestätigte Zuordnung als Alias gelernt
+    # Zweite Vorschau: Dublette erkannt, neues Produkt wird jetzt direkt zugeordnet
     v2 = client.post("/api/v1/import/vorschau", json={"url": URL, "html": HTML}).json()
     assert v2["dublette"] == e["rezept_id"]
-    assert {x["name"]: x for x in v2["zutaten"]}["Spitzpaprika"]["status"] == "ok"
+    z2 = {x["name"]: x for x in v2["zutaten"]}
+    assert z2["Frühlingszwiebel"]["aktion"] == "zuordnen"
     again = client.post(f"/api/v1/import/{v2['import_id']}/uebernehmen", json={"zutaten": auswahl})
     assert again.status_code == 409
 

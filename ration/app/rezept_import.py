@@ -17,17 +17,17 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from app import mengen
 from app.inventory.base import Product
 
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) rationPlaner/1.0"
 BRUECHE = {"½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3, "⅛": 0.125}
 # Einheiten der Quelle → (Normalform, Faktor zur Basiseinheit g bzw. ml)
 MASSE = {"g": ("g", 1), "gr": ("g", 1), "kg": ("g", 1000), "ml": ("ml", 1), "l": ("ml", 1000)}
-SCHAETZUNG_G = {"el": 10.0, "tl": 5.0, "prise": 0.5, "msp": 0.5}  # grob, im Review prüfen
 STUECK = {"stück", "stk", "st"}
 EINHEITEN = (
     set(MASSE)
-    | set(SCHAETZUNG_G)
+    | {"el", "tl", "prise", "msp", "messerspitze", "schuss", "spritzer"}
     | STUECK
     | {
         "packung",
@@ -79,17 +79,24 @@ class RohRezept:
 
 @dataclass
 class Zuordnung:
-    """Vorschlag je Zutat. status: ok, vorschlag, einheit, schaetzung, unbekannt."""
+    """Vorschlag je Zutat.
+
+    aktion: zuordnen (produkt_id), neu (Produkt neu_name anlegen) oder weglassen.
+    status: ok (sicher), schaetzung (Menge geschätzt) oder pruefen (Menge fehlt).
+    """
 
     index: int
     text: str
     name: str
     menge: float | None
     einheit: str | None
+    aktion: str = "neu"
     produkt_id: str | None = None
     produkt: str | None = None
+    neu_name: str | None = None
+    stueck_g: float | None = None  # Stückgewicht für neue Produkte (Grocy-Umrechnung)
     menge_bestand: float | None = None
-    status: str = "unbekannt"
+    status: str = "ok"
     hinweis: str = ""
     alternativen: list[dict] = field(default_factory=list)
 
@@ -218,80 +225,127 @@ def _stamm(wort: str) -> str:
     return wort
 
 
-def _tokens(text: str) -> set[str]:
-    return {_stamm(w) for w in _norm(text).split() if len(w) > 2}
+def _staemme(text: str) -> list[str]:
+    return [_stamm(w) for w in _norm(text).split() if len(w) >= 2]
+
+
+def kern_name(name: str) -> str:
+    """Produktname aus dem Zutatentext: Klammern, Zusätze nach Komma und vorangestellte
+    Adjektive (klein geschrieben) weg. "vegane weiße Misopaste" → "Misopaste"."""
+    name = re.sub(r"\(.*?\)", " ", name).split(",")[0]
+    woerter = name.split()
+    while len(woerter) > 1 and woerter[0][:1].islower():
+        woerter.pop(0)
+    kern = " ".join(woerter).strip(" .-") or name.strip()
+    return kern[:1].upper() + kern[1:]
+
+
+def _schluessel(text: str) -> frozenset[str]:
+    return frozenset(_staemme(text))
 
 
 def aehnlichkeit(a: str, b: str) -> float:
-    ta, tb = _tokens(a), _tokens(b)
+    """Nur für die Alternativen-Liste, nie für automatische Zuordnung."""
+    ta, tb = set(_staemme(a)), set(_staemme(b))
     if not ta or not tb:
         return 0.0
-    gemeinsam = len(ta & tb)
-    # Teilwort: "Spitzpaprika" enthält "paprika"
     teil = sum(
-        1 for x in ta for y in tb if x != y and (x in y or y in x) and min(len(x), len(y)) > 4
+        1 for x in ta for y in tb if x != y and (x in y or y in x) and min(len(x), len(y)) > 3
     )
-    # Bezug: Tokens der Zutat. Zusätze am Produktnamen ("Paprika rot") kosten wenig.
-    return (gemeinsam + 0.8 * teil) / len(ta) - 0.05 * max(len(tb) - len(ta), 0)
+    return (len(ta & tb) + 0.5 * teil) / min(len(ta), len(tb))
 
 
-def menge_in_bestand(z: RohZutat, p: Product) -> tuple[float | None, str, str]:
-    """(Menge in Bestandseinheit, status, hinweis)."""
+def gramm(z: RohZutat, name: str, stueck_g: float | None = None) -> tuple[float | None, str, str]:
+    """Menge in g (bzw. ml ≈ g über Dichte). Gibt (Menge, status, hinweis) zurück.
+
+    stueck_g: Stückgewicht des Produkts aus Grocy, falls bekannt. Die Tabelle für den
+    konkreten Zutatennamen geht vor (Knoblauchzehe 4 g, nicht Knolle 50 g).
+    """
     if z.menge is None:
         return 0.0, "ok", "ohne Mengenangabe"
-    einheit, ziel = z.einheit, p.unit.strip().lower()
-    if einheit == ziel:
-        return z.menge, "ok", ""
-    if einheit in MASSE:
-        basis, faktor = MASSE[einheit]
-        if ziel == basis or (ziel == "g" and basis == "ml"):
-            hinweis = "ml als g gerechnet" if basis != ziel else ""
-            return z.menge * faktor, "ok" if not hinweis else "schaetzung", hinweis
-    if einheit is None or einheit in STUECK:
-        if ziel in STUECK:
-            return z.menge, "ok", ""
-        if p.pack_unit and p.pack_unit.lower() in STUECK and p.pack_size:
-            return z.menge * p.pack_size, "ok", f"1 Stück = {p.pack_size:g} {p.unit}"
-    if einheit and p.pack_unit and einheit.startswith(p.pack_unit.lower()[:4]) and p.pack_size:
-        return z.menge * p.pack_size, "ok", f"1 {p.pack_unit} = {p.pack_size:g} {p.unit}"
-    if einheit in SCHAETZUNG_G and ziel == "g":
+    staemme = _staemme(name)
+    e = z.einheit
+    if e in MASSE:
+        basis, faktor = MASSE[e]
+        if basis == "g":
+            return z.menge * faktor, "ok", ""
+        dichte = mengen.nachschlagen(mengen.DICHTE, staemme)
         return (
-            z.menge * SCHAETZUNG_G[einheit],
-            "schaetzung",
-            f"1 {einheit.upper()} ≈ {SCHAETZUNG_G[einheit]:g} g",
+            z.menge * faktor * (dichte or 1.0),
+            "ok" if dichte else "schaetzung",
+            f"Dichte {dichte:g}" if dichte else "ml als g gerechnet",
         )
-    return None, "einheit", f"{z.einheit or 'Stück'} → {p.unit} unbekannt"
+    if e in ("el", "tl"):
+        dichte = mengen.nachschlagen(mengen.DICHTE, staemme)
+        g = mengen.LOEFFEL_ML[e] * dichte if dichte else mengen.LOEFFEL_FEST_G[e]
+        return z.menge * g, "schaetzung", f"1 {e.upper()} ≈ {g:g} g"
+    if e in mengen.KLEIN_G:
+        return z.menge * mengen.KLEIN_G[e], "schaetzung", f"1 {e} ≈ {mengen.KLEIN_G[e]:g} g"
+    if e == "bund":
+        if g := mengen.nachschlagen(mengen.BUND_G, staemme):
+            return z.menge * g, "schaetzung", f"1 Bund ≈ {g:g} g"
+        return None, "pruefen", "Gewicht je Bund unbekannt"
+    if e is None or e in STUECK or (e and e.startswith("zehe")):
+        g = mengen.nachschlagen(mengen.STUECK_G, staemme) or stueck_g
+        if e and e.startswith("zehe"):
+            g = mengen.STUECK_G["knoblauchzeh"]
+        if g:
+            return z.menge * g, "schaetzung", f"1 Stück ≈ {g:g} g"
+        return None, "pruefen", "Stückgewicht unbekannt"
+    return None, "pruefen", f"Einheit „{e}“ unbekannt"
 
 
 def zuordnen(rezept: RohRezept, produkte: list[Product], aliase: dict[str, str]) -> list[Zuordnung]:
+    """Sicher zuordnen (Alias, gleicher Name, gleicher Kern), sonst neues Produkt vorschlagen.
+
+    Ähnliche Produkte erscheinen nur als Alternative: "Frühlingszwiebel" ist keine "Zwiebel".
+    """
     by_id = {p.id: p for p in produkte}
-    by_name = {_norm(p.name): p for p in produkte}
+    by_key: dict[frozenset[str], Product] = {}
+    for p in produkte:
+        by_key.setdefault(_schluessel(p.name), p)
+        by_key.setdefault(_schluessel(kern_name(p.name)), p)
     result = []
     for i, z in enumerate(rezept.zutaten):
         zo = Zuordnung(i, z.text, z.name, z.menge, z.einheit)
-        key = _norm(z.name)
-        treffer: Product | None = None
-        if (pid := aliase.get(key)) and pid in by_id:
-            treffer, zo.status = by_id[pid], "ok"
-        elif key in by_name:
-            treffer, zo.status = by_name[key], "ok"
+        kern = kern_name(z.name)
+        staemme = _staemme(kern)
+        synonym = mengen.SYNONYM.get(staemme[-1]) if staemme else None
+        if staemme and staemme[-1] in mengen.WEGLASSEN:
+            zo.aktion, zo.hinweis = "weglassen", "wird nicht geführt"
+            result.append(zo)
+            continue
+        treffer = None
+        if (pid := aliase.get(alias_key(z.name))) and pid in by_id:
+            treffer = by_id[pid]
         else:
-            ranking = sorted(
-                ((aehnlichkeit(z.name, p.name), p) for p in produkte), key=lambda x: -x[0]
-            )
-            zo.alternativen = [
-                {"produkt_id": p.id, "name": p.name, "score": round(s, 2)}
-                for s, p in ranking[:3]
-                if s > 0
-            ]
-            if ranking and ranking[0][0] >= 0.5:
-                treffer, zo.status = ranking[0][1], "vorschlag"
+            for kandidat in (z.name, kern, synonym):
+                if kandidat and (treffer := by_key.get(_schluessel(kandidat))):
+                    break
+        stueck_g = None
         if treffer:
-            zo.produkt_id, zo.produkt = treffer.id, treffer.name
-            menge, status, hinweis = menge_in_bestand(z, treffer)
-            zo.menge_bestand, zo.hinweis = (round(menge, 1) if menge is not None else None), hinweis
-            if menge is None or (status != "ok" and zo.status == "ok"):
-                zo.status = status
+            zo.aktion, zo.produkt_id, zo.produkt = "zuordnen", treffer.id, treffer.name
+            if treffer.pack_unit and treffer.pack_unit.lower() in STUECK:
+                stueck_g = treffer.pack_size
+        else:
+            zo.neu_name = synonym or kern
+            zo.alternativen = [
+                {"produkt_id": p.id, "name": p.name}
+                for s, p in sorted(
+                    ((aehnlichkeit(kern, p.name), p) for p in produkte), key=lambda x: -x[0]
+                )[:3]
+                if s >= 0.3
+            ]
+        unit = (treffer.unit if treffer else "g").strip().lower()
+        if unit in ("g", "ml"):
+            menge, zo.status, zo.hinweis = gramm(z, z.name, stueck_g)
+        elif z.einheit == unit or (z.einheit is None and unit in STUECK):
+            menge, zo.status = z.menge or 0.0, "ok"
+        else:
+            menge, zo.status, zo.hinweis = None, "pruefen", f"Einheit {z.einheit} → {treffer.unit}"
+        zo.menge_bestand = round(menge, 1) if menge is not None else None
+        if zo.aktion == "neu" and not synonym and (z.einheit is None or z.einheit in STUECK):
+            zo.stueck_g = mengen.nachschlagen(mengen.STUECK_G, _staemme(z.name))
         result.append(zo)
     return result
 

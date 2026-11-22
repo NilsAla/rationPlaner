@@ -31,8 +31,7 @@
   td { padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; }
   .nw { white-space: nowrap; }
   .tag { font-size: 12px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); }
-  .tag.ok { color: var(--accent); } .tag.vorschlag, .tag.schaetzung { color: var(--warn); }
-  .tag.unbekannt, .tag.einheit { color: var(--bad); }
+  .tag.schaetzung { color: var(--warn); } .tag.pruefen { color: var(--bad); }
   textarea { width: 100%; min-height: 80px; font: 12px monospace; border: 1px solid var(--line);
              border-radius: 8px; background: var(--bg); color: var(--text); }
   .soon { color: var(--warn); } .over { color: var(--bad); }
@@ -222,20 +221,30 @@ async function loadImport() {
 
 function zeigeVorschau(v, produkte) {
   const einheit = Object.fromEntries(produkte.map((p) => [p.id, p.einheit]));
-  const opts = (sel) => `<option value="">– weglassen –</option><option value="+neu">+ neues Produkt</option>` +
-    produkte.map((p) => `<option value="${p.id}" ${p.id === sel ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+  const wert = (z) => z.aktion === "zuordnen" ? z.produkt_id : z.aktion === "neu" ? "+neu" : "";
+  const opts = (z) => {
+    const sel = wert(z), o = (val, txt) => `<option value="${val}" ${val === sel ? "selected" : ""}>${esc(txt)}</option>`;
+    const alt = z.alternativen.map((a) => a.produkt_id);
+    return o("+neu", "+ neues Produkt") + o("", "– weglassen –") +
+      (alt.length ? `<optgroup label="Ähnlich">${z.alternativen.map((a) => o(a.produkt_id, a.name)).join("")}</optgroup>` : "") +
+      `<optgroup label="Alle Produkte">${produkte.filter((p) => !alt.includes(p.id)).map((p) => o(p.id, p.name)).join("")}</optgroup>`;
+  };
+  const zaehl = (f) => v.zutaten.filter(f).length;
+  const pruefen = zaehl((z) => z.status === "pruefen" && z.aktion !== "weglassen");
   $("#ivor").innerHTML = `<div class="card"><h2>Vorschau</h2>
     ${v.dublette ? `<p class="over">Dieses Rezept gibt es schon (ID ${esc(v.dublette)}).</p>` : ""}
+    <p class="muted">${zaehl((z) => z.aktion === "zuordnen")} vorhanden · ${zaehl((z) => z.aktion === "neu")} neu ·
+      ${zaehl((z) => z.aktion === "weglassen")} weggelassen${pruefen ? ` · <span class="over">${pruefen} prüfen</span>` : ""}</p>
     <div class="row"><div><label>Name</label><input id="in" value="${esc(v.name)}"></div>
       <div style="flex:0 0 90px"><label>Portionen</label><input id="ip" type="number" min="1" max="12" value="${v.portionen}"></div></div>
+    <button class="go" id="iok">In Grocy übernehmen</button>
     <table>${v.zutaten.map((z) => `<tr><td colspan="3" style="border-top:1px solid var(--line);padding-bottom:0">
-        ${esc(z.text)} <span class="tag ${z.status}">${esc(z.status)}</span>
+        ${esc(z.text)} ${z.status !== "ok" ? `<span class="tag ${z.status}">${esc(z.status)}</span>` : ""}
         ${z.hinweis ? `<span class="muted" style="font-size:12px"> ${esc(z.hinweis)}</span>` : ""}</td></tr>
-      <tr><td style="border:0"><select data-zp="${z.index}">${opts(z.produkt_id)}</select>
-          <input data-zn="${z.index}" placeholder="Name neues Produkt" value="${esc(z.name)}" style="display:none;margin-top:4px"></td>
+      <tr><td style="border:0"><select data-zp="${z.index}">${opts(z)}</select>
+          <input data-zn="${z.index}" value="${esc(z.neu_name ?? z.name)}" style="display:${z.aktion === "neu" ? "block" : "none"};margin-top:4px"></td>
         <td style="border:0;width:90px"><input data-zm="${z.index}" type="number" min="0" step="any" value="${z.menge_bestand ?? ""}"></td>
-        <td style="border:0;width:30px" class="muted" data-ze="${z.index}">${esc(einheit[z.produkt_id] ?? "g")}</td></tr>`).join("")}</table>
-    <button class="go" id="iok">In Grocy übernehmen</button></div>`;
+        <td style="border:0;width:30px" class="muted" data-ze="${z.index}">${esc(einheit[z.produkt_id] ?? "g")}</td></tr>`).join("")}</table></div>`;
   document.querySelectorAll("[data-zp]").forEach((sel) => sel.onchange = () => {
     const i = sel.dataset.zp;
     $(`[data-zn="${i}"]`).style.display = sel.value === "+neu" ? "block" : "none";
@@ -244,16 +253,16 @@ function zeigeVorschau(v, produkte) {
   $("#iok").onclick = () => guarded(async () => {
     const zutaten = [];
     for (const sel of document.querySelectorAll("[data-zp]")) {
-      const i = +sel.dataset.zp, menge = $(`[data-zm="${i}"]`).value;
+      const i = +sel.dataset.zp, menge = $(`[data-zm="${i}"]`).value, z = v.zutaten[i];
       if (!sel.value) continue;
-      if (menge === "") throw new Error(`Menge fehlt: ${v.zutaten[i].text}`);
+      if (menge === "") throw new Error(`Menge fehlt: ${z.text}`);
       zutaten.push(sel.value === "+neu"
-        ? {index: i, neu_anlegen: $(`[data-zn="${i}"]`).value, menge: +menge}
+        ? {index: i, neu_anlegen: $(`[data-zn="${i}"]`).value, menge: +menge, stueck_g: z.stueck_g}
         : {index: i, produkt_id: sel.value, menge: +menge});
     }
     const e = await api(`import/${v.import_id}/uebernehmen`, {method: "POST", body: JSON.stringify({
       name: $("#in").value, portionen: +$("#ip").value, zutaten, trotz_dublette: !!v.dublette})});
-    say(`„${e.name}“ angelegt · ${e.zutaten} Zutaten` + (e.neue_produkte.length ? ` · neu: ${e.neue_produkte.join(", ")}` : ""));
+    say(`„${e.name}“ angelegt · ${e.zutaten} Zutaten` + (e.neue_produkte.length ? ` · ${e.neue_produkte.length} neue Produkte` : ""));
     $("#ivor").innerHTML = "";
   });
 }

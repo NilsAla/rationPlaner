@@ -97,6 +97,7 @@ class ImportZutatIn(BaseModel):
     produkt_id: str | None = None  # bestehendes Produkt
     neu_anlegen: str | None = None  # oder neues Produkt mit diesem Namen (ohne Attribute)
     einheit: str = "g"  # Bestandseinheit für neu_anlegen
+    stueck_g: float | None = Field(default=None, gt=0)  # neu_anlegen: Standard-Packung Stück
     menge: float = Field(ge=0)  # in Bestandseinheit des Produkts
 
 
@@ -386,6 +387,8 @@ async def import_uebernehmen(
         original = roh.zutaten[z.index]
         if z.neu_anlegen:
             produkt = await b.create_product(z.neu_anlegen.strip(), z.einheit)
+            if z.stueck_g and not produkt.pack_size:
+                await b.set_pack(produkt.id, "Stück", z.stueck_g)
             neu.append(produkt.name)
         elif z.produkt_id:
             produkt = await b.get_product(z.produkt_id)
