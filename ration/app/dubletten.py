@@ -47,6 +47,9 @@ def kandidaten(
         for b in produkte[i + 1 :]:
             if paar(a.id, b.id) in ignoriert or a.parent_id == b.id or b.parent_id == a.id:
                 continue
+            # Reste verschiedener Rezepte sind keine Dubletten
+            if "Rest" in (a.category, b.category):
+                continue
             score, grund = aehnlichkeit(a.name, b.name)
             if score >= schwelle:
                 result.append(Kandidat(a, b, round(score, 3), grund))

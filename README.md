@@ -88,6 +88,15 @@ Option `dubletten_schwelle`, Standard 0,9) nebeneinander mit **Mergen** (Grocy-M
 Rezeptzutaten, Varianten; App: Aliase, Packungen) und **Nicht mergen** (Paar wird gemerkt).
 Mergen gibt es als Service `ration.dubletten_mergen`, bewusst nicht als LLM-Tool.
 
+## Reste und Füllstand
+
+„Gekocht“ bucht übrige Portionen als „Rest: <Rezept>“ in den Kühlschrank (Haltbarkeit aus der
+Rest-Haltbarkeit des Rezepts, sonst 3 Tage). Tab *Bestand* zeigt Reste mit „1 gegessen“ und
+„weg“ (verdorben) sowie alle Füllstand-Produkte (voll/knapp/leer). Nach dem Kochen fragt die App
+den Füllstand verwendeter Füllstand-Zutaten ab, je Produkt höchstens alle 14 Tage. knapp und leer
+kommen mit einer Packung auf die Einkaufsliste. API: `GET /reste`, `GET/PUT /fuellstand`,
+`POST /bestand/abbuchen`.
+
 ## Testrezepte
 
 Button „Testrezepte in Grocy anlegen“ im Tab *Woche* (oder `POST /api/v1/testdaten`) legt

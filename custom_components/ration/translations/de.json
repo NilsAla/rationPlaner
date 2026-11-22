@@ -432,6 +432,46 @@
           "description": "ID des Produkts, das gelöscht wird"
         }
       }
+    },
+    "reste": {
+      "name": "Reste",
+      "description": "Reste im Bestand (Antwort)."
+    },
+    "fuellstand": {
+      "name": "Füllstände",
+      "description": "Füllstand-Produkte mit Stand (Antwort)."
+    },
+    "fuellstand_setzen": {
+      "name": "Füllstand setzen",
+      "description": "Setzt voll, knapp oder leer.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "stand": {
+          "name": "Stand",
+          "description": "voll, knapp oder leer"
+        }
+      }
+    },
+    "abbuchen": {
+      "name": "Abbuchen",
+      "description": "Bucht eine Menge ab (FEFO), optional als verdorben.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "menge": {
+          "name": "Menge",
+          "description": "In Bestandseinheit"
+        },
+        "verdorben": {
+          "name": "Verdorben",
+          "description": "Als verdorben ausbuchen"
+        }
+      }
     }
   }
 }

@@ -18,15 +18,31 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import API_VERSION, __version__, katalog, kueche, llm_import, rezept_import, testdaten
-from app.db import Packung, PlanEintrag, RezeptImport, RezeptMeta, ZutatAlias, make_engine
+from app.db import (
+    FuellstandAbfrage,
+    Packung,
+    PlanEintrag,
+    RezeptImport,
+    RezeptMeta,
+    ZutatAlias,
+    make_engine,
+)
 from app.deps import backend, home_assistant, session, settings
 from app.ha import HomeAssistant, SupervisorHomeAssistant
-from app.inventory.base import Ingredient, InventoryBackend, NotFoundError
+from app.inventory.base import (
+    Ingredient,
+    InsufficientStockError,
+    InventoryBackend,
+    NotFoundError,
+    ProductPatch,
+    TrackingMode,
+)
 from app.inventory.grocy import GrocyBackend
 from app.settings import Settings, load_settings
 
 log = logging.getLogger("ration")
 INGRESS_IP = "172.30.32.2"  # Supervisor-Ingress-Proxy
+FUELLSTAND_TAGE = 14  # Füllstand je Produkt höchstens so oft abfragen
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
 
 api = APIRouter(prefix="/api/v1")
@@ -229,9 +245,74 @@ async def gekocht(
     ergebnis = await kueche.gekocht(b, recipe, data.portionen_gekocht, data.portionen_gegessen)
     if eintrag and eintrag.rezept_id == rezept_id:
         eintrag.status = "gekocht"
-        s.commit()
+    # Füllstand höchstens alle FUELLSTAND_TAGE je Produkt abfragen.
+    heute = date.today()
+    fragen = []
+    for pos in ergebnis.fuellstand_produkte:
+        a = s.get(FuellstandAbfrage, pos.produkt_id)
+        if a is None or a.zuletzt <= heute - timedelta(days=FUELLSTAND_TAGE):
+            fragen.append({"produkt_id": pos.produkt_id, "name": pos.name})
+            s.merge(FuellstandAbfrage(produkt_id=pos.produkt_id, zuletzt=heute))
+    s.commit()
     log.info("Gekocht: %s, %s Portionen", recipe.name, data.portionen_gekocht)
-    return {"rezept": recipe.name, **asdict(ergebnis)}
+    daten = asdict(ergebnis)
+    del daten["fuellstand_produkte"]
+    return {"rezept": recipe.name, **daten, "fuellstand_fragen": fragen}
+
+
+class FuellstandIn(BaseModel):
+    stand: Literal["voll", "knapp", "leer"]
+
+
+@api.get("/fuellstand")
+async def fuellstand_liste(b: InventoryBackend = Depends(backend)) -> list[dict]:
+    """Alle Produkte im Modus Füllstand mit aktuellem Stand."""
+    return [
+        {"produkt_id": p.id, "name": p.name, "stand": p.fill_level or "voll"}
+        for p in sorted(await b.list_products(), key=lambda p: p.name.lower())
+        if p.tracking_mode == TrackingMode.FUELLSTAND
+    ]
+
+
+@api.put("/fuellstand/{produkt_id}")
+async def fuellstand_setzen(
+    produkt_id: str,
+    data: FuellstandIn,
+    s: Session = Depends(session),
+    b: InventoryBackend = Depends(backend),
+) -> dict:
+    """Setzt voll/knapp/leer. knapp und leer kommen beim nächsten Einkauf auf die Liste."""
+    p = await b.get_product(produkt_id)
+    if p.tracking_mode != TrackingMode.FUELLSTAND:
+        raise HTTPException(422, f"{p.name} hat nicht den Modus Füllstand")
+    await b.update_product(produkt_id, ProductPatch(fill_level=data.stand))
+    s.merge(FuellstandAbfrage(produkt_id=produkt_id, zuletzt=date.today()))
+    s.commit()
+    return {"produkt_id": produkt_id, "name": p.name, "stand": data.stand}
+
+
+class AbbuchenIn(BaseModel):
+    produkt_id: str
+    menge: float = Field(gt=0)
+    verdorben: bool = False
+
+
+@api.post("/bestand/abbuchen")
+async def abbuchen(data: AbbuchenIn, b: InventoryBackend = Depends(backend)) -> dict:
+    """Bucht eine Menge ab (FEFO), z. B. Rest gegessen oder verdorben weggeworfen."""
+    p = await b.get_product(data.produkt_id)
+    try:
+        await b.consume(p.id, data.menge, spoiled=data.verdorben)
+    except InsufficientStockError as err:
+        raise HTTPException(409, f"Nicht genug {p.name} im Bestand") from err
+    log.info("Abgebucht: %s %s %s%s", data.menge, p.unit, p.name, " (verdorben)" * data.verdorben)
+    return {"produkt_id": p.id, "name": p.name, "menge": data.menge, "verdorben": data.verdorben}
+
+
+@api.get("/reste")
+async def reste(b: InventoryBackend = Depends(backend)) -> list[dict]:
+    """Reste im Bestand: Portionen und frühester Ablauf."""
+    return (await kueche.status(b)).reste
 
 
 def weitere_packungen(s: Session) -> dict[str, list[kueche.Groesse]]:
@@ -458,7 +539,12 @@ async def testdaten_anlegen(b: InventoryBackend = Depends(backend)) -> dict:
 @api.get("/status")
 async def status(tage: int = 3, b: InventoryBackend = Depends(backend)) -> dict:
     st = await kueche.status(b, tage)
-    return {"text": st.text, "artikel": st.artikel, "laeuft_bald_ab": st.laeuft_bald_ab}
+    return {
+        "text": st.text,
+        "artikel": st.artikel,
+        "laeuft_bald_ab": st.laeuft_bald_ab,
+        "reste": st.reste,
+    }
 
 
 # --- App ----------------------------------------------------------------------

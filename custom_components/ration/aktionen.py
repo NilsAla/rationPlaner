@@ -337,4 +337,36 @@ AKTIONEN: tuple[Aktion, ...] = (
         schreibend=True,
         nur_service=True,
     ),
+    Aktion("reste", "Reste im Bestand: Portionen und frühester Ablauf.", "GET", "/reste"),
+    Aktion(
+        "fuellstand", "Alle Füllstand-Produkte mit Stand voll/knapp/leer.", "GET", "/fuellstand"
+    ),
+    Aktion(
+        "fuellstand_setzen",
+        "Setzt den Füllstand eines Produkts. knapp und leer kommen auf die Einkaufsliste.",
+        "PUT",
+        "/fuellstand/{produkt_id}",
+        vol.Schema(
+            {
+                vol.Required("produkt_id"): cv.string,
+                vol.Required("stand"): vol.In(["voll", "knapp", "leer"]),
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "abbuchen",
+        "Bucht eine Menge eines Produkts ab (FEFO), z. B. Rest gegessen; "
+        "verdorben=true für Weggeworfenes.",
+        "POST",
+        "/bestand/abbuchen",
+        vol.Schema(
+            {
+                vol.Required("produkt_id"): cv.string,
+                vol.Required("menge"): MENGE,
+                vol.Optional("verdorben", default=False): cv.boolean,
+            }
+        ),
+        schreibend=True,
+    ),
 )

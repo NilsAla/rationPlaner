@@ -99,3 +99,12 @@ class ProduktMerge(Base):
     neu_id: Mapped[str] = mapped_column(String)
     alt_name: Mapped[str] = mapped_column(String)
     datum: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class FuellstandAbfrage(Base):
+    """Wann zuletzt nach dem Füllstand eines Produkts gefragt wurde (höchstens alle 14 Tage)."""
+
+    __tablename__ = "fuellstand_abfrage"
+
+    produkt_id: Mapped[str] = mapped_column(String, primary_key=True)
+    zuletzt: Mapped[date] = mapped_column(Date)

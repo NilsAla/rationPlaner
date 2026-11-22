@@ -118,9 +118,22 @@ async function loadHeute() {
     const e = await api("gekocht", {method: "POST", body: JSON.stringify({
       rezept_id: r.id, portionen_gekocht: +$("#pg").value, portionen_gegessen: +$("#pe").value})});
     const fehl = e.fehlend.map((p) => `${p.name} ${fmt(p.menge)} ${p.einheit}`).join(", ");
-    say(`${e.abgebucht.length} Zutaten abgebucht` + (fehl ? ` · fehlte: ${fehl}` : ""));
-    load("heute");
+    say(`${e.abgebucht.length} Zutaten abgebucht` + (e.rest ? ` · ${fmt(e.rest.menge)} Portion(en) als Rest eingebucht` : "")
+      + (fehl ? ` · fehlte: ${fehl}` : ""));
+    await load("heute");
+    if (e.fuellstand_fragen.length) fuellstandFragen(e.fuellstand_fragen);
   });
+}
+
+function fuellstandFragen(fragen) {
+  $("#heute").insertAdjacentHTML("beforeend", `<div class="card" id="ffr"><h2>Wie voll ist noch …?</h2>
+    <table>${fragen.map((f) => `<tr><td>${esc(f.name)}</td><td class="nw" style="text-align:right">
+      ${["voll", "knapp", "leer"].map((st) => `<button class="ghost" data-fs="${f.produkt_id}" data-st="${st}">${st}</button>`).join(" ")}</td></tr>`).join("")}</table></div>`);
+  document.querySelectorAll("[data-fs]").forEach((b) => b.onclick = () => guarded(async () => {
+    await api(`fuellstand/${b.dataset.fs}`, {method: "PUT", body: JSON.stringify({stand: b.dataset.st})});
+    b.closest("tr").remove(); say("Füllstand gespeichert");
+    if (!document.querySelector("#ffr [data-fs]")) $("#ffr").remove();
+  }));
 }
 
 async function loadWoche() {
@@ -161,7 +174,8 @@ async function loadWoche() {
 }
 
 async function loadBestand() {
-  const [bestand, produkte, orte] = await Promise.all([api("bestand"), api("produkte"), api("lagerorte")]);
+  const [bestand, produkte, orte, reste, fuell] = await Promise.all([api("bestand"), api("produkte"), api("lagerorte"),
+    api("reste"), api("fuellstand")]);
   const today = iso(new Date()), soon = iso(new Date(Date.now() + 3 * 864e5));
   $("#bestand").innerHTML = `<div class="card"><h2>Einbuchen</h2>
     <label>Produkt</label><select id="ep">${produkte.map((p) => `<option value="${p.id}">${esc(p.name)} (${esc(p.einheit)})</option>`).join("")}</select>
@@ -174,7 +188,25 @@ async function loadBestand() {
       const cls = b.mhd && b.mhd < today ? "over" : b.mhd && b.mhd <= soon ? "soon" : "";
       return `<tr><td>${esc(b.name)}</td><td class="nw">${fmt(b.menge)} ${esc(b.einheit)}</td>
         <td class="muted">${esc(b.lagerort)}</td><td class="nw ${cls}">${dmy(b.mhd)}</td></tr>`; }).join("")}</table>`
-      : `<p class="muted">Leer.</p>`}</div>`;
+      : `<p class="muted">Leer.</p>`}</div>
+    ${reste.length ? `<div class="card"><h2>Reste</h2><table>${reste.map((r) => `<tr><td>${esc(r.name.replace(/^Rest: /, ""))}</td>
+      <td class="nw">${fmt(r.portionen)} P.</td><td class="nw ${r.ablauf && r.ablauf < today ? "over" : r.ablauf && r.ablauf <= soon ? "soon" : ""}">${dmy(r.ablauf)}</td>
+      <td class="nw" style="text-align:right"><button class="ghost" data-rg="${r.produkt_id}">1 gegessen</button>
+        <button class="ghost" data-rw="${r.produkt_id}" data-m="${r.portionen}">weg</button></td></tr>`).join("")}</table></div>` : ""}
+    ${fuell.length ? `<div class="card"><h2>Füllstand</h2><table>${fuell.map((f) => `<tr><td>${esc(f.name)}</td>
+      <td class="nw" style="text-align:right">${["voll", "knapp", "leer"].map((st) =>
+        `<button class="ghost ${f.stand === st ? "on" : ""}" data-fs="${f.produkt_id}" data-st="${st}"
+          style="${f.stand === st ? "background:var(--accent);color:#fff;border-color:var(--accent)" : ""}">${st}</button>`).join(" ")}</td></tr>`).join("")}</table>
+      <p class="muted" style="font-size:13px">knapp und leer kommen beim nächsten Einkauf auf die Liste.</p></div>` : ""}`;
+  document.querySelectorAll("[data-rg]").forEach((b) => b.onclick = () => guarded(async () => {
+    await api("bestand/abbuchen", {method: "POST", body: JSON.stringify({produkt_id: b.dataset.rg, menge: 1})});
+    say("Guten Appetit"); load("bestand"); }));
+  document.querySelectorAll("[data-rw]").forEach((b) => b.onclick = () => guarded(async () => {
+    await api("bestand/abbuchen", {method: "POST", body: JSON.stringify({produkt_id: b.dataset.rw, menge: +b.dataset.m, verdorben: true})});
+    say("Als verdorben ausgebucht"); load("bestand"); }));
+  document.querySelectorAll("#bestand [data-fs]").forEach((b) => b.onclick = () => guarded(async () => {
+    await api(`fuellstand/${b.dataset.fs}`, {method: "PUT", body: JSON.stringify({stand: b.dataset.st})});
+    load("bestand"); }));
   $("#buchen").onclick = () => guarded(async () => {
     await api("bestand", {method: "POST", body: JSON.stringify({produkt_id: $("#ep").value,
       menge: +$("#em").value, mhd: $("#ed").value || null, lagerort_id: $("#el").value || null})});
@@ -485,7 +517,7 @@ async function zeigeProdukt(id) {
 
 function load(tab) {
   guarded(loadStatus);
-  guarded({heute: loadHeute, woche: loadWoche, rezepte: loadRezepte, bestand: loadBestand,
+  return guarded({heute: loadHeute, woche: loadWoche, rezepte: loadRezepte, bestand: loadBestand,
     produkte: loadProdukte, packungen: () => loadPackungen(), import: loadImport}[tab]);
 }
 load("heute");

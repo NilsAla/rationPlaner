@@ -341,7 +341,10 @@ Planer und Nährwerte), danach Ausbau Phase für Phase.
   BLS-Lizenz prüfen und Import. Keine Stammdaten.
 - **Durchstich:** Manuelles Einbuchen, Plan von Hand, Gekocht mit FEFO-Abbuchung, Einkaufsliste in
   HA-To-do, Sensoren „Rezept heute“, Status und „läuft ab“. Bon-Upload folgt mit der AI-Task-Entität.
-  Noch offen im Durchstich: Reste als Rest-Produkt einbuchen, Füllstand-Abfrage.
+  Reste und Füllstand-Abfrage erledigt (0.9.0): übrige Portionen werden als Produkt
+  „Rest: <Rezept>“ (Kategorie Rest, Einheit Portion, Haltbarkeit aus `rest_haltbarkeit_tage`,
+  sonst 3 Tage) in den Kühlschrank gebucht. Nach „Gekocht“ fragt die App Füllstand-Zutaten
+  ab (je Produkt höchstens alle 14 Tage); knapp/leer landen mit einer Packung auf der Einkaufsliste.
 - **Phase 1 – Grundgerüst + Kochen:** Ingress-UI, Bestandsansicht, manuelles Einbuchen,
   Gekocht-Flow mit Portionen und Resten, Bridge-Entitäten, Küchen-Card, Statuszeile, Widgets.
 - **Phase 2 – Kassenbon:** Vorverarbeitung, Alias, `ai_task`, Review, Push.

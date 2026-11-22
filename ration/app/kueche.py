@@ -8,11 +8,19 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from app.inventory.base import InventoryBackend, Product, Recipe, TrackingMode
+from app.inventory.base import InventoryBackend, Product, ProductPatch, Recipe, TrackingMode
 
 # Füllstand und Immer-da werden nie abgebucht (Konzept, Bestandsführung).
 ABBUCHEN = {TrackingMode.EXAKT, TrackingMode.MENGE, None}
 EPS = 1e-6
+REST_KATEGORIE = "Rest"
+REST_EINHEIT = "Portion"
+REST_TAGE_STANDARD = 3  # wenn das Rezept keine Rest-Haltbarkeit hat
+NACHKAUF_FUELLSTAND = {"knapp", "leer"}
+
+
+def ist_rest(product: Product) -> bool:
+    return product.category == REST_KATEGORIE
 
 
 def wird_abgebucht(product: Product) -> bool:
@@ -69,6 +77,8 @@ class Einkauf(Position):
     @property
     def text(self) -> str:
         if not self.packungen:
+            if self.menge <= EPS:  # Füllstand ohne Packungsgröße: nur der Name
+                return self.name
             return f"{self.name} {menge(math.ceil(self.menge - EPS))} {self.einheit}".strip()
         teile = [
             f"{p.anzahl} × {p.einheit} ({menge(p.menge)} {self.einheit})".replace(" )", ")")
@@ -133,6 +143,8 @@ class GekochtErgebnis:
     fehlend: list[Position] = field(default_factory=list)
     nicht_abgebucht: list[Position] = field(default_factory=list)
     rest_portionen: int = 0
+    rest: Position | None = None  # eingebuchtes Rest-Produkt
+    fuellstand_produkte: list[Position] = field(default_factory=list)  # zum Nachfragen
 
 
 async def gekocht(
@@ -151,6 +163,8 @@ async def gekocht(
         pos = Position(product.id, product.name, bedarf, product.unit)
         if not wird_abgebucht(product):
             ergebnis.nicht_abgebucht.append(pos)
+            if product.tracking_mode == TrackingMode.FUELLSTAND:
+                ergebnis.fuellstand_produkte.append(pos)
             continue
         vorhanden = await backend.get_stock_amount(product.id)
         abbuchen = min(bedarf, vorhanden)
@@ -161,6 +175,7 @@ async def gekocht(
             ergebnis.fehlend.append(
                 Position(product.id, product.name, bedarf - abbuchen, product.unit)
             )
+    ergebnis.rest = await rest_einbuchen(backend, recipe, ergebnis.rest_portionen)
     return ergebnis
 
 
@@ -183,6 +198,12 @@ async def bedarf(
         if p.min_stock > 0 and wird_abgebucht(p):
             summe.setdefault(p.id, 0)
     einkauf = []
+    # Füllstand: knapp oder leer → eine Packung (bzw. nur der Name, wenn keine Größe bekannt).
+    for p in products.values():
+        if p.tracking_mode == TrackingMode.FUELLSTAND and p.fill_level in NACHKAUF_FUELLSTAND:
+            g = groessen(p, (weitere or {}).get(p.id))
+            packs = [PackAnzahl(1, g[0].einheit, g[0].menge, g[0].quelle)] if g else []
+            einkauf.append(Einkauf(p.id, p.name, g[0].menge if g else 0.0, p.unit, packungen=packs))
     for product_id, benoetigt in summe.items():
         p = products[product_id]
         differenz = benoetigt + p.min_stock - await backend.get_stock_amount(product_id)
@@ -195,10 +216,15 @@ async def bedarf(
 class Status:
     artikel: int
     laeuft_bald_ab: list[dict]
+    reste: list[dict] = field(default_factory=list)
 
     @property
     def text(self) -> str:
-        return f"{self.artikel} Artikel · {len(self.laeuft_bald_ab)} laufen bald ab"
+        text = f"{self.artikel} Artikel · {len(self.laeuft_bald_ab)} laufen bald ab"
+        if self.reste:
+            portionen = sum(r["portionen"] for r in self.reste)
+            text += f" · {menge(portionen)} {'Rest' if portionen == 1 else 'Reste'}"
+        return text
 
 
 async def status(backend: InventoryBackend, tage: int = 3, heute: date | None = None) -> Status:
@@ -218,4 +244,44 @@ async def status(backend: InventoryBackend, tage: int = 3, heute: date | None = 
         for b in batches
         if b.best_before is not None and b.best_before <= grenze
     ]
-    return Status(artikel=len({b.product_id for b in batches}), laeuft_bald_ab=bald)
+    reste: dict[str, dict] = {}
+    for b in batches:
+        p = products.get(b.product_id)
+        if p and ist_rest(p):
+            r = reste.setdefault(
+                p.id, {"produkt_id": p.id, "name": p.name, "portionen": 0.0, "ablauf": None}
+            )
+            r["portionen"] += b.amount
+            if b.best_before and (r["ablauf"] is None or b.best_before.isoformat() < r["ablauf"]):
+                r["ablauf"] = b.best_before.isoformat()
+    return Status(
+        artikel=len({b.product_id for b in batches}),
+        laeuft_bald_ab=bald,
+        reste=sorted(reste.values(), key=lambda r: r["ablauf"] or "9999"),
+    )
+
+
+async def rest_einbuchen(
+    backend: InventoryBackend, recipe: Recipe, portionen: float, heute: date | None = None
+) -> Position | None:
+    """Übrige Portionen als Rest-Produkt „Rest: <Rezept>“ in den Kühlschrank buchen.
+
+    Haltbarkeit aus dem Rezept (Rest-Haltbarkeit), sonst REST_TAGE_STANDARD Tage.
+    """
+    if portionen <= EPS:
+        return None
+    heute = heute or date.today()
+    tage = recipe.leftover_days or REST_TAGE_STANDARD
+    p = await backend.create_product(f"Rest: {recipe.name}", REST_EINHEIT)
+    if not ist_rest(p):
+        p = await backend.update_product(
+            p.id,
+            ProductPatch(
+                category=REST_KATEGORIE, tracking_mode=TrackingMode.EXAKT, shelf_life_days=tage
+            ),
+        )
+    orte = await backend.list_locations()
+    kuehl = next((o for o in orte if o.name.lower().startswith("kühlschrank")), None)
+    ort = kuehl or next((o for o in orte if not o.is_freezer), orte[0])
+    await backend.add_stock(p.id, portionen, heute + timedelta(days=tage), ort.id)
+    return Position(p.id, p.name, portionen, p.unit)

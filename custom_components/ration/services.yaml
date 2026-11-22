@@ -351,3 +351,34 @@ dubletten_mergen:
       required: true
       selector:
         text:
+reste:
+fuellstand:
+fuellstand_setzen:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+    stand:
+      required: true
+      selector:
+        select:
+          options:
+          - voll
+          - knapp
+          - leer
+abbuchen:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+    menge:
+      required: true
+      selector:
+        number:
+          min: 0
+          mode: box
+    verdorben:
+      selector:
+        boolean:

@@ -432,6 +432,46 @@
           "description": "ID of the product to delete"
         }
       }
+    },
+    "reste": {
+      "name": "Leftovers",
+      "description": "Leftovers in stock (response)."
+    },
+    "fuellstand": {
+      "name": "Fill levels",
+      "description": "Fill level products with state (response)."
+    },
+    "fuellstand_setzen": {
+      "name": "Set fill level",
+      "description": "Sets full, low or empty.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "stand": {
+          "name": "Level",
+          "description": "full, low or empty"
+        }
+      }
+    },
+    "abbuchen": {
+      "name": "Consume",
+      "description": "Consumes an amount (FEFO), optionally as spoiled.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "menge": {
+          "name": "Amount",
+          "description": "In stock unit"
+        },
+        "verdorben": {
+          "name": "Spoiled",
+          "description": "Book as spoiled"
+        }
+      }
     }
   }
 }
