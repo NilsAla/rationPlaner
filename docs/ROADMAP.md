@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.27.0 / API 1.22)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.27.1 / API 1.22)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -212,6 +212,11 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
   „Fusilli (statt Spaghetti)“). Pro Gruppe abschaltbar: Einstellung `ersatz.gesperrt`
   (Einstellungen → Austauschbare Zutaten). Gruppen entstehen über „Variante von“ am Produkt.
 - Offen/Idee: Ersatz über verschiedene Einheiten (Gramm-Umrechnung), Ausnahme je Rezept.
+
+### 11. MHD beim Einbuchen ohne Datum – erledigt (0.27.1)
+- Grocy setzte bei Standard-Haltbarkeit 0 das MHD auf heute. `app/haltbarkeit.py` schätzt die
+  Tage aus Kategorie, Name (Nudeln 540, Konserven 730, Milch 10 …) oder OFF-Kategorie und legt
+  `haltbarkeit_tage` als Vorschlag fürs Produkt an. Gilt für Scan, Bon und Einbuchen von Hand.
 
 ## Getroffene Entscheidungen (nicht stillschweigend ändern)
 

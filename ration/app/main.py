@@ -27,6 +27,7 @@ from app import (
     bon,
     einstellungen,
     fotos,
+    haltbarkeit,
     inventar,
     katalog,
     kategorisierung,
@@ -180,13 +181,17 @@ async def bestand(b: InventoryBackend = Depends(backend)) -> list[dict]:
 
 
 @api.post("/bestand", status_code=201)
-async def einbuchen(data: EinbuchenIn, b: InventoryBackend = Depends(backend)) -> dict:
+async def einbuchen(
+    data: EinbuchenIn, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+) -> dict:
     product = await b.get_product(data.produkt_id)
     location = data.lagerort_id or product.default_location_id
     if location is None:
         raise HTTPException(422, "Lagerort fehlt und Produkt hat keinen Standard-Lagerort")
-    await b.add_stock(product.id, data.menge, data.mhd, location, data.preis)
-    return {"produkt_id": product.id, "menge": data.menge}
+    mhd, hinweis = haltbarkeit.mhd_fuer(s, product, data.mhd)
+    await b.add_stock(product.id, data.menge, mhd, location, data.preis)
+    s.commit()
+    return {"produkt_id": product.id, "menge": data.menge, "mhd": mhd, "hinweis": hinweis}
 
 
 @api.get("/rezepte")

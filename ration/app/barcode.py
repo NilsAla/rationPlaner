@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import JSON, DateTime, String, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app import __version__, kueche, naehrwerte
+from app import __version__, haltbarkeit, kueche, naehrwerte
 from app.bon import groesse_aus_text
 from app.db import Base, Packung
 from app.deps import backend, session
@@ -290,7 +290,7 @@ async def einbuchen(
     """Bestätigte Scans einbuchen: Barcode merken, Größe als Variante, Bestand anlegen."""
     from app.kategorisierung import Vorschlag
 
-    gebucht, neu, fehler = [], [], []
+    gebucht, neu, fehler, hinweise = [], [], [], []
     for e in data.eintraege:
         ean = ean_pruefen(e.ean)
         try:
@@ -325,9 +325,18 @@ async def einbuchen(
                 ort = next((o.id for o in orte if o.name == "Vorrat"), orte[0].id)
             if p.tracking_mode == TrackingMode.FUELLSTAND:
                 await b.update_product(p.id, ProductPatch(fill_level="voll"))
-            elif p.tracking_mode != TrackingMode.IMMER_DA:
-                await b.add_stock(p.id, menge, e.mhd, ort, None)
             off = s.get(OffCache, ean)
+            if (
+                p.tracking_mode != TrackingMode.FUELLSTAND
+                and p.tracking_mode != TrackingMode.IMMER_DA
+            ):
+                off_kat = (
+                    katalog_kategorien(off.daten.get("kategorien", [])) if off and off.daten else []
+                )
+                mhd, hinweis = haltbarkeit.mhd_fuer(s, p, e.mhd, off_kat)
+                if hinweis:
+                    hinweise.append(hinweis)
+                await b.add_stock(p.id, menge, mhd, ort, None)
             nw = off.daten.get("naehrwerte") if off and off.daten else None
             if e.naehrwerte and nw and p.id not in naehrwerte.alle(s):
                 s.add(Vorschlag(lauf_id=0, typ="produkt", objekt_id=p.id, name=p.name,
@@ -339,4 +348,4 @@ async def einbuchen(
             fehler.append({"ean": ean, "fehler": str(err)})
     s.commit()
     log.info("Scan eingebucht: %s Einträge, %s neu, %s Fehler", len(gebucht), len(neu), len(fehler))
-    return {"gebucht": gebucht, "neue_produkte": neu, "fehler": fehler}
+    return {"gebucht": gebucht, "neue_produkte": neu, "fehler": fehler, "hinweise": hinweise}

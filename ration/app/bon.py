@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import ausgaben, kueche, packungen
+from app import ausgaben, haltbarkeit, kueche, packungen
 from app.db import BonAlias, BonImport, Preis
 from app.deps import backend, session, settings
 from app.inventory.base import InventoryBackend, Product, ProductPatch, TrackingMode
@@ -791,7 +791,7 @@ async def bon_buchen(
         raise HTTPException(409, f"Bon ist im Status {bon.status}")
     roh = {p["index"]: p for p in bon.positionen or []}
     markt = norm_markt(bon.markt)
-    gebucht, neu = [], []
+    gebucht, neu, hinweise = [], [], []
     zuordnung: dict[int, str] = {}
     for z in data.positionen:
         pos = roh.get(z.index)
@@ -812,7 +812,10 @@ async def bon_buchen(
         if p.tracking_mode == TrackingMode.FUELLSTAND:
             await b.update_product(p.id, ProductPatch(fill_level="voll"))  # kein Bestand
         elif p.tracking_mode != TrackingMode.IMMER_DA:
-            await b.add_stock(p.id, z.menge, z.mhd, ort, einzelpreis)
+            mhd, hinweis = haltbarkeit.mhd_fuer(s, p, z.mhd)
+            if hinweis:
+                hinweise.append(hinweis)
+            await b.add_stock(p.id, z.menge, mhd, ort, einzelpreis)
         anzahl = pos.get("anzahl") or 1
         s.merge(
             BonAlias(
@@ -846,7 +849,7 @@ async def bon_buchen(
     bon.status = "gebucht"
     s.commit()
     log.info("Bon %s gebucht: %s Zeilen, %s neue Produkte", bon_id, len(gebucht), len(neu))
-    return {"gebucht": gebucht, "neue_produkte": neu}
+    return {"gebucht": gebucht, "neue_produkte": neu, "hinweise": hinweise}
 
 
 @router.post("/bon/{bon_id}/verwerfen")

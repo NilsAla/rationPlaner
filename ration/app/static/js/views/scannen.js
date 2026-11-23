@@ -122,6 +122,7 @@ export default async function render(el) {
       const r = await post("barcode/einbuchen", {eintraege: liste.map((x) => ({
         ean: x.info.ean, anzahl: x.anzahl, packung_menge: x.packung_menge || null, marke: x.marke, mhd: x.mhd || null,
         lagerort_id: x.lagerort_id || null, ...(x.produkt_id ? {produkt_id: x.produkt_id} : {neu_name: x.neu_name.trim(), einheit: x.einheit})}))});
+      if (r.hinweise?.length) toast(r.hinweise.join(" · "));
       const ok = new Set(r.gebucht.map((g) => g.ean));
       liste = liste.filter((x) => !ok.has(x.info.ean)); sichern(); zeichnen();
       toast(`${r.gebucht.length} eingebucht` + (r.neue_produkte.length ? ` · ${r.neue_produkte.length} neu` : "")

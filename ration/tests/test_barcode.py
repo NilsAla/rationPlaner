@@ -168,3 +168,40 @@ def test_vorschlag_ueber_kategorie(s_client, fake_backend):
     )
     r = s_client.get(f"/api/v1/barcode/{EAN}").json()  # "Spaghetti n.5", en:pastas
     assert r["vorschlaege"][0]["produkt_id"] == "nudeln"
+
+
+def test_mhd_wird_geschaetzt_statt_heute(s_client):
+    from datetime import date, timedelta
+
+    s_client.get(f"/api/v1/barcode/{EAN}")
+    r = s_client.post(
+        "/api/v1/barcode/einbuchen",
+        json={
+            "eintraege": [
+                {
+                    "ean": EAN,
+                    "neu_name": "Spaghetti",
+                    "einheit": "g",
+                    "packung_menge": 500,
+                    "naehrwerte": False,
+                }
+            ]
+        },  # fmt: skip
+    ).json()
+    assert "geschätzt" in r["hinweise"][0]
+    charge = next(b for b in s_client.get("/api/v1/bestand").json() if b["name"] == "Spaghetti")
+    assert charge["mhd"] == (date.today() + timedelta(days=540)).isoformat()
+    vor = [v for v in s_client.get("/api/v1/vorschlaege").json() if v["feld"] == "haltbarkeit_tage"]
+    assert vor[0]["neu"] == 540
+
+
+def test_mhd_von_hand_und_gepflegte_haltbarkeit_bleiben(s_client):
+    from datetime import date, timedelta
+
+    s_client.post(
+        "/api/v1/bestand", json={"produkt_id": "nudeln", "menge": 500, "mhd": "2030-01-01"}
+    )
+    r = s_client.post("/api/v1/bestand", json={"produkt_id": "nudeln", "menge": 500}).json()
+    assert r["mhd"] == (date.today() + timedelta(days=540)).isoformat()  # Name „Nudeln“
+    mhds = sorted(b["mhd"] for b in s_client.get("/api/v1/bestand").json() if b["name"] == "Nudeln")
+    assert mhds[-1] == "2030-01-01"

@@ -180,6 +180,7 @@ async function bonZeigen(box, id, produkte, fertig) {
     const kategorien = Object.fromEntries($$("[data-bk]", box).filter((s) => s.value).map((s) => [s.dataset.bk, s.value]));
     const e = await post(`bon/${id}/buchen`, {positionen, kategorien});
     toast(`${e.gebucht.length} Positionen eingebucht` + (e.neue_produkte.length ? ` · ${e.neue_produkte.length} neue Produkte` : ""));
+    if (e.hinweise?.length) toast(e.hinweise.join(" · "));
     fertig();
   });
   $("#bweg", box).onclick = () => guarded(async () => { await post(`bon/${id}/verwerfen`); toast("Bon verworfen"); fertig(); });
