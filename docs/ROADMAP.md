@@ -44,6 +44,23 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
   verrechnet, Non-Food nicht vorausgewählt, Gewichtsartikel (Paprika 0,486 kg) korrekt. Schwächen
   im Prompt oder in `bon.py` (`_typ`, `_ziel`, `_anzahl_pruefen`) beheben, Fixture `HUERDEN`
   in `tests/test_bon.py` erweitern.
+- Lösung liegt als Fixture unter `ration/tests/fixtures/testbon-loesung.json` (aus
+  `scripts/testbon.py`, Seed 42). Für den Zeilenvergleich braucht jede Zeile noch strukturierte
+  Sollwerte (Menge, Einheit, Anzahl) zusätzlich zum Text in `erwartung`.
+
+**Ergebnis erster Live-Test (Scan, 2026-11-23), offene Fixes:**
+- [ ] **Mehrfachmengen:** SPAGHETTI 2,97 € = 3 × 0,99 € → 1500 g (erkannt: 500 g). TOMATEN PASS.
+  1,38 € vor Coupon = 2 × 500 g (erkannt: 1 ×). Anzahl im Code aus Betrag ÷ Einzelpreis bzw. aus
+  der Zeile „N x“ ableiten. Im Zweifel Review statt raten.
+- [ ] **Gebinde:** MINERALW. 12X0,7L → 8400 ml. Muster `NxM(G|KG|ML|L)` im Code parsen, nicht per KI.
+- [ ] **Einheiten:** ml/l für Flüssiges statt g.
+- [ ] **Lesefehler:** EINWEGHANDSCHUHE wurde als „EINWEG SCHUHE“ gelesen und zu „Einweggeschirr“.
+  Bon-Text originalgetreu übernehmen, Namensvorschlag nur aus dem Bon-Text.
+- [ ] **Annahmen:** Knoblauch bekam stillschweigend 50 g Standardpackung. Solche Werte als
+  „Annahme“ markieren (sichtbar im Review).
+- [ ] **Pfand und Storno** mitprüfen.
+- **Akzeptanz:** Ein automatischer Test vergleicht jede Zeile gegen die Fixture (Menge, Einheit,
+  Anzahl), alle grün. Danach dasselbe mit der Foto-Variante (`testbon-foto.jpg`).
 
 ### 2. Neue Startseite – erledigt (0.19.0)
 - `views/uebersicht.js` neu: Heute groß mit Foto, nächste 6 Tage als Fotokarten (Drag&Drop,
@@ -52,6 +69,18 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
   Vorrat, Zu tun, „Jetzt kochbar“ als Karten. Ohne Plan für heute: kochbare Rezepte per Klick einplanen.
 - Lokal mit Playwright geprüft (1400 px und 390 px, kein horizontales Scrollen, keine Konsolenfehler).
   Auf Touch gibt es kein Drag&Drop, dafür die Knöpfe.
+
+**Neu (offen): Bereich „Spontan kochbar“**
+- 3–6 Rezeptkarten mit Foto, deren Zutaten zu ≥ 95 % vorrätig sind, gewichtet nach Menge (Gramm).
+  Basics wie Salz und Öl zählen nicht (Modus `immer_da`/`fuellstand` bzw. Basics-Liste).
+- Fehlende Kleinigkeiten stehen auf der Karte („fehlt: 1 Zwiebel“).
+- Sortierung: nach Abdeckung, dann nach bald ablaufenden Zutaten.
+- Je Karte zwei Knöpfe: „Statt heute“ setzt das Rezept auf heute und verschiebt das bisher
+  geplante Gericht (Tausch-Logik von `POST /plan/{datum}/verschieben`). „Zusätzlich“ trägt es ein,
+  ohne den Plan zu ändern.
+- Schwellwert (Standard 95 %) in den Einstellungen einstellbar.
+- Akzeptanz: Abdeckung rechnet der Code (Test mit FakeBackend), Desktop und 390 px ohne
+  horizontales Scrollen, beide Knöpfe mit 1 Klick.
 
 ### 3. HA-Entitäten über die Bridge – erledigt (0.18.0)
 - `GET /api/v1/uebersicht` (heute, morgen, nächste Tage mit kcal/Nutri/Foto/Ampel, läuft ab nach
@@ -79,6 +108,21 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
 - ~~Anleitungs-Editor: je Schritt Foto zuordnen/hochladen~~ erledigt (0.19.1): Foto wählen aus
   den Rezeptfotos, hochladen oder Originalschritte (Chips 1…n) zuordnen.
 - Sensor-Attribut `foto` + `image.ration_gericht_heute/_morgen` erledigt (0.18.0). Lovelace-Card offen.
+
+### 6. Packungsgrößen clever (offen)
+1. **Varianten erweitern:** Marke/Hersteller, Händler, EAN (optional), zuletzt gesehen am,
+   Häufigkeit. Liegt in der App-DB (`Packung`), Grocy bleibt Master für die Standard-Packung.
+2. **Bon-Import erkennt Größen** aus Kürzeln wie „KIDNEYB. 400G“ oder „2x250g“ (im Code geparst)
+   und gleicht sie mit den Varianten ab. Bekannte Größe: Häufigkeit hochzählen, zuletzt gesehen
+   setzen. Neue Größe: als Variante vorschlagen (Review, nichts automatisch übernehmen).
+3. **KI-Modus „Packungsgrößen analysieren“** (manuell startbar, eigener KI-Job): wertet
+   Bon-Historie, Angebote und KI-Wissen aus und schlägt je Produkt die gängigen Größen und den
+   Standard vor (die häufigste in den letzten X Monaten, vom Code bestimmt). Ergebnis als
+   Diff-Review mit Übernehmen/Verwerfen, Kosten im KI-Protokoll.
+4. **Einkaufsliste** nutzt weiter die Kombination mit dem geringsten Überschuss, bevorzugt aber
+   Varianten, die tatsächlich gekauft werden (Häufigkeit/zuletzt gesehen als Tie-Breaker).
+- Akzeptanz: Tests für Größen-Parser (400G, 2x250g, 12X0,7L, 1,5KG), Abgleich und
+  Häufigkeitszählung, Einkaufslisten-Auswahl mit Präferenz. Kein Stammdaten-Update ohne Review.
 
 ## Getroffene Entscheidungen (nicht stillschweigend ändern)
 

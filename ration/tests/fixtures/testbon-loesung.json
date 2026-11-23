@@ -1,0 +1,115 @@
+{
+ "markt": "Frische Ecke",
+ "datum": "2026-11-21",
+ "summe": 25.15,
+ "zeilen": [
+  {
+   "typ": "gewicht",
+   "text": "PAPRIKA ROT LOSE",
+   "betrag": 1.94,
+   "erwartung": "Paprika rot 486 g"
+  },
+  {
+   "typ": "artikel",
+   "text": "SPAGHETTI NR.5 500G",
+   "betrag": 2.97,
+   "erwartung": "Nudeln 3 × 500 g = 1500 g"
+  },
+  {
+   "typ": "artikel",
+   "text": "KIDNEYBOHN.ROT 400G",
+   "betrag": 0.79,
+   "erwartung": "Kidneybohnen 400 g"
+  },
+  {
+   "typ": "artikel",
+   "text": "KIDNEYBOHN.ROT 800G",
+   "betrag": 1.39,
+   "erwartung": "Kidneybohnen 800 g, abweichend"
+  },
+  {
+   "typ": "artikel",
+   "text": "TOMATEN PASS. 500G",
+   "betrag": 1.38,
+   "erwartung": "Tomaten passiert 2 × 500 g"
+  },
+  {
+   "typ": "coupon",
+   "text": "COUPON TOMATEN",
+   "betrag": -0.3,
+   "erwartung": "Rabatt auf Tomaten, Preis 1,08"
+  },
+  {
+   "typ": "artikel",
+   "text": "ZWIEBELN GELB 2KG NETZ",
+   "betrag": 1.99,
+   "erwartung": "Zwiebel 2000 g, abweichend"
+  },
+  {
+   "typ": "artikel",
+   "text": "OLIVENOEL NAT.EXTRA 0,75L",
+   "betrag": 6.49,
+   "erwartung": "Olivenöl (Füllstand voll)"
+  },
+  {
+   "typ": "rabatt",
+   "text": "RABATT 20%",
+   "betrag": -1.3,
+   "erwartung": "Rabatt auf Olivenöl, Preis 5,19"
+  },
+  {
+   "typ": "non_food",
+   "text": "SPUELMITTEL ZITRONE 500ML",
+   "betrag": 1.19,
+   "erwartung": "Non-Food, nicht vorausgewählt"
+  },
+  {
+   "typ": "artikel",
+   "text": "MINERALW. MEDIUM 12X0,7L",
+   "betrag": 3.99,
+   "erwartung": "neues Produkt Mineralwasser"
+  },
+  {
+   "typ": "pfand",
+   "text": "PFAND 12 x 0,25",
+   "betrag": 3.0,
+   "erwartung": "ignorieren"
+  },
+  {
+   "typ": "artikel",
+   "text": "KNOBLAUCH",
+   "betrag": 0.49,
+   "erwartung": "neues Produkt Knoblauch, Menge offen"
+  },
+  {
+   "typ": "artikel",
+   "text": "SPAGHETTI NR.5 500G",
+   "betrag": 0.99,
+   "erwartung": "wird storniert"
+  },
+  {
+   "typ": "storno",
+   "text": "STORNO SPAGHETTI NR.5 500G",
+   "betrag": -0.99,
+   "erwartung": "hebt die Zeile davor auf"
+  },
+  {
+   "typ": "artikel",
+   "text": "TUETENSUPPE TOMATE",
+   "betrag": 0.89,
+   "erwartung": "Ware, trotz 'Tüte' im Namen, neu"
+  },
+  {
+   "typ": "leergut",
+   "text": "LEERGUT",
+   "betrag": -2.25,
+   "erwartung": "ignorieren"
+  },
+  {
+   "typ": "non_food",
+   "text": "EINWEGHANDSCHUHE 100ST",
+   "betrag": 2.49,
+   "erwartung": "Non-Food, trotz 'Einweg'"
+  }
+ ]
+}
