@@ -73,6 +73,7 @@ export default async function render(el, {arg}) {
       <div class="card"><div class="kopf"><h2>Schritte (${schritte.length})</h2>
         <div class="aktionen"><button class="btn klein" id="neu">＋ Schritt</button></div></div>
         <div id="fehlend">${fehlendHtml()}</div>
+        <p class="muted tiny">Mengen im Text für ${a.portionen_basis} Portion(en) schreiben („250 g Hähnchen“, „2 EL Öl“, „1 Zwiebel“): Kochmodus und Rezeptbuch rechnen sie für andere Portionen mit um. Zeiten, °C und cm bleiben.</p>
         <div id="liste">${schritte.map(schrittHtml).join("")}</div></div>
       <div class="card"><h2>Original</h2>
         ${rezept.schritte.length ? `<ol class="schritte">${rezept.schritte.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>` : `<p class="muted">Keine Originalschritte.</p>`}

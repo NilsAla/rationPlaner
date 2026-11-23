@@ -48,6 +48,109 @@ def menge(amount: float) -> str:
     return f"{round(amount, 1):g}"
 
 
+# --- Mengen in Schritt-Texten skalieren --------------------------------------------------------
+# Schritte stehen immer für die Grundportionen des Rezepts im Text („250 g Hähnchen anbraten“).
+# Beim Anzeigen für andere Portionen rechnet der Code jede erkannte Menge mit um. Zeiten,
+# Temperaturen und Maße (Minuten, °C, cm) haben keine Mengeneinheit und bleiben unverändert.
+_BRUCH = {"½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3}
+_ZAHL = r"(?:\d+(?:[.,]\d+)?|\d+/\d+|[½¼¾⅓⅔])"
+# Längere Einheiten zuerst, sonst fängt „g“ das „Gramm“ ab
+_GEWICHT = ["Kilogramm", "Milliliter", "Gramm", "Liter", "kg", "mg", "ml", "cl", "dl", "g", "l"]
+_STUECKIG = [
+    "Esslöffel", "Teelöffel", "Päckchen", "Packungen", "Packung", "Handvoll", "Scheiben",
+    "Scheibe", "Stangen", "Stange", "Knollen", "Knolle", "Prisen", "Prise", "Zehen", "Zehe",
+    "Dosen", "Dose", "Becher", "Tassen", "Tasse", "Zweige", "Zweig", "Blätter", "Blatt", "Stück",
+    "Stk.", "Stk", "Pck.", "Pck", "Msp.", "Msp", "Bund", "EL", "TL",
+]  # fmt: skip
+_EINZAHL = {
+    "Zehen": "Zehe", "Dosen": "Dose", "Prisen": "Prise", "Scheiben": "Scheibe", "Tassen": "Tasse",
+    "Packungen": "Packung", "Stangen": "Stange", "Knollen": "Knolle", "Zweige": "Zweig",
+    "Blätter": "Blatt",
+}  # fmt: skip
+_MEHRZAHL = {v: k for k, v in _EINZAHL.items()}
+_EINHEIT = "|".join(re.escape(e) for e in _GEWICHT + _STUECKIG)
+MENGE_IM_TEXT = re.compile(
+    rf"(?<![\w.,/])(?P<a>{_ZAHL})(?:\s?[-–]\s?(?P<b>{_ZAHL}))?\s?"
+    rf"(?:(?P<e>{_EINHEIT})(?![\wäöüß])|(?P<w>[A-ZÄÖÜ][\wäöüß]+))"
+)
+
+
+def _zahl(t: str) -> float:
+    if t in _BRUCH:
+        return _BRUCH[t]
+    if "/" in t:
+        z, n = t.split("/")
+        return int(z) / int(n) if int(n) else 0.0
+    return float(t.replace(",", "."))
+
+
+def _bruch(x: float) -> str:
+    """Auf Viertel gerundet, als „1½“ statt „1.5“."""
+    v = max(round(x * 4) / 4, 0.25)
+    ganz, rest = int(v), v - int(v)
+    zeichen = {0.25: "¼", 0.5: "½", 0.75: "¾"}.get(rest, "")
+    return f"{ganz if ganz else ''}{zeichen}" or "0"
+
+
+def _format(x: float, stueckig: bool) -> str:
+    if stueckig:
+        return _bruch(x)
+    if x >= 100:
+        return f"{round(x / 5) * 5:g}"
+    if x >= 10:
+        return f"{round(x):g}"
+    return f"{round(x, 1):g}".replace(".", ",")
+
+
+def _zutat_wort(wort: str, namen: list[str]) -> str | None:
+    """Erstes Wort eines Zutatennamens, wenn `wort` diese Zutat meint (Zwiebeln → Zwiebel)."""
+    w = wort.lower()
+    for n in namen:
+        erstes = re.split(r"[\s,(]", n.strip(), maxsplit=1)[0]
+        stamm = erstes.lower()
+        if len(stamm) >= 3 and len(w) >= 3 and (w.startswith(stamm) or stamm.startswith(w)):
+            return erstes
+        if w in (stamm, stamm + "er"):  # Ei/Eier
+            return erstes
+    return None
+
+
+def mengen_skalieren(text: str, faktor: float, namen: list[str] | None = None) -> str:
+    """Mengen im Schritt-Text mit `faktor` umrechnen (Zielportionen ÷ Grundportionen).
+
+    Erkannt werden Zahl + Mengeneinheit („250 g“, „2-3 EL“, „½ Bund“) und Zahl + Zutat
+    („2 Zwiebeln“, wenn Zwiebel eine Zutat des Rezepts ist). Faktor 1 lässt den Text unverändert.
+    """
+    if abs(faktor - 1) < EPS or not text:
+        return text
+    namen = namen or []
+
+    def ersetzen(m: re.Match) -> str:
+        einheit, wort = m.group("e"), m.group("w")
+        if wort is not None:
+            basis = _zutat_wort(wort, namen)
+            if basis is None:
+                return m.group(0)
+        stueckig = wort is not None or einheit not in _GEWICHT
+        werte = [_zahl(m.group("a")) * faktor]
+        if m.group("b"):
+            werte.append(_zahl(m.group("b")) * faktor)
+        zahl = "–".join(_format(v, stueckig) for v in werte)
+        groesste = max(round(v * 4) / 4 for v in werte)
+        if wort is not None:
+            # „2 Zwiebeln“ → „1 Zwiebel“; die Mehrzahl bleibt wie im Text
+            wort = basis if groesste <= 1 and len(basis) < len(wort) else wort
+            return f"{zahl} {wort}"
+        if groesste <= 1:
+            einheit = _EINZAHL.get(einheit, einheit)
+        else:
+            einheit = _MEHRZAHL.get(einheit, einheit)
+        trenner = " " if " " in m.group(0) or einheit[0].isupper() else ""
+        return f"{zahl}{trenner}{einheit}"
+
+    return MENGE_IM_TEXT.sub(ersetzen, text)
+
+
 @dataclass
 class Position:
     produkt_id: str

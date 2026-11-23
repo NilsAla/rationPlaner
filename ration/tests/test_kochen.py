@@ -247,3 +247,20 @@ def test_sitzung_fortsetzen_und_neu(k_client):
     assert c["id"] != a["id"] and c["portionen"] == 4 and c["schritt"] == 0
     k_client.patch(f"/api/v1/kochen/sitzung/{c['id']}", json={"aktiv": False})
     assert k_client.get("/api/v1/kochen/sitzungen").json() == []
+
+
+def test_mengen_im_text_skalieren():
+    from app.kueche import mengen_skalieren as m
+
+    namen = ["Hähnchenbrust", "Zwiebel", "Ei"]
+    t = "250 g Hähnchenbrust 10 Minuten anbraten, 2 Zwiebeln, 1 Zehe Knoblauch, 200 °C, 2 cm"
+    assert m(t, 1.0, namen) == t
+    assert m(t, 0.5, namen) == (
+        "125 g Hähnchenbrust 10 Minuten anbraten, 1 Zwiebel, ½ Zehe Knoblauch, 200 °C, 2 cm"
+    )
+    assert m(t, 2, namen) == (
+        "500 g Hähnchenbrust 10 Minuten anbraten, 4 Zwiebeln, 2 Zehen Knoblauch, 200 °C, 2 cm"
+    )
+    assert m("2-3 EL Öl, 1,5 l Wasser, 2 Eier, 4 Personen", 2, namen) == (
+        "4–6 EL Öl, 3 l Wasser, 4 Eier, 4 Personen"
+    )

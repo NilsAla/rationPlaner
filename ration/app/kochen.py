@@ -273,6 +273,7 @@ def darstellen(
             }
         )
     out = []
+    namen = [z["name"] for z in zutaten]
     erstmals: dict[int, int] = {}  # Zutat → erster Schritt (1-basiert), für „aus Schritt n“
     for nr, s in enumerate(schritte, 1):
         for z in s["zutaten"]:
@@ -281,6 +282,8 @@ def darstellen(
         out.append(
             {
                 **s,
+                # Text steht für die Grundportionen, Mengen darin rechnet der Code um
+                "text": kueche.mengen_skalieren(s["text"], faktor, namen),
                 "zutaten": [
                     {
                         **zutaten[z["zutat"]],
@@ -325,6 +328,9 @@ Regeln:
 - Ordne die Arbeit so, wie ein erfahrener Koch sie macht: Was lange braucht, zuerst
   (Wasser aufsetzen, Ofen vorheizen, Reis aufsetzen), Schneiden und Vorbereiten während Wasser
   oder Ofen heiß werden, dann Garen in sinnvoller Reihenfolge.
+- Mengen im Text immer als Zahl mit Einheit für {portionen} Portionen schreiben (z. B. "250 g
+  Hähnchen", "2 EL Öl", "1 Zwiebel"), nie "die ganze Packung" o. Ä.: Der Code rechnet sie
+  für andere Portionen um.
 - Ein Schritt = ein Handgriff bzw. eine Phase, kurzer Titel im Imperativ (z. B. "Wasser aufsetzen",
   "Zwiebeln würfeln", "Nudeln ins Wasser"), Text 1–3 Sätze mit den Details aus dem Original.
 - zutaten: die Indizes der Zutaten, die in DIESEM Schritt verarbeitet oder in Topf/Pfanne gegeben
