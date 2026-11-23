@@ -93,9 +93,8 @@ def pruefen(gruppe: str, werte: dict) -> dict:
             }
     elif gruppe == "anzeige" and "bald_tage" in out:
         out["bald_tage"] = int(_bereich(out["bald_tage"], 1, 14, "bald_tage"))
-    elif gruppe == "kochen":
-        if "zutaten_pflicht" in out:
-            out["zutaten_pflicht"] = bool(out["zutaten_pflicht"])
+    elif gruppe == "kochen" and "zutaten_pflicht" in out:
+        out["zutaten_pflicht"] = bool(out["zutaten_pflicht"])
     return out
 
 
