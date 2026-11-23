@@ -384,6 +384,39 @@ nicht erreichbar, nimmt die UI einen Browser-Timer (in der Sitzung gespeichert).
 - Sensoren `sensor.ration_kcal_heute`, `sensor.ration_protein_heute` … mit
   `state_class: total_increasing`, Reset um Mitternacht.
 
+**Umsetzung Makro-Modus (0.17.0, `app/naehrwerte.py`):**
+
+- Tabelle `naehrwert` je Produkt, Werte je 100 g: kcal, Protein, Fett, davon gesättigt,
+  Kohlenhydrate, davon Zucker, Ballaststoffe, Salz, dazu die Flags `obst_gemuese` (für den
+  Nutri-Score) und `roh`. Quelle `manuell` (Produktseite) oder `ki`.
+- Die KI-Schätzung ist ein eigener Lauf der KI-Kategorisierung (Option „Nährwerte schätzen“). Sie
+  erzeugt Vorschläge (Feld `naehrwerte`), die erst nach dem Review gespeichert werden (Regel 4).
+  BLS/OFF bleiben als spätere Quelle offen und ersetzen dann die Schätzung.
+- Rezept: Gramm je Zutat aus Bestandseinheit bzw. `g_je_einheit`. `abdeckung` ist der Anteil
+  des Gewichts mit Werten. Fehlt etwas, zeigt die UI „≥“ und listet die Zutaten ohne Werte.
+- **Gesundheitsfaktor: Nutri-Score 2023** (allgemeine Lebensmittel, Algorithmus nach der
+  Überarbeitung des wissenschaftlichen Komitees 2022/23), angewandt auf die Rezeptsumme je 100 g.
+  N = Energie + Zucker + gesättigte Fette + Salz, P = Ballaststoffe + Obst/Gemüse/Hülsenfrüchte
+  (+ Protein, außer bei N ≥ 11 ohne volle Obst/Gemüse-Punkte), Klasse A ≤ 0, B 1–2, C 3–10,
+  D 11–18, E ≥ 19. Erst ab 80 % Abdeckung. Für den Planer: `gesund = clamp((25 − Punkte)/30, 0, 1)`.
+  Gewählt, weil er etabliert und in Deutschland bekannt ist, nur Werte braucht, die wir ohnehin
+  haben, und als A–E sofort lesbar ist. Verworfen: NRF9.3 (braucht Vitamine und Mineralstoffe,
+  die weder BLS-Light noch eine KI-Schätzung verlässlich liefern) und eigene Formeln (das Rad
+  nicht neu erfinden). Einschränkung: Der Nutri-Score ist für Einzelprodukte gedacht; für Gerichte
+  ist er eine gute Näherung, bewertet aber die Portionsgröße nicht. Das deckt die Ziel-Passung ab.
+- **Mahlzeiten-Ziel** (Einstellungen → Ernährung, vorerst eine Mahlzeit): kcal und Protein je
+  Portion. `fit_kcal = max(0, 1 − |kcal − Ziel| / (0,5 · Ziel))`, `fit_protein = min(1, Protein/Ziel)`
+  (Überschreiten zählt nicht), `fit` = Mittelwert. Fließt nur mit `im_planer` in den Score ein.
+- **Planer-Regler** gesund, protein, rohkost (−1 … 1): `1,5·gesund·(2g−1)`,
+  `1,0·protein·clamp((Protein-Energie-% − 15)/15)`, `1,0·rohkost·clamp((Rohkost-% − 30)/30)`,
+  mit Ziel `1,5·(fit − 0,5)`. Unter 80 % Abdeckung neutral (0): Rezepte ohne Daten werden weder
+  bestraft noch bevorzugt. Die KI sieht kcal, Protein und Nutri-Score als Spalten.
+
+**Mengen in Schritt-Texten** (`kueche.mengen_skalieren`): Schritte stehen für die Grundportionen.
+Beim Anzeigen für andere Portionen rechnet der Code Zahl + Mengeneinheit (g, ml, EL, Zehe, Dose …)
+und Zahl + Zutat des Rezepts um, Zeiten, °C und cm bleiben. Kein gespeicherter Platzhalter, damit
+es auch mit den Original-Schritten aus Grocy funktioniert.
+
 ## Angebote und Preise
 
 Samstags lädt die App die Online-Prospekte der 2–3 genutzten Märkte:
