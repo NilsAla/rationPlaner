@@ -34,7 +34,7 @@ from app.settings import Settings
 log = logging.getLogger("ration.kategorisierung")
 router = APIRouter(prefix="/api/v1")
 
-BATCH = 25
+BATCH = 10  # klein halten: 12 Felder je Produkt, Antwort sonst nahe am Token-Limit (3000)
 KATEGORIEN = [
     "Gemüse", "Obst", "Kräuter", "Fleisch", "Fisch", "Milchprodukte", "Käse", "Eier", "Brot",
     "Nudeln & Reis", "Hülsenfrüchte", "Konserven", "Mehl & Backen", "Öl & Essig", "Gewürze",
