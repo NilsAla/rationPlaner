@@ -116,11 +116,18 @@ vorausgewählt; Menge, Produkt und „neues Produkt“ lassen sich ändern, dann
 Jede gebuchte Zeile wird als Alias (Markt + Bon-Text) und mit Preis gemerkt. Per Service:
 `ration.bon_aus_media` (Bild unter `/media`), `ration.bon_details`, `ration.bon_buchen`.
 
+Bild per Kamera/Dateiauswahl, Drag & Drop oder **Strg+V** aus der Zwischenablage (Screenshot,
+kopiertes Foto). Vorschau, dann „Hochladen & lesen“.
+
 ## Kochmodus
 
 Küche → *Kochmodus* oder im Rezept „👩‍🍳 Kochmodus“: ein Schritt pro Seite mit den Zutaten
 dieses Schritts zum Abhaken, Timer-Knopf, „Als Nächstes“, Pfeiltasten und Wake Lock. Am Ende
 direkt „Gekocht“ buchen. Der Stand liegt auf dem Server, Handy und Tablet laufen synchron.
+
+*Testlauf* (🧪 im Rezept, im Editor und in der Übersicht): derselbe Ablauf ohne HA-Timer, ohne
+Buchung und ohne gespeicherte Sitzung. Timer laufen im Browser, optional im Zeitraffer
+(1 Min = 1 s). Am Ende zeigt er, was „Gekocht“ abbuchen würde.
 
 Timer: App-Option `timer_entities` (z. B. `timer.kuechenuhr1`, `timer.kuechenuhr2`). Leer =
 automatisch alle Timer mit Küche/kitchen/koch im Namen. Ohne freien HA-Timer läuft ein

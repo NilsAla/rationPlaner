@@ -19,8 +19,10 @@ export default async function render(el, {params}) {
         <tbody id="ez">${zeile()}</tbody></table></div>
       <div class="row" style="margin-top:8px"><button class="btn" id="mehr">+ Zeile</button><button class="btn primary" id="buchen">Alles einbuchen</button></div></div>
     <div class="card"><h2>Kassenbon fotografieren</h2>
-      <input id="bf" type="file" accept="image/*" capture="environment">
-      <button class="btn primary voll" id="bup">Hochladen &amp; lesen</button>
+      <div class="bon-drop" id="bdrop" tabindex="0" title="Foto wählen, hierher ziehen oder Strg+V">
+        <img id="bvor" alt="" hidden><span id="btext">📷 Foto wählen · Bild hierher ziehen · <b>Strg+V</b> fügt aus der Zwischenablage ein</span></div>
+      <input id="bf" type="file" accept="image/*" capture="environment" hidden>
+      <button class="btn primary voll" id="bup" disabled>Hochladen &amp; lesen</button>
       <p class="muted tiny">Die KI liest den Bon im Hintergrund (ca. 30 s). Gebucht wird erst nach deiner Prüfung.</p>
       <h3>Letzte Bons</h3>${bons.length ? `<table>${bons.map((b) => `<tr class="klick" data-bon="${b.id}">
         <td><b>${esc(b.markt ?? "Bon " + b.id)}</b></td><td class="nw muted">${dmy(b.datum ?? b.angelegt)}</td>
@@ -52,14 +54,48 @@ export default async function render(el, {params}) {
     for (const a of auftraege) await post("bestand", a);
     toast(`${auftraege.length} Position(en) eingebucht`); render(el, {params});
   });
+  // Bon-Bild: Dateiauswahl, Drag & Drop oder Strg+V (Screenshot, kopiertes Foto)
+  let bild = null, vorschau = null;
+  const setzen = (f, quelle) => {
+    if (!f || !f.type.startsWith("image/")) { toast("Kein Bild gefunden", "fehler"); return; }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(f.type)) { toast(`Bildformat ${f.type} wird nicht unterstützt (JPEG, PNG, WebP)`, "fehler"); return; }
+    bild = f;
+    if (vorschau) URL.revokeObjectURL(vorschau);
+    vorschau = URL.createObjectURL(f);
+    const img = $("#bvor", el); img.src = vorschau; img.hidden = false;
+    $("#btext", el).innerHTML = `${esc(quelle)} · ${Math.round(f.size / 1024)} KB · <u>anderes Bild</u>`;
+    $("#bup", el).disabled = false; $("#bup", el).focus();
+  };
+  const drop = $("#bdrop", el);
+  drop.onclick = () => $("#bf", el).click();
+  drop.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); $("#bf", el).click(); } };
+  $("#bf", el).onchange = (ev) => setzen(ev.target.files[0], ev.target.files[0]?.name ?? "Foto");
+  drop.ondragover = (ev) => { ev.preventDefault(); drop.classList.add("ueber"); };
+  drop.ondragleave = () => drop.classList.remove("ueber");
+  drop.ondrop = (ev) => { ev.preventDefault(); drop.classList.remove("ueber"); setzen(ev.dataTransfer.files[0], "Eingefügt per Drag & Drop"); };
+  const einfuegen = (ev) => {
+    if (!el.isConnected || ev.target.closest?.("input:not([type=file]),textarea")) return;
+    const f = [...(ev.clipboardData?.items ?? [])].find((i) => i.kind === "file" && i.type.startsWith("image/"))?.getAsFile();
+    if (!f) return;
+    ev.preventDefault();
+    const name = f.name && f.name !== "image.png" ? f.name : `bon-${Date.now()}.${f.type.split("/")[1]}`;
+    setzen(new File([f], name, {type: f.type}), "📋 Aus der Zwischenablage");
+    drop.scrollIntoView({block: "nearest", behavior: "smooth"});
+  };
+  // interne Neu-Renders (nach dem Buchen) dürfen keinen zweiten Listener anhängen
+  if (el._bonPaste) document.removeEventListener("paste", el._bonPaste);
+  el._bonPaste = einfuegen;
+  document.addEventListener("paste", einfuegen);
   $("#bup", el).onclick = () => guarded(async () => {
-    const f = $("#bf", el).files[0]; if (!f) throw new Error("Erst ein Foto wählen");
+    const f = bild; if (!f) throw new Error("Erst ein Foto wählen oder per Strg+V einfügen");
     const fd = new FormData(); fd.append("datei", f);
     const r = await api("bon", {method: "POST", body: fd});
     toast("Hochgeladen, wird gelesen …"); bonZeigen($("#bdet", el), r.id, produkte, () => render(el, {params}));
   });
+  const aufraeumen = () => { document.removeEventListener("paste", einfuegen); el._bonPaste = null; if (vorschau) URL.revokeObjectURL(vorschau); };
   $$("[data-bon]", el).forEach((tr) => tr.onclick = () => guarded(() => bonZeigen($("#bdet", el), +tr.dataset.bon, produkte, () => render(el, {params}))));
   if (params.bon) guarded(() => bonZeigen($("#bdet", el), +params.bon, produkte, () => render(el, {params: {}})));
+  return aufraeumen;
 }
 
 async function bonZeigen(box, id, produkte, fertig) {
