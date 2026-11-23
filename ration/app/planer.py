@@ -24,11 +24,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Date, DateTime, Integer, String, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app import einstellungen, kueche
+from app import einstellungen, kueche, naehrwerte
 from app.db import Base, Kochvorgang, Packung, PlanEintrag, Preis, RezeptBewertung
 from app.deps import backend, session, settings
 from app.inventory.base import Batch, InventoryBackend, Product, Recipe, TrackingMode, consume_order
 from app.kueche import EPS, Groesse, PackAnzahl, wird_abgebucht
+from app.naehrwerte import RezeptNaehrwerte
 from app.settings import Settings
 
 log = logging.getLogger("ration.planer")
@@ -127,7 +128,15 @@ FLEISCH_TAGS = {"Fleisch", "Fisch"}
 VEGGI_KATEGORIEN = {"Gemüse", "Obst", "Kräuter", "Hülsenfrüchte"}
 VEGGI_TAGS = {"vegetarisch", "vegan"}
 AUFWAND_RANG = {"schnell": 0, "normal": 1, "aufwaendig": 2}
-NEUTRAL = {"fleisch": 0.0, "preis": 0.0, "extravagant": 0.0, "neu": 0.0}
+NEUTRAL = {
+    "fleisch": 0.0,
+    "preis": 0.0,
+    "extravagant": 0.0,
+    "neu": 0.0,
+    "gesund": 0.0,
+    "protein": 0.0,
+    "rohkost": 0.0,
+}
 
 
 @dataclass
@@ -148,6 +157,10 @@ class Kandidat:
     beliebt: float = 0.0  # 0 … 1 aus Favorit, Daumen, wie oft gekocht
     gekocht: int = 0
     zu_aufwendig: bool = False
+    kcal: float | None = None  # je Portion
+    protein: float | None = None  # g je Portion
+    nutri: str | None = None  # Nutri-Score-Klasse A–E
+    ziel_fit: float | None = None  # 0 … 1, Passung zum Mahlzeiten-Ziel
 
 
 @dataclass
@@ -170,6 +183,9 @@ class Kontext:
     ausschluss_tags: set[str] = field(default_factory=set)
     max_ungetestet: int = MAX_UNGETESTET
     kosten_median: float | None = None
+    naehr: dict[str, RezeptNaehrwerte] = field(default_factory=dict)  # je Rezept, einmal gerechnet
+    ziel: dict = field(default_factory=dict)  # Mahlzeiten-Ziel aus den Einstellungen
+    ziel_im_planer: bool = False
 
     def toleranz(self, p: Product) -> float:
         return (p.tolerance_pct if p.tolerance_pct is not None else self.toleranz_default) / 100
@@ -254,6 +270,7 @@ def bewerten(rezept: Recipe, portionen: int, lager: Lager, k: Kontext, tag: date
     rel_kosten = 0.0
     if kosten is not None and k.kosten_median:
         rel_kosten = max(-1.0, min(1.0, kosten / k.kosten_median - 1))
+    ernaehrung = ernaehrung_score(k.naehr.get(rezept.id), k)
     max_aufwand = k.aufwand_je_tag.get(tag.weekday(), "aufwaendig")
     zu_aufwendig = AUFWAND_RANG.get(rezept.effort or "", 0) > AUFWAND_RANG.get(max_aufwand, 2)
     score = (
@@ -269,7 +286,9 @@ def bewerten(rezept: Recipe, portionen: int, lager: Lager, k: Kontext, tag: date
         + 1.0 * max(neu, 0) * nie_gekocht
         + 0.5 * k.bewertung.get(rezept.id, 0)
         - (2.0 if zu_aufwendig else 0.0)
+        + ernaehrung
     )
+    n = k.naehr.get(rezept.id)
     return Kandidat(
         rezept.id,
         rezept.name,
@@ -287,7 +306,27 @@ def bewerten(rezept: Recipe, portionen: int, lager: Lager, k: Kontext, tag: date
         round(beliebt, 2),
         k.gekocht.get(rezept.id, 0),
         zu_aufwendig,
+        n.je_portion["kcal"] if n else None,
+        n.je_portion["protein"] if n else None,
+        n.nutri_score["klasse"] if n and n.nutri_score else None,
+        n.ziel["fit"] if n and n.ziel else None,
     )
+
+
+def ernaehrung_score(n: RezeptNaehrwerte | None, k: Kontext) -> float:
+    """Regler Gesund/Protein/Rohkost und kcal-Ziel. Ohne Nährwerte neutral (0), damit Rezepte
+    ohne Daten nicht bestraft, aber auch nicht bevorzugt werden."""
+    if n is None or n.abdeckung < 0.8:
+        return 0.0
+    wert = 0.0
+    if n.gesund is not None:  # 0 … 1 → -1 … 1
+        wert += 1.5 * k.pref("gesund") * (2 * n.gesund - 1)
+    if n.protein_kcal_pct is not None:  # 15 % Energie aus Protein = neutral, 30 % = hoch
+        wert += 1.0 * k.pref("protein") * max(-1.0, min(1.0, (n.protein_kcal_pct - 15) / 15))
+    wert += 1.0 * k.pref("rohkost") * max(-1.0, min(1.0, (n.rohkost_pct - 30) / 30))
+    if k.ziel_im_planer and n.ziel and n.ziel["fit"] is not None:
+        wert += 1.5 * (n.ziel["fit"] - 0.5)
+    return wert
 
 
 def kandidaten(k: Kontext, lager: Lager, tag: date, portionen: int) -> list[Kandidat]:
@@ -516,8 +555,9 @@ Schon fest geplant (nicht ändern, nicht wiederholen): {fest}
 Läuft bald ab: {bald}
 
 Kandidaten (id | name | score | deckung % | nutzt bald Ablaufendes | zuletzt vor Tagen | status |
-tags | aufwand | Fleischanteil % | EUR je Portion | Liebling 0–1 | so oft gekocht), höherer Score
-ist besser, der Score enthält die Wünsche unten schon:
+tags | aufwand | Fleischanteil % | EUR je Portion | Liebling 0–1 | so oft gekocht |
+kcal je Portion | Protein g je Portion | Nutri-Score), höherer Score ist besser, der Score
+enthält die Wünsche unten schon:
 {kandidaten}
 
 Wünsche des Nutzers: {wuensche}
@@ -538,6 +578,9 @@ def wuensche_text(k: Kontext) -> str:
         ("preis", "günstig", "darf teurer sein"),
         ("extravagant", "Vorrat abbauen", "gern extravagant und neue Zutaten"),
         ("neu", "lieber Lieblingsrezepte", "lieber etwas Neues"),
+        ("gesund", "Genuss vor Gesundheit", "gesund (guter Nutri-Score)"),
+        ("protein", "Protein egal", "viel Protein"),
+        ("rohkost", "lieber gekocht", "viel Rohkost"),
     ]
     teile = []
     for name, links, rechts in stufen:
@@ -547,6 +590,11 @@ def wuensche_text(k: Kontext) -> str:
             teile.append(staerke + (links if x < 0 else rechts))
     if k.ausschluss_tags:
         teile.append("nie: " + ", ".join(sorted(k.ausschluss_tags)))
+    if k.ziel_im_planer and k.ziel:
+        teile.append(
+            f"je Portion etwa {k.ziel['kcal_mahlzeit']} kcal und mindestens "
+            f"{k.ziel['protein_mahlzeit']} g Protein"
+        )
     return "; ".join(teile) or "keine besonderen"
 
 
@@ -605,7 +653,10 @@ def anweisung(
         f"{', '.join(c.nutzt_bald) or '-'} | {c.zuletzt_vor_tagen if c.zuletzt_vor_tagen is not None else '-'} | "  # noqa: E501
         f"{c.status or '-'} | {', '.join(c.tags) or '-'} | {c.aufwand or '-'} | "
         f"{round(c.fleisch * 100)} | "
-        f"{c.kosten_portion if c.kosten_portion is not None else '-'} | {c.beliebt} | {c.gekocht}"
+        f"{c.kosten_portion if c.kosten_portion is not None else '-'} | "
+        f"{c.beliebt} | {c.gekocht} | "
+        f"{round(c.kcal) if c.kcal is not None else '-'} | "
+        f"{round(c.protein) if c.protein is not None else '-'} | {c.nutri or '-'}"
         for c in liste
     ]
     return ANWEISUNG.format(
@@ -775,6 +826,13 @@ async def kontext_laden(
             max_ungetestet if max_ungetestet is not None else einst["planer"]["max_ungetestet"]
         ),
     )
+    nw = naehrwerte.alle(s)
+    k.ziel = einst["ernaehrung"]
+    k.ziel_im_planer = bool(einst["ernaehrung"]["im_planer"])
+    k.naehr = {
+        rid: naehrwerte.rezept_naehrwerte(r, produkte, nw, ziel=k.ziel)
+        for rid, r in rezepte.items()
+    }
     kosten = sorted(c for r in rezepte.values() if (c := profil(r, k)[2]) is not None)
     k.kosten_median = kosten[len(kosten) // 2] if kosten else None
     return k

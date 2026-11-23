@@ -33,12 +33,17 @@ STANDARD: dict[str, dict[str, Any]] = {
         "preis": 0.0,  # -1 günstiger … 1 darf teurer sein
         "extravagant": 0.0,  # -1 Vorrat abbauen … 1 extravagant
         "neu": 0.0,  # -1 Lieblinge … 1 lieber Neues
+        "gesund": 0.0,  # -1 egal/Genuss … 1 gesund (Nutri-Score)
+        "protein": 0.0,  # -1 egal … 1 viel Protein
+        "rohkost": 0.0,  # -1 lieber gekocht … 1 viel Rohkost
         "ausschluss_tags": [],  # Rezepte mit diesen Tags nie planen
         "aufwand_je_tag": {str(i): "aufwaendig" for i in range(7)},  # höchster Aufwand je Wochentag
     },
     "anzeige": {"bald_tage": 3},
     # Timer-Entitäten stehen in der App-Option timer_entities (Konfiguration in HA)
     "kochen": {"zutaten_pflicht": True},  # Weiter erst, wenn alle Zutaten abgehakt sind
+    # Ziel für EINE Mahlzeit (Abendessen), je Portion. Planer nutzt es nur, wenn im_planer an ist.
+    "ernaehrung": {"kcal_mahlzeit": 700, "protein_mahlzeit": 30, "im_planer": False},
 }
 
 
@@ -71,7 +76,7 @@ def pruefen(gruppe: str, werte: dict) -> dict:
         if "ki" in out:
             out["ki"] = bool(out["ki"])
     elif gruppe == "praeferenzen":
-        for k in ("fleisch", "preis", "extravagant", "neu"):
+        for k in ("fleisch", "preis", "extravagant", "neu", "gesund", "protein", "rohkost"):
             if k in out:
                 out[k] = round(_bereich(out[k], -1, 1, k), 2)
         if "ausschluss_tags" in out:
@@ -95,6 +100,15 @@ def pruefen(gruppe: str, werte: dict) -> dict:
         out["bald_tage"] = int(_bereich(out["bald_tage"], 1, 14, "bald_tage"))
     elif gruppe == "kochen" and "zutaten_pflicht" in out:
         out["zutaten_pflicht"] = bool(out["zutaten_pflicht"])
+    elif gruppe == "ernaehrung":
+        if "kcal_mahlzeit" in out:
+            out["kcal_mahlzeit"] = int(_bereich(out["kcal_mahlzeit"], 100, 3000, "kcal_mahlzeit"))
+        if "protein_mahlzeit" in out:
+            out["protein_mahlzeit"] = int(
+                _bereich(out["protein_mahlzeit"], 0, 300, "protein_mahlzeit")
+            )
+        if "im_planer" in out:
+            out["im_planer"] = bool(out["im_planer"])
     return out
 
 

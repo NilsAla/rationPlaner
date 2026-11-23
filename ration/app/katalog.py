@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import dubletten, kueche
+from app import dubletten, kueche, naehrwerte
 from app.db import (
     BonAlias,
     DubletteEntscheidung,
@@ -256,8 +256,10 @@ async def rezeptbuch(
     meta = {m.rezept_id: m for m in s.scalars(select(RezeptMeta))}
     verlauf = kochverlauf(s)
     meinung = {x.rezept_id: x for x in s.scalars(select(RezeptBewertung))}
+    nw, ziel = naehrwerte.alle(s), naehrwerte.ziel_aus(s)
     result = []
     for r in await b.list_recipes():
+        n = naehrwerte.rezept_naehrwerte(r, produkte, nw, ziel=ziel)
         fehlend = [
             produkte[z.product_id].name
             for z in r.ingredients
@@ -277,6 +279,10 @@ async def rezeptbuch(
                 "fehlend": fehlend,
                 "kochbar": not fehlend and bool(r.ingredients),
                 "quelle": m.quelle if m else None,
+                "kcal": n.je_portion["kcal"],
+                "protein": n.je_portion["protein"],
+                "nutri": n.nutri_score["klasse"] if n.nutri_score else None,
+                "naehrwert_abdeckung": n.abdeckung,
                 **verlauf.get(r.id, {"gekocht": 0, "zuletzt": None}),
                 **_meinung(meinung.get(r.id)),
             }
@@ -343,9 +349,13 @@ async def rezept_detail(
         "aufwand": r.effort,
         "rest_haltbarkeit_tage": r.leftover_days,
         "zutaten": zutaten,
-        "schritte": kueche.schritte(r.description),
+        "schritte": [
+            kueche.mengen_skalieren(t, faktor, [z["name"] for z in zutaten])
+            for t in kueche.schritte(r.description)
+        ],
         "quelle": m.quelle if m else None,
         "url": m.url if m else None,
+        "naehrwerte": naehrwerte.rezept_dict(r, produkte, s, ziel),
         **_meinung(s.get(RezeptBewertung, r.id)),
         "verlauf": [
             {"id": k.id, "datum": k.datum, "portionen": k.portionen, "bewertung": k.bewertung}

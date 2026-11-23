@@ -29,6 +29,7 @@ from app import (
     kochen,
     kueche,
     llm_import,
+    naehrwerte,
     planer,
     protokoll,
     rezept_import,
@@ -249,7 +250,10 @@ async def heute(s: Session = Depends(session), b: InventoryBackend = Depends(bac
                 }
                 for z in recipe.ingredients
             ],
-            "schritte": kueche.schritte(recipe.description),
+            "schritte": [
+                kueche.mengen_skalieren(t, faktor, [p.name for p in products.values()])
+                for t in kueche.schritte(recipe.description)
+            ],
         },
     }
 
@@ -620,6 +624,7 @@ def create_app(
     app.include_router(einstellungen.router)
     app.include_router(inventar.router)
     app.include_router(kochen.router)
+    app.include_router(naehrwerte.router)
 
     @app.middleware("http")
     async def aenderungen_protokollieren(request: Request, call_next):

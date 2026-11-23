@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import JSON, DateTime, Integer, String, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from app import naehrwerte
 from app.db import Base
 from app.deps import backend, session, settings
 from app.inventory.base import (
@@ -94,6 +95,19 @@ Felder je Produkt:
   (z. B. Packung 500 für Nudeln in g, Dose 400 für Kidneybohnen in g, Stück 160 für Paprika).
 Gib für jedes Produkt genau einen Eintrag mit seiner id zurück."""
 
+ANWEISUNG_NAEHRWERTE = """Schätze typische Nährwerte je 100 g für Lebensmittel aus dem deutschen
+Supermarkt, wie in einer Nährwerttabelle (z. B. Bundeslebensmittelschlüssel): roher bzw.
+gekaufter Zustand (Nudeln trocken, Hülsenfrüchte aus der Dose abgetropft, Fleisch roh).
+Produkte (id|name):
+{liste}
+
+Felder je Produkt, alle je 100 g:
+- kcal, protein, fett, fett_gesaettigt, kohlenhydrate, zucker, ballaststoffe, salz (Gramm).
+- obst_gemuese: true für Obst, Gemüse, Hülsenfrüchte, Nüsse und Kräuter (zählt für den
+  Nutri-Score), sonst false. Kartoffeln zählen nicht.
+- roh: true, wenn man es üblicherweise roh isst (Obst, Salat, Gurke, Paprika, Nüsse), sonst false.
+Gib für jedes Produkt genau einen Eintrag mit seiner id zurück."""
+
 ANWEISUNG_REZEPTE = """Schlage für jedes Rezept Tags, Aufwand und Rest-Haltbarkeit vor.
 Rezepte (id|name|zutaten):
 {liste}
@@ -149,6 +163,23 @@ STRUKTUR_REZEPTE = {
 
 
 # --- Validierung ------------------------------------------------------------------------
+
+
+STRUKTUR_NAEHRWERTE = {
+    "produkte": _feld(
+        {
+            "object": {
+                "multiple": True,
+                "fields": {
+                    "id": _feld({"text": {}}),
+                    **{f: _feld({"number": {}}) for f in naehrwerte.FELDER},
+                    "obst_gemuese": _feld({"boolean": {}}),
+                    "roh": _feld({"boolean": {}}),
+                },
+            }
+        }
+    )
+}
 
 
 def _int(wert: object, lo: int, hi: int) -> int | None:
@@ -309,6 +340,8 @@ async def ausfuehren(app, lauf_id: int) -> None:
                                 )
                             )
                             anzahl += 1
+            if umfang.get("naehrwerte", False):
+                anzahl += await _naehrwerte_lauf(s, ha, st, b, lauf_id, umfang)
             if umfang.get("rezepte", True):
                 rezepte = await b.list_recipes()
                 if umfang.get("nur_ohne_attribute", True):
@@ -372,9 +405,56 @@ async def ausfuehren(app, lauf_id: int) -> None:
             s.commit()
 
 
+async def _naehrwerte_lauf(s: Session, ha, st: Settings, b, lauf_id: int, umfang: dict) -> int:
+    """KI schätzt Nährwerte je 100 g; nur als Vorschlag (Feld `naehrwerte`) mit Review."""
+    vorhanden = naehrwerte.alle(s)
+    produkte = [p for p in await b.list_products() if p.category != REST_KATEGORIE]
+    if ids := umfang.get("produkt_ids"):
+        produkte = [p for p in produkte if p.id in ids]
+    if umfang.get("nur_leere", True):
+        produkte = [p for p in produkte if p.id not in vorhanden]
+    anzahl = 0
+    for i in range(0, len(produkte), BATCH):
+        teil = produkte[i : i + BATCH]
+        daten = await ha.ai_task(
+            st.ai_task_entity,
+            "rationPlaner Nährwerte",
+            ANWEISUNG_NAEHRWERTE.format(liste="\n".join(f"{p.id}|{p.name}" for p in teil)),
+            STRUKTUR_NAEHRWERTE,
+        )
+        log.info("Lauf %s Nährwerte Rohantwort: %s", lauf_id, json.dumps(daten, ensure_ascii=False))
+        by_id = {p.id: p for p in teil}
+        for e in daten.get("produkte") or []:
+            p = by_id.pop(str(e.get("id")), None) if isinstance(e, dict) else None
+            if p is None:
+                continue
+            neu = naehrwerte.werte_pruefen(e)
+            if neu["kcal"] is None:
+                continue  # ohne Energie unbrauchbar
+            alt = naehrwerte.als_dict(vorhanden.get(p.id))
+            if alt:
+                alt.pop("quelle", None)
+            if alt == neu:
+                continue
+            s.add(
+                Vorschlag(
+                    lauf_id=lauf_id,
+                    typ="produkt",
+                    objekt_id=p.id,
+                    name=p.name,
+                    feld="naehrwerte",
+                    alt=alt,
+                    neu=neu,
+                )
+            )
+            anzahl += 1
+    return anzahl
+
+
 class LaufIn(BaseModel):
     produkte: bool = True
     rezepte: bool = True
+    naehrwerte: bool = False  # Nährwerte je 100 g schätzen lassen (eigener KI-Aufruf je Batch)
     nur_ohne_attribute: bool = True  # False: alle (monatlicher Lauf)
     nur_leere: bool = True  # False: auch gesetzte Werte überprüfen lassen
     produkt_ids: list[str] | None = None
@@ -477,7 +557,11 @@ async def entscheiden(
         try:
             if typ == "produkt":
                 packung = felder.pop("packung", None)
-                await b.update_product(oid, _produkt_patch(felder))
+                nw = felder.pop("naehrwerte", None)
+                if isinstance(nw, dict):
+                    naehrwerte.speichern(s, oid, naehrwerte.werte_pruefen(nw), "ki")
+                if felder:
+                    await b.update_product(oid, _produkt_patch(felder))
                 if isinstance(packung, dict):
                     await b.set_pack(oid, str(packung["einheit"]), float(packung["menge"]))
             else:
