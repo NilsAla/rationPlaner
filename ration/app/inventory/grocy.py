@@ -660,5 +660,8 @@ class GrocyBackend:
         for c in conversions:
             pair = (c["from_qu_id"], c["to_qu_id"])
             if c.get("product_id") == remove["id"] and pair in keep_pairs and pair not in noetig:
-                await self._delete(f"/objects/quantity_unit_conversions/{c['id']}")
+                try:
+                    await self._delete(f"/objects/quantity_unit_conversions/{c['id']}")
+                except NotFoundError:
+                    pass  # live: Grocy hatte sie schon entfernt (z. B. mit der Gegenrichtung)
         await self._post(f"/stock/products/{keep_id}/merge/{remove_id}", {})
