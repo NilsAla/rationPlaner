@@ -564,11 +564,18 @@ async def einkaufsliste(
 
 
 @api.post("/testdaten")
-async def testdaten_anlegen(b: InventoryBackend = Depends(backend)) -> dict:
+async def testdaten_anlegen(
+    s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+) -> dict:
     """Legt 2 Testrezepte samt Produkten in Grocy an (idempotent, löscht nichts)."""
     if not isinstance(b, GrocyBackend):
         raise HTTPException(501, "Nur mit Grocy-Backend")
-    return await testdaten.anlegen(b)
+    ergebnis = await testdaten.anlegen(b)
+    for r in ergebnis["rezepte"]:
+        if s.get(RezeptMeta, r["id"]) is None:
+            s.add(RezeptMeta(rezept_id=r["id"], quelle="test"))
+    s.commit()
+    return ergebnis
 
 
 @api.get("/status")

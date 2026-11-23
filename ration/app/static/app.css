@@ -222,3 +222,7 @@ body.kochmodus main#view { max-width: 1280px; }
   color: var(--muted); margin-bottom: 10px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .bon-drop:hover, .bon-drop:focus, .bon-drop.ueber { border-color: var(--accent); background: var(--accent-soft); outline: none; }
 .bon-drop img { max-height: 220px; max-width: 100%; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.tag.quelle.q-hellofresh { color: #2e7d32; border-color: #2e7d3266; }
+.tag.quelle.q-chefkoch { color: #c25b00; border-color: #c25b0066; }
+.tag.quelle.q-ki { color: var(--accent); }
+.tag.quelle.q-test { border-style: dashed; }

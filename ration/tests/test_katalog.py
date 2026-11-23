@@ -94,3 +94,21 @@ def test_dubletten_ignorieren(client, fake_backend):
     assert client.get("/api/v1/dubletten").json() == []
     # niedrigere Schwelle zeigt mehr, ignoriertes Paar bleibt draußen
     assert client.get("/api/v1/dubletten?schwelle=0.5").json() == []
+
+
+def test_rezept_quelle_anlegen_und_aendern(client):
+    pid = client.get("/api/v1/produkte").json()[0]["id"]
+    rid = client.post(
+        "/api/v1/rezepte",
+        json={"name": "Quellentest", "zutaten": [{"produkt_id": pid, "menge": 1}]},
+    ).json()["id"]
+    buch = {r["id"]: r for r in client.get("/api/v1/rezeptbuch").json()}
+    assert buch[rid]["quelle"] == "manuell"
+    r = client.patch(
+        f"/api/v1/rezepte/{rid}", json={"url": "https://www.chefkoch.de/rezepte/123/x.html"}
+    ).json()
+    assert r["url"].startswith("https://www.chefkoch.de")
+    assert r["quelle"] == "manuell"  # bewusst gesetzte Quelle bleibt
+    r = client.patch(f"/api/v1/rezepte/{rid}", json={"quelle": "Chefkoch"}).json()
+    assert r["quelle"] == "chefkoch"
+    assert client.patch(f"/api/v1/rezepte/{rid}", json={"url": "ftp://x"}).status_code == 422

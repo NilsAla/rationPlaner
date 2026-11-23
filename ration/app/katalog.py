@@ -35,7 +35,7 @@ from app.inventory.base import (
     RecipePatch,
     TrackingMode,
 )
-from app.rezept_import import alias_key, quelle_link
+from app.rezept_import import alias_key, quelle_link, quelle_von
 from app.settings import Settings
 
 log = logging.getLogger("ration.katalog")
@@ -279,6 +279,7 @@ async def rezeptbuch(
                 "fehlend": fehlend,
                 "kochbar": not fehlend and bool(r.ingredients),
                 "quelle": m.quelle if m else None,
+                "url": m.url if m else None,
                 "kcal": n.je_portion["kcal"],
                 "protein": n.je_portion["protein"],
                 "nutri": n.nutri_score["klasse"] if n.nutri_score else None,
@@ -384,6 +385,25 @@ class RezeptPatchIn(BaseModel):
     status: str | None = None
     aufwand: str | None = None
     rest_haltbarkeit_tage: int | None = Field(default=None, ge=0, le=30)
+    # Herkunft: "" löscht, sonst z. B. manuell/hellofresh/chefkoch.de; url optional
+    quelle: str | None = Field(default=None, max_length=60)
+    url: str | None = Field(default=None, max_length=500)
+
+
+def quelle_setzen(s: Session, rezept_id: str, quelle: str | None, url: str | None) -> None:
+    """Herkunft in RezeptMeta schreiben; quelle_id (Import-Dubletten) bleibt unberührt."""
+    m = s.get(RezeptMeta, rezept_id) or RezeptMeta(rezept_id=rezept_id)
+    if quelle is not None:
+        m.quelle = quelle.strip().lower() or None
+    if url is not None:
+        url = url.strip()
+        if url and not url.startswith(("http://", "https://")):
+            raise HTTPException(422, "url muss mit http:// oder https:// beginnen")
+        m.url = url or None
+        if url and quelle is None and not m.quelle:
+            m.quelle = quelle_von(url)[0]
+    s.merge(m)
+    s.commit()
 
 
 @router.patch("/rezepte/{rezept_id}")
@@ -402,6 +422,9 @@ async def rezept_aendern(
         for z in data.zutaten:
             await b.get_product(z.produkt_id)
         zutaten = [Ingredient(z.produkt_id, z.menge, z.notiz) for z in data.zutaten]
+    if data.quelle is not None or data.url is not None:
+        await b.get_recipe(rezept_id)
+        quelle_setzen(s, rezept_id, data.quelle, data.url)
     beschreibung = None
     if data.schritte is not None:
         beschreibung = kueche.beschreibung(data.schritte)
@@ -609,10 +632,14 @@ class RezeptNeuIn(BaseModel):
     tags: list[str] | None = None
     status: str | None = "ungetestet"
     aufwand: str | None = None
+    quelle: str | None = Field(default="manuell", max_length=60)
+    url: str | None = Field(default=None, max_length=500)
 
 
 @router.post("/rezepte", status_code=201)
-async def rezept_anlegen(data: RezeptNeuIn, b: InventoryBackend = Depends(backend)) -> dict:
+async def rezept_anlegen(
+    data: RezeptNeuIn, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+) -> dict:
     if data.status not in (None, *REZEPT_STATUS):
         raise HTTPException(422, f"status muss {'/'.join(REZEPT_STATUS)} sein")
     if data.aufwand not in (None, *AUFWAND):
@@ -629,6 +656,7 @@ async def rezept_anlegen(data: RezeptNeuIn, b: InventoryBackend = Depends(backen
         r = await b.update_recipe(
             r.id, RecipePatch(tags=data.tags, status=data.status, effort=data.aufwand)
         )
+    quelle_setzen(s, r.id, data.quelle or "manuell", data.url)
     return {"id": r.id, "name": r.name}
 
 

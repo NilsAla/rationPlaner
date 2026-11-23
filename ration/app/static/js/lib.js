@@ -18,6 +18,15 @@ export const zeit = (s) => s ? new Date(s.endsWith("Z") || s.includes("+") ? s :
   .toLocaleString("de-DE", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"}) : "";
 export const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 export const AUFWAND = {schnell: "schnell", normal: "normal", aufwaendig: "aufwändig"};
+// Rezept-Herkunft: Schlüssel für den Filter, Anzeige, Badge. quelle null = vor der Quellenspalte
+// angelegt (manuell oder Testdaten), zählt als manuell.
+export const QUELLEN = {hellofresh: "HelloFresh", chefkoch: "Chefkoch", manuell: "manuell", test: "Testrezept", ki: "KI"};
+export function quelleInfo(q) {
+  const v = (q ?? "manuell").toLowerCase();
+  const key = v.includes("chefkoch") ? "chefkoch" : QUELLEN[v] ? v : "web";
+  return {key, label: QUELLEN[key] ?? v.replace(/^www\./, "")};
+}
+export const quelleBadge = (q) => { const i = quelleInfo(q); return `<span class="tag quelle q-${i.key}">${esc(i.label)}</span>`; };
 export const MODI = {exakt: "exakt", menge: "Menge", fuellstand: "Füllstand", immer_da: "immer da"};
 export const KATEGORIEN = ["Gemüse", "Obst", "Kräuter", "Fleisch", "Fisch", "Milchprodukte", "Käse", "Eier", "Brot",
   "Nudeln & Reis", "Hülsenfrüchte", "Konserven", "Mehl & Backen", "Öl & Essig", "Gewürze", "Saucen",

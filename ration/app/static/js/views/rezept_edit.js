@@ -1,4 +1,4 @@
-import {$, $$, AUFWAND, api, esc, guarded, patch, post, toast, gehe, titel} from "../lib.js";
+import {$, $$, AUFWAND, QUELLEN, api, quelleInfo, esc, guarded, patch, post, toast, gehe, titel} from "../lib.js";
 
 // Rezept anlegen (ohne arg) oder bearbeiten. Mengen in Bestandseinheit für die Basis-Portionen.
 export default async function render(el, {arg}) {
@@ -22,6 +22,10 @@ export default async function render(el, {arg}) {
         `<option ${s === (r?.status ?? "ungetestet") ? "selected" : ""}>${s}</option>`).join("")}</select></div>
       <div><label>Aufwand</label><select id="auf"><option value="">–</option>${Object.entries(AUFWAND).map(([k, t]) =>
         `<option value="${k}" ${k === r?.aufwand ? "selected" : ""}>${t}</option>`).join("")}</select></div></div>
+    <div class="row"><div><label>Quelle</label><input id="quelle" list="quellliste" value="${esc(r ? quelleInfo(r.quelle).label : "manuell")}"
+        placeholder="manuell, HelloFresh, Chefkoch, Website …">
+      <datalist id="quellliste">${Object.values(QUELLEN).map((t) => `<option value="${esc(t)}">`).join("")}</datalist></div>
+      <div style="flex:2"><label>Link zum Original (optional)</label><input id="url" type="url" placeholder="https://…" value="${esc(r?.url ?? "")}"></div></div>
     <label>Tags (mit Komma)</label><input id="tags" list="tagliste" value="${esc((r?.tags ?? []).join(", "))}">
     <datalist id="tagliste">${tags.map((t) => `<option value="${esc(t)}">`).join("")}</datalist>
     <div class="chips" style="margin-top:6px">${tags.slice(0, 20).map((t) => `<button class="chip" data-tagadd="${esc(t)}">+ ${esc(t)}</button>`).join("")}</div>
@@ -51,6 +55,9 @@ export default async function render(el, {arg}) {
       tags: $("#tags", el).value.split(",").map((t) => t.trim()).filter(Boolean),
       schritte: $("#schr", el).value.split("\n").map((t) => t.trim()).filter(Boolean)};
     if ($("#auf", el).value) body.aufwand = $("#auf", el).value;
+    const ql = $("#quelle", el).value.trim();
+    body.quelle = Object.entries(QUELLEN).find(([, t]) => t.toLowerCase() === ql.toLowerCase())?.[0] ?? ql;
+    body.url = $("#url", el).value.trim();
     if (!body.name) throw new Error("Name fehlt");
     const id = r ? (await patch(`rezepte/${r.id}`, body), r.id) : (await post("rezepte", body)).id;
     toast(r ? "Rezept gespeichert" : "Rezept angelegt"); gehe(`rezept/${id}`);

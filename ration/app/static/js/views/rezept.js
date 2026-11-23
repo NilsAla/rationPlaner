@@ -1,4 +1,4 @@
-import {$, $$, AUFWAND, api, bestaetigen, del, dmy, esc, fmt, guarded, heute, put, toast, gehe, titel} from "../lib.js";
+import {$, $$, AUFWAND, api, bestaetigen, del, dmy, esc, fmt, guarded, heute, put, toast, gehe, titel, quelleBadge} from "../lib.js";
 
 // Rezeptleser mit Portionen, Bestandsampel, Meinung und Kochverlauf
 export default async function render(el, {arg, params}) {
@@ -11,7 +11,7 @@ export default async function render(el, {arg, params}) {
         <a class="btn klein" href="#/rezept/${esc(r.id)}/anleitung">🪜 Anleitung</a>
         <a class="btn klein" href="#/rezept/${esc(r.id)}/bearbeiten">✎ Bearbeiten</a></div></div>
       <p class="muted small">${[r.status === "ungetestet" ? "noch nie gekocht" : null, AUFWAND[r.aufwand], ...r.tags].filter(Boolean).map(esc).join(" · ")}
-        ${r.url ? ` · <a href="${esc(r.url)}" target="_blank" rel="noopener">Quelle ↗</a>` : ""}</p>
+        · ${quelleBadge(r.quelle)}${r.url ? ` <a href="${esc(r.url)}" target="_blank" rel="noopener">Original ↗</a>` : ""}</p>
       <div class="row" style="align-items:end"><div style="flex:0 0 110px"><label>Portionen</label>
         <input id="por" type="number" min="1" max="24" value="${r.portionen}"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="koch">👩‍🍳 Kochmodus</button><button class="btn" id="test" title="Kochmodus ohne HA-Timer und ohne Buchung">🧪 Testlauf</button><button class="btn" id="heute">🔥 Heute kochen</button><button class="btn" id="planen">📅 Einplanen</button></div></div>
