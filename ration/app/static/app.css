@@ -261,3 +261,47 @@ body.kochmodus main#view { max-width: 1280px; }
 .foto-prompt { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
 .foto-prompt.hervor { border-color: var(--accent); background: var(--accent-soft); }
 .import-bild { width: 120px; aspect-ratio: 4/3; object-fit: cover; border-radius: 8px; flex: 0 0 auto; }
+
+/* Startseite */
+.start .heute-karte { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; padding: 0; overflow: hidden; }
+.start .heute-karte.leer-heute { grid-template-columns: minmax(0, 1fr); }
+.heute-bild { position: relative; height: 280px; background: linear-gradient(135deg, var(--accent-soft), var(--hover)); display: grid; place-items: center; }
+.heute-bild img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.heute-bild > span { font-size: 64px; opacity: .5; }
+.heute-text { padding: 18px 18px 18px 0; min-width: 0; }
+.leer-heute .heute-text { padding: 18px; }
+h2.gross { font-size: 24px; line-height: 1.2; margin: 4px 0 8px; }
+h2.gross a { color: inherit; text-decoration: none; }
+.fakten { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--muted); }
+.aktionen-zeile { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.ziel-chips:not(:empty) { margin-top: 8px; }
+.tage-raster { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.tag-karte { border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 4px; min-width: 0; background: var(--card); }
+.tag-karte[draggable=true] { cursor: grab; }
+.tag-karte.frei { border-style: dashed; min-height: 120px; }
+.tag-karte.drop-ziel, .heute-karte.drop-ziel { outline: 2px solid var(--accent); outline-offset: 2px; background: var(--accent-soft); }
+.tag-kopf { font-size: 13px; }
+.tag-bild { position: relative; display: grid; place-items: center; aspect-ratio: 4/3; border-radius: 8px; overflow: hidden; background: linear-gradient(135deg, var(--accent-soft), var(--hover)); }
+.tag-bild img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tag-bild > span:first-child { font-size: 30px; opacity: .5; }
+.tag-bild .ecke { position: absolute; top: 6px; right: 6px; }
+.tag-name { font-weight: 600; font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; }
+.tag-aktionen { display: flex; gap: 4px; margin-top: auto; padding-top: 4px; }
+.frei-plus { flex: 1; display: grid; place-items: center; font-size: 26px; color: var(--muted); text-decoration: none; }
+.karten-raster { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr)); }
+.start .grid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); margin-bottom: 14px; }
+.karten-raster .rezeptkarte { margin: 0; color: inherit; text-decoration: none; }
+.vorrat { margin-top: 12px; } .vorrat .kachel { text-align: center; } .vorrat .zahl { font-size: 22px; }
+.vorschlag-liste { display: flex; flex-direction: column; gap: 6px; }
+.vorschlag-zeile { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; padding: 4px; border-radius: 8px; }
+.vorschlag-zeile:hover { background: var(--hover); }
+.mini-bild { flex: 0 0 52px; height: 52px; border-radius: 8px; overflow: hidden; display: grid; place-items: center; background: var(--hover); }
+.mini-bild img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 640px) {
+  .start .heute-karte { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .heute-bild { height: auto; aspect-ratio: 16/10; }
+  .karten-raster { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .karten-raster .rezeptkarte .inhalt { padding: 8px; font-size: 14px; }
+  .heute-text { padding: 14px; }
+  .tage-raster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

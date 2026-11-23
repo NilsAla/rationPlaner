@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.18.0 / API 1.15)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.19.0 / API 1.15)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -45,17 +45,13 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
   im Prompt oder in `bon.py` (`_typ`, `_ziel`, `_anzahl_pruefen`) beheben, Fixture `HUERDEN`
   in `tests/test_bon.py` erweitern.
 
-### 2. Neue Startseite (`views/uebersicht.js` ersetzen)
-- Visuell aufgewertet, mit Fotos (Hauptbild via `rezeptbuch[].foto`, `lib.fotoUrl`).
-- Inhalte: heute/nächste Tage aus dem Plan (`GET /plan`), „jetzt kochbar“ (`rezeptbuch` mit
-  `kochbar`), Vorrat mit „läuft bald ab“ (`/status`, Inventar), Reste.
-- **Verschieben**: Gericht per Drag&Drop oder Knopf „→ morgen“ auf einen anderen Tag
-  (`PUT /plan/{datum}` + `DELETE /plan/{alt}`, besser ein neuer Endpoint
-  `POST /plan/{datum}/verschieben {ziel}` mit Tausch, falls Ziel belegt). Schnell, ohne Dialog.
-- **Plan generieren** direkt auf der Startseite (gleiche Logik wie `views/plan.js`, Regler als
-  kompakte Chips), Ergebnis als Karten mit Foto, kcal und Nutri-Score.
-- Akzeptanz: Desktop und Handy (390 px) ohne horizontales Scrollen, keine Konsolenfehler,
-  Verschieben in ≤ 2 Klicks.
+### 2. Neue Startseite – erledigt (0.19.0)
+- `views/uebersicht.js` neu: Heute groß mit Foto, nächste 6 Tage als Fotokarten (Drag&Drop,
+  „→ Tag“ mit 1 Klick, ⇄ Tag wählen mit 2 Klicks, belegte Tage werden getauscht), Plan vorschlagen
+  mit Tages- und Wunsch-Chips (Ergebnis mit Foto/kcal/Nutri, übernehmen), läuft bald ab, Reste,
+  Vorrat, Zu tun, „Jetzt kochbar“ als Karten. Ohne Plan für heute: kochbare Rezepte per Klick einplanen.
+- Lokal mit Playwright geprüft (1400 px und 390 px, kein horizontales Scrollen, keine Konsolenfehler).
+  Auf Touch gibt es kein Drag&Drop, dafür die Knöpfe.
 
 ### 3. HA-Entitäten über die Bridge – erledigt (0.18.0)
 - `GET /api/v1/uebersicht` (heute, morgen, nächste Tage mit kcal/Nutri/Foto/Ampel, läuft ab nach
