@@ -1,8 +1,8 @@
-import {$, $$, AUFWAND, nutriBadge, api, quelleBadge, quelleInfo, bestaetigen, dmy, esc, formDialog, guarded, lokal, meldeMassen, merken, post, sterne, tabelle, gehe} from "../lib.js";
+import {$, $$, AUFWAND, nutriBadge, api, quelleBadge, quelleInfo, bestaetigen, dmy, esc, formDialog, guarded, lokal, meldeMassen, merken, post, sterne, tabelle, gehe, fotoUrl} from "../lib.js";
 
 // Rezeptbuch: Suche, Filter, Sortierung, Massenaktionen. ?kochbar=1, ?produkt=<id>
 export default async function render(el, {params}) {
-  const f = {q: "", tag: "", quelle: "", kochbar: params.kochbar === "1", nur_fav: false, ansicht: lokal("rezepte.ansicht", "tabelle"), ...lokal("rezepte.filter", {})};
+  const f = {q: "", tag: "", quelle: "", kochbar: params.kochbar === "1", nur_fav: false, ansicht: lokal("rezepte.ansicht", "karten"), ...lokal("rezepte.filter", {})};
   if (params.kochbar === "1") f.kochbar = true;
   const [buch, produkt] = await Promise.all([api("rezeptbuch"), params.produkt ? api(`produkte/${params.produkt}`).catch(() => null) : null]);
   const mitProdukt = produkt ? new Set(produkt.rezepte.map((r) => r.id)) : null;
@@ -42,7 +42,7 @@ export default async function render(el, {params}) {
         <button class="btn klein" data-akt="fav">★ Favorit</button><button class="btn klein" data-akt="unfav">☆ kein Favorit</button>
         <button class="btn klein danger" data-akt="loeschen">Löschen</button>`,
       spalten: [
-        {key: "name", titel: "Rezept", wert: (r) => `${sterne(r)} <b>${esc(r.name)}</b>${r.status === "ungetestet" ? ` <span class="tag warn">neu</span>` : ""}
+        {key: "name", titel: "Rezept", wert: (r) => `<span class="mini-foto">${r.foto ? `<img src="${fotoUrl(r.foto)}" alt="" loading="lazy">` : ""}</span>${sterne(r)} <b>${esc(r.name)}</b>${r.status === "ungetestet" ? ` <span class="tag warn">neu</span>` : ""}
           ${r.tags.length ? `<div class="muted tiny">${r.tags.map(esc).join(" · ")}</div>` : ""}`},
         {key: "quelle", titel: "Quelle", klasse: "nw", sort: (r) => quelleInfo(r.quelle).label, wert: (r) => quelleBadge(r.quelle)},
         {key: "kochbar", titel: "Vorrat", klasse: "nw", sort: (r) => r.fehlend.length,
@@ -74,11 +74,13 @@ export default async function render(el, {params}) {
 
 function karten(el, zeilen) {
   el.innerHTML = zeilen.length ? `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr))">${zeilen.map((r) => `
-    <a class="kachel" href="#/rezept/${esc(r.id)}" style="text-align:left">
-      <div><b>${esc(r.name)}</b> ${sterne(r)} ${quelleBadge(r.quelle)}</div>
-      <div class="muted tiny">${r.portionen} P.${r.kcal ? ` · ${Math.round(r.kcal)} kcal` : ""} ${nutriBadge(r.nutri)}${r.aufwand ? " · " + esc(AUFWAND[r.aufwand]) : ""}${r.gekocht ? ` · ${r.gekocht}× gekocht` : " · noch nie gekocht"}</div>
+    <a class="kachel rezeptkarte" href="#/rezept/${esc(r.id)}">
+      <div class="bild">${r.foto ? `<img src="${fotoUrl(r.foto)}" alt="" loading="lazy">` : `<span>🍽️</span>`}
+        ${r.nutri ? `<span class="ecke">${nutriBadge(r.nutri)}</span>` : ""}</div>
+      <div class="inhalt"><div><b>${esc(r.name)}</b> ${sterne(r)} ${quelleBadge(r.quelle)}</div>
+      <div class="muted tiny">${r.portionen} P.${r.kcal ? ` · ${Math.round(r.kcal)} kcal` : ""}${r.aufwand ? " · " + esc(AUFWAND[r.aufwand]) : ""}${r.gekocht ? ` · ${r.gekocht}× gekocht` : " · noch nie gekocht"}</div>
       <div class="tiny" style="margin-top:4px">${r.kochbar ? `<span class="dot"></span>alles da` : `<span class="dot ${r.fehlend.length > 2 ? "fehlt" : "knapp"}"></span>${r.fehlend.length} fehlen`}</div>
-      ${r.tags.length ? `<div style="margin-top:6px">${r.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join(" ")}</div>` : ""}</a>`).join("")}</div>`
+      ${r.tags.length ? `<div style="margin-top:6px">${r.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join(" ")}</div>` : ""}</div></a>`).join("")}</div>`
     : `<div class="leer">Keine Rezepte gefunden.</div>`;
 }
 

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import dubletten, kueche, naehrwerte
+from app import dubletten, fotos, kueche, naehrwerte
 from app.db import (
     BonAlias,
     DubletteEntscheidung,
@@ -257,6 +257,7 @@ async def rezeptbuch(
     verlauf = kochverlauf(s)
     meinung = {x.rezept_id: x for x in s.scalars(select(RezeptBewertung))}
     nw, ziel = naehrwerte.alle(s), naehrwerte.ziel_aus(s)
+    bilder = fotos.hauptfotos(s)
     result = []
     for r in await b.list_recipes():
         n = naehrwerte.rezept_naehrwerte(r, produkte, nw, ziel=ziel)
@@ -280,6 +281,7 @@ async def rezeptbuch(
                 "kochbar": not fehlend and bool(r.ingredients),
                 "quelle": m.quelle if m else None,
                 "url": m.url if m else None,
+                "foto": bilder.get(r.id),
                 "kcal": n.je_portion["kcal"],
                 "protein": n.je_portion["protein"],
                 "nutri": n.nutri_score["klasse"] if n.nutri_score else None,
@@ -357,6 +359,7 @@ async def rezept_detail(
         "quelle": m.quelle if m else None,
         "url": m.url if m else None,
         "naehrwerte": naehrwerte.rezept_dict(r, produkte, s, ziel),
+        "fotos": [fotos.als_dict(f) for f in fotos.fotos_von(s, r.id)],
         **_meinung(s.get(RezeptBewertung, r.id)),
         "verlauf": [
             {"id": k.id, "datum": k.datum, "portionen": k.portionen, "bewertung": k.bewertung}
@@ -660,7 +663,8 @@ async def rezept_anlegen(
     return {"id": r.id, "name": r.name}
 
 
-def _rezept_app_daten_entfernen(s: Session, rezept_id: str) -> None:
+def _rezept_app_daten_entfernen(s: Session, rezept_id: str, st: Settings) -> None:
+    fotos.rezept_fotos_entfernen(s, st, rezept_id)
     for modell in (RezeptMeta, RezeptBewertung):
         if row := s.get(modell, rezept_id):
             s.delete(row)
@@ -674,11 +678,14 @@ def _rezept_app_daten_entfernen(s: Session, rezept_id: str) -> None:
 
 @router.delete("/rezepte/{rezept_id}")
 async def rezept_loeschen(
-    rezept_id: str, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+    rezept_id: str,
+    s: Session = Depends(session),
+    b: InventoryBackend = Depends(backend),
+    st: Settings = Depends(settings),
 ) -> dict:
     await b.get_recipe(rezept_id)
     await b.delete_recipe(rezept_id)
-    _rezept_app_daten_entfernen(s, rezept_id)
+    _rezept_app_daten_entfernen(s, rezept_id, st)
     s.commit()
     log.info("Rezept %s gelöscht", rezept_id)
     return {"geloescht": rezept_id}
@@ -692,7 +699,10 @@ class RezeptAktionIn(BaseModel):
 
 @router.post("/rezepte/aktion")
 async def rezepte_aktion(
-    data: RezeptAktionIn, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+    data: RezeptAktionIn,
+    s: Session = Depends(session),
+    b: InventoryBackend = Depends(backend),
+    st: Settings = Depends(settings),
 ) -> dict:
     if data.aktion == "status" and data.wert not in REZEPT_STATUS:
         raise HTTPException(422, f"status muss {'/'.join(REZEPT_STATUS)} sein")
@@ -708,7 +718,7 @@ async def rezepte_aktion(
             r = await b.get_recipe(rid)
             if data.aktion == "loeschen":
                 await b.delete_recipe(rid)
-                _rezept_app_daten_entfernen(s, rid)
+                _rezept_app_daten_entfernen(s, rid, st)
             elif data.aktion == "favorit":
                 m = s.get(RezeptBewertung, rid) or RezeptBewertung(rezept_id=rid)
                 m.favorit = bool(data.wert)

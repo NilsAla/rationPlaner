@@ -1,9 +1,10 @@
 """Rezept-Import per Link: schema.org/Recipe (JSON-LD) lesen, Zutaten auf Produkte abbilden.
 
 Übernommen werden Name, Portionen, Zutaten mit Mengen und die Zubereitungsschritte
-(recipeInstructions, für die private Datenbank, Entscheidung Nils). Bilder bleiben bei der
-Quelle, der Link steht unter den Schritten. Die Zuordnung ist deterministisch (Alias, Name,
-Token-Ähnlichkeit) und wird immer im Review bestätigt, bevor etwas in Grocy landet.
+(recipeInstructions, für die private Datenbank, Entscheidung Nils). Haupt- und Schrittbilder
+werden nach der Übernahme lokal gespeichert (`fotos.py`), der Link steht unter den Schritten.
+Die Zuordnung ist deterministisch (Alias, Name, Token-Ähnlichkeit) und wird immer im Review
+bestätigt, bevor etwas in Grocy landet.
 """
 
 from __future__ import annotations
@@ -99,6 +100,8 @@ class RohRezept:
     quelle: str
     quelle_id: str
     schritte: list[str] = field(default_factory=list)
+    bild: str | None = None  # Hauptbild-URL
+    schritt_bilder: dict[str, str] = field(default_factory=dict)  # "0" → URL (JSON-Schlüssel)
 
 
 @dataclass
@@ -283,6 +286,9 @@ def schritte_begrenzen(schritte: list[str]) -> list[str]:
 def rezept_aus_html(html: str, url: str) -> RohRezept:
     data = json_ld_rezept(html)
     quelle, quelle_id = quelle_von(url)
+    from app.fotos import bilder_aus_html
+
+    bild, schritt_bilder = bilder_aus_html(html, data)
     zutaten = [zutat_parsen(str(z)) for z in data.get("recipeIngredient") or []]
     if not zutaten:
         raise ImportError_("Rezept ohne Zutatenliste")
@@ -294,6 +300,8 @@ def rezept_aus_html(html: str, url: str) -> RohRezept:
         quelle=quelle,
         quelle_id=quelle_id,
         schritte=schritte_begrenzen(schritte_aus(data.get("recipeInstructions"))),
+        bild=bild,
+        schritt_bilder={str(k): v for k, v in schritt_bilder.items()},
     )
 
 

@@ -240,3 +240,24 @@ body.kochmodus main#view { max-width: 1280px; }
 .naehrgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 10px; }
 .naehrgrid label { font-size: 12px; }
 @media (max-width: 420px) { .makros { grid-template-columns: repeat(2, 1fr); } }
+
+/* Fotos */
+.hero { width: calc(100% + 32px); margin: -16px -16px 12px; aspect-ratio: 16/9; object-fit: cover; border-radius: 14px 14px 0 0; display: block; }
+.rezeptkarte { padding: 0 !important; overflow: hidden; text-align: left; display: flex; flex-direction: column; }
+.rezeptkarte .bild { position: relative; aspect-ratio: 4/3; background: linear-gradient(135deg, var(--accent-soft), var(--hover)); display: grid; place-items: center; }
+.rezeptkarte .bild img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rezeptkarte .bild > span { font-size: 40px; opacity: .5; }
+.rezeptkarte .ecke { position: absolute; top: 8px; right: 8px; }
+.rezeptkarte .inhalt { padding: 10px 12px 12px; }
+.mini-foto { display: inline-block; width: 36px; height: 36px; border-radius: 6px; overflow: hidden; vertical-align: middle; margin-right: 6px; background: var(--hover); }
+.mini-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mini-foto:empty { display: none; }
+.fotogrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.fotogrid figure { margin: 0; }
+.fotogrid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: block; }
+.fotogrid figcaption { display: flex; align-items: center; gap: 2px; font-size: 12px; color: var(--muted); }
+.schritt-mini { display: block; width: 120px; max-width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px; margin: 6px 0 4px; }
+.schritt-foto { width: 100%; max-height: 340px; object-fit: cover; border-radius: 10px; margin: 6px 0 10px; display: block; }
+.foto-prompt { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+.foto-prompt.hervor { border-color: var(--accent); background: var(--accent-soft); }
+.import-bild { width: 120px; aspect-ratio: 4/3; object-fit: cover; border-radius: 8px; flex: 0 0 auto; }

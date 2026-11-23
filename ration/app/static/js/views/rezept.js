@@ -1,4 +1,4 @@
-import {$, $$, AUFWAND, NAEHRFELDER, nutriBadge, api, bestaetigen, del, dmy, esc, fmt, guarded, heute, put, toast, gehe, titel, quelleBadge} from "../lib.js";
+import {$, $$, AUFWAND, NAEHRFELDER, nutriBadge, api, bestaetigen, del, dmy, esc, fmt, guarded, heute, put, toast, gehe, titel, quelleBadge, fotoUrl, fotoHochladen, patch, post} from "../lib.js";
 
 // Rezeptleser mit Portionen, Bestandsampel, Meinung und Kochverlauf
 export default async function render(el, {arg, params}) {
@@ -6,8 +6,11 @@ export default async function render(el, {arg, params}) {
   const r = await api(`rezepte/${arg}${p}`);
   titel(r.name);
   const ampel = {ok: "alles da", knapp: "knapp", fehlt: "fehlt"};
+  const haupt = r.fotos.find((f) => f.haupt) ?? r.fotos.find((f) => f.schritt == null);
+  const jeSchritt = {};
+  r.fotos.filter((f) => f.schritt != null).forEach((f) => (jeSchritt[f.schritt] ??= []).push(f));
   el.innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr))">
-    <div class="card"><div class="kopf"><h2>${esc(r.name)}</h2><div class="aktionen">
+    <div class="card">${haupt ? `<img class="hero" src="${fotoUrl(haupt.id, false)}" alt="${esc(r.name)}">` : ""}<div class="kopf"><h2>${esc(r.name)}</h2><div class="aktionen">
         <a class="btn klein" href="#/rezept/${esc(r.id)}/anleitung">🪜 Anleitung</a>
         <a class="btn klein" href="#/rezept/${esc(r.id)}/bearbeiten">✎ Bearbeiten</a></div></div>
       <p class="muted small">${[r.status === "ungetestet" ? "noch nie gekocht" : null, AUFWAND[r.aufwand], ...r.tags].filter(Boolean).map(esc).join(" · ")}
@@ -19,8 +22,17 @@ export default async function render(el, {arg, params}) {
           <a href="#/produkt/${esc(z.produkt_id)}">${esc(z.name)}</a>${z.notiz ? `<div class="muted tiny">${esc(z.notiz)}</div>` : ""}</td>
         <td class="nw right">${fmt(z.menge)} ${esc(z.einheit)}</td><td class="nw muted right tiny">da: ${fmt(z.bestand)}</td></tr>`).join("")}</table></div>
     ${makros(r.naehrwerte)}
-    <div class="card"><h2>Zubereitung</h2>${r.schritte.length ? `<ol class="schritte">${r.schritte.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`
+    <div class="card"><h2>Zubereitung</h2>${r.schritte.length ? `<ol class="schritte">${r.schritte.map((s, k) => `<li>${esc(s)}${(jeSchritt[k] ?? []).map((f) =>
+        `<a href="${fotoUrl(f.id, false)}" target="_blank"><img class="schritt-mini" src="${fotoUrl(f.id)}" alt="" loading="lazy"></a>`).join("")}</li>`).join("")}</ol>`
       : `<p class="muted">Keine Schritte hinterlegt. <a href="#/rezept/${esc(r.id)}/bearbeiten">Ergänzen</a></p>`}</div>
+    <div class="card"><div class="kopf"><h2>Fotos</h2><div class="aktionen">
+        ${r.url ? `<button class="btn klein" id="quellbilder" title="Haupt- und Schrittbilder von der Originalseite laden">⤓ Von der Quelle</button>` : ""}
+        <button class="btn klein primary" id="fotoneu">📷 Foto</button></div></div>
+      ${r.fotos.length ? `<div class="fotogrid">${r.fotos.map((f) => `<figure><a href="${fotoUrl(f.id, false)}" target="_blank"><img src="${fotoUrl(f.id)}" alt="" loading="lazy"></a>
+        <figcaption>${f.haupt ? "⭐ Titelbild" : f.schritt != null ? `Schritt ${f.schritt + 1}` : "Ergebnis"}
+          <span class="grow"></span>${f.haupt ? "" : `<button class="icon" data-fhaupt="${f.id}" title="Als Titelbild">⭐</button>`}
+          <button class="icon" data-fdel="${f.id}" title="Löschen">✕</button></figcaption></figure>`).join("")}</div>`
+        : `<p class="muted small">Noch keine Fotos. Nach dem Kochen fragt der Kochmodus nach einem Foto vom Ergebnis.</p>`}</div>
     <div class="card"><h2>Meine Meinung</h2>
       <div class="chips"><button class="chip ${r.bewertung > 0 ? "on" : ""}" data-b="1">👍 gern wieder</button>
         <button class="chip ${r.bewertung === 0 ? "on" : ""}" data-b="0">😐 neutral</button>
@@ -33,6 +45,18 @@ export default async function render(el, {arg, params}) {
         : `<p class="muted">Noch nie gekocht.</p>`}
       <button class="btn danger klein" id="loeschen" style="margin-top:14px">Rezept löschen</button></div></div>`;
 
+  $("#fotoneu", el).onclick = () => guarded(async () => { if (await fotoHochladen(r.id)) render(el, {arg, params}); });
+  const qb = $("#quellbilder", el);
+  if (qb) qb.onclick = () => guarded(async () => {
+    const e = await post(`rezepte/${r.id}/fotos/laden`);
+    toast(`Lade ${e.hauptbild ? "Titelbild und " : ""}${e.schrittbilder} Schrittbilder …`);
+    setTimeout(() => render(el, {arg, params}), 4000);
+  });
+  $$("[data-fhaupt]", el).forEach((b) => b.onclick = () => guarded(async () => { await patch(`fotos/${b.dataset.fhaupt}`, {haupt: true}); render(el, {arg, params}); }));
+  $$("[data-fdel]", el).forEach((b) => b.onclick = () => guarded(async () => {
+    if (!await bestaetigen("Foto löschen?", "Löschen", true)) return;
+    await del(`fotos/${b.dataset.fdel}`); render(el, {arg, params});
+  }));
   const mt = $("#nwmehr", el);
   if (mt) mt.onclick = () => { $("#nwtab", el).hidden = !$("#nwtab", el).hidden; mt.textContent = $("#nwtab", el).hidden ? "alle Werte" : "weniger"; };
   const meinung = (body) => guarded(async () => { await put(`rezepte/${r.id}/meinung`, body); toast("Gespeichert"); render(el, {arg, params}); });

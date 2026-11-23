@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Boolean, DateTime, Integer, String, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app import kueche
+from app import fotos, kueche
 from app.db import Base
 from app.deps import backend, session, settings
 from app.inventory.base import InventoryBackend, Product, Recipe
@@ -31,6 +31,7 @@ router = APIRouter(prefix="/api/v1")
 
 MAX_SCHRITTE = 30
 MAX_TIMER_S = 6 * 3600
+MAX_ORIGINAL = 100
 KUECHEN_MUSTER = re.compile(r"k(ü|ue)che|kitchen|koch", re.I)
 
 
@@ -162,10 +163,24 @@ def schritt_pruefen(roh: dict, n_zutaten: int) -> dict | None:
         timer_s = None
     if timer_s is not None and not 10 <= timer_s <= MAX_TIMER_S:
         timer_s = None
+    original = []
+    for o in roh.get("original") or []:
+        try:
+            o = int(str(o).strip())
+        except (TypeError, ValueError):
+            continue
+        if 0 <= o < MAX_ORIGINAL and o not in original:
+            original.append(o)
+    try:
+        foto = int(roh["foto"]) if roh.get("foto") not in (None, "") else None
+    except (TypeError, ValueError):
+        foto = None
     return {
         "titel": titel or text[:60],
         "text": text,
         "zutaten": zutaten,
+        "original": original,  # Originalschritte (0-basiert), für Schrittbilder
+        "foto": foto,  # ausdrücklich zugeordnetes Foto, sonst die der Originalschritte
         "timer_s": timer_s,
         "timer_name": (str(roh.get("timer_name") or "").strip()[:40] or None) if timer_s else None,
         "parallel": bool(roh.get("parallel")),
@@ -211,7 +226,7 @@ def aus_originalschritten(r: Recipe, produkte: dict[str, Product]) -> list[dict]
     ]
     original = kueche.schritte(r.description) or ["Alle Zutaten nach Rezept verarbeiten."]
     schritte = []
-    for text in original[:MAX_SCHRITTE]:
+    for nr, text in enumerate(original[:MAX_SCHRITTE]):
         d = dauern_s(text)
         titel = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0][:60]
         schritte.append(
@@ -219,6 +234,7 @@ def aus_originalschritten(r: Recipe, produkte: dict[str, Product]) -> list[dict]
                 "titel": titel,
                 "text": text,
                 "zutaten": [],
+                "original": [nr],
                 "timer_s": max(d) if d else None,
                 "timer_name": titel[:40] if d else None,
                 "parallel": False,
@@ -256,8 +272,10 @@ def darstellen(
     produkte: dict[str, Product],
     portionen: int,
     quelle: str,
+    fotos_je: dict[int, list[int]] | None = None,
 ) -> dict:
     """Schritte mit gerechneten Mengen (Rezept × Portionen × Anteil) für UI und Card."""
+    fotos_je = fotos_je or {}
     faktor = portionen / max(r.servings, 1)
     zutaten = []
     for i, z in enumerate(r.ingredients):
@@ -284,6 +302,9 @@ def darstellen(
                 **s,
                 # Text steht für die Grundportionen, Mengen darin rechnet der Code um
                 "text": kueche.mengen_skalieren(s["text"], faktor, namen),
+                "fotos": [s["foto"]]
+                if s.get("foto")
+                else [f for o in s.get("original") or [] for f in fotos_je.get(o, [])][:3],
                 "zutaten": [
                     {
                         **zutaten[z["zutat"]],
@@ -340,13 +361,14 @@ Regeln:
   Keine erfundenen Zutaten; Wasser, Salz zum Kochen u. Ä. ohne Index nur im Text erwähnen.
 - timer_minuten nur für echtes Warten/Garen (Kochzeit, Ofen, Ruhen), Wert aus dem Original
   übernehmen; bei Spannen den größeren Wert. timer_name kurz, z. B. "Nudeln".
+- original: Nummern der Originalschritte, aus denen dieser Schritt stammt (für Schrittbilder).
 - parallel: true, wenn der Schritt nebenher weiterläuft, während schon der nächste beginnt
   (z. B. Wasser aufsetzen, Ofen vorheizen, Soße köcheln), nicht bei reinen Handgriffen.
 - Nichts weglassen, was im Original steht. Höchstens {max} Schritte.
 {feedback}"""
 
 
-def struktur(n_zutaten: int) -> dict:
+def struktur(n_zutaten: int, n_original: int = 0) -> dict:
     optionen = [str(i) for i in range(n_zutaten)] or ["0"]
     return {
         "schritte": {
@@ -368,6 +390,15 @@ def struktur(n_zutaten: int) -> dict:
                         "timer_minuten": {"required": False, "selector": {"number": {}}},
                         "timer_name": {"required": False, "selector": {"text": {}}},
                         "parallel": {"required": False, "selector": {"boolean": {}}},
+                        "original": {
+                            "required": False,
+                            "selector": {
+                                "select": {
+                                    "options": [str(i + 1) for i in range(n_original)] or ["1"],
+                                    "multiple": True,
+                                }
+                            },
+                        },
                     },
                 }
             },
@@ -408,12 +439,17 @@ async def mit_ki(
                 max=MAX_SCHRITTE,
                 feedback=feedback,
             ),
-            struktur(len(namen)),
+            struktur(len(namen), len(original)),
         )
         log.info("Kochanleitung %s Rohantwort: %s", r.id, json.dumps(daten, ensure_ascii=False))
-        schritte = [
-            s for s in (schritt_pruefen(x, len(namen)) for x in (daten.get("schritte") or [])) if s
-        ][:MAX_SCHRITTE]
+        roh_schritte = [
+            {**x, "original": [int(o) - 1 for o in x.get("original") or [] if str(o).isdigit()]}
+            for x in (daten.get("schritte") or [])
+            if isinstance(x, dict)
+        ]  # KI zählt ab 1, gespeichert wird 0-basiert
+        schritte = [s for s in (schritt_pruefen(x, len(namen)) for x in roh_schritte) if s][
+            :MAX_SCHRITTE
+        ]
         probleme = []
         if not schritte:
             probleme.append("Keine gültigen Schritte geliefert.")
@@ -575,7 +611,9 @@ async def anleitung(
     a = s.get(KochAnleitung, rezept_id)
     schritte = a.schritte if a else aus_originalschritten(r, produkte)
     ziel = max(1, min(portionen or r.servings, 24))
-    return darstellen(a, schritte, r, produkte, ziel, a.quelle if a else "code")
+    return darstellen(
+        a, schritte, r, produkte, ziel, a.quelle if a else "code", fotos.je_schritt(s, r.id)
+    )
 
 
 class GenerierenIn(BaseModel):
@@ -595,7 +633,7 @@ async def anleitung_generieren(
     a = await erzeugen(s, b, request.app.state.ha, st, rezept_id, data.ki)
     r = await b.get_recipe(rezept_id)
     produkte = {p.id: p for p in await b.list_products()}
-    return darstellen(a, a.schritte, r, produkte, r.servings, a.quelle)
+    return darstellen(a, a.schritte, r, produkte, r.servings, a.quelle, fotos.je_schritt(s, r.id))
 
 
 class AnleitungIn(BaseModel):
@@ -627,7 +665,7 @@ async def anleitung_speichern(
         a.quelle, a.hinweise = "manuell" if alt is None or alt.quelle != "ki" else "ki", []
     s.add(a)
     s.commit()
-    return darstellen(a, schritte, r, produkte, r.servings, a.quelle)
+    return darstellen(a, schritte, r, produkte, r.servings, a.quelle, fotos.je_schritt(s, r.id))
 
 
 @router.delete("/kochen/anleitung/{rezept_id}")

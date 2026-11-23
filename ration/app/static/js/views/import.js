@@ -9,7 +9,7 @@ export default async function render(el, {params}) {
       <textarea id="html" rows="4" placeholder="Seitenquelltext (Strg+U, alles kopieren)"></textarea></details>
     <label class="inline"><input id="ki" type="checkbox" checked> Offene Zutaten per KI zuordnen</label>
     <button class="btn primary voll" id="laden">Vorschau laden</button>
-    <p class="muted tiny">Übernommen werden Zutaten, Mengen und Zubereitungsschritte (ohne Bilder), der Link zur Quelle bleibt dabei.</p></div>
+    <p class="muted tiny">Übernommen werden Zutaten, Mengen, Zubereitungsschritte und, wo vorhanden, Titel- und Schrittbilder (lokal gespeichert). Der Link zur Quelle bleibt dabei.</p></div>
     <div id="vor"></div>`;
   $("#laden", el).onclick = () => guarded(async () => {
     const b = $("#laden", el); b.disabled = true; b.textContent = $("#ki", el).checked ? "Lädt, KI ordnet zu …" : "Lädt …";
@@ -51,6 +51,8 @@ function vorschau(box, v, produkte) {
     <h3>Zubereitung <span class="muted tiny">(${v.schritte.length} Schritte, ein Schritt pro Zeile)</span></h3>
     <textarea id="ischr" rows="${Math.min(Math.max(v.schritte.length + 1, 3), 14)}"
       placeholder="Quelle liefert keine Schritte, hier eintragen oder leer lassen">${esc(v.schritte.join("\n"))}</textarea>
+    ${v.bild || v.schritt_bilder ? `<div class="row" style="align-items:center;margin-top:10px">${v.bild ? `<img src="${esc(v.bild)}" alt="" class="import-bild" referrerpolicy="no-referrer">` : ""}
+      <label class="inline"><input type="checkbox" id="ifotos" checked> Bilder übernehmen (${v.bild ? "Titelbild" : ""}${v.bild && v.schritt_bilder ? " + " : ""}${v.schritt_bilder ? `${v.schritt_bilder} Schrittbilder` : ""})</label></div>` : ""}
     <button class="btn primary voll" id="iok">In Grocy übernehmen</button></div>`;
   $$("[data-zp]", box).forEach((sel) => sel.onchange = () => {
     const i = sel.dataset.zp;
@@ -67,8 +69,9 @@ function vorschau(box, v, produkte) {
         : {index: i, produkt_id: sel.value, menge: +menge});
     }
     const e = await post(`import/${v.import_id}/uebernehmen`, {name: $("#iname", box).value, portionen: +$("#ipor", box).value,
-      zutaten, trotz_dublette: !!v.dublette, schritte: $("#ischr", box).value.split("\n").map((t) => t.trim()).filter(Boolean)});
-    toast(`„${e.name}“ angelegt · ${e.zutaten} Zutaten` + (e.neue_produkte.length ? ` · ${e.neue_produkte.length} neue Produkte` : ""));
+      zutaten, trotz_dublette: !!v.dublette, fotos: $("#ifotos", box)?.checked ?? false, schritte: $("#ischr", box).value.split("\n").map((t) => t.trim()).filter(Boolean)});
+    toast(`„${e.name}“ angelegt · ${e.zutaten} Zutaten` + (e.neue_produkte.length ? ` · ${e.neue_produkte.length} neue Produkte` : "")
+      + (e.fotos ? ` · ${e.fotos} Bilder werden geladen` : ""));
     gehe(`rezept/${e.rezept_id}`);
   });
 }

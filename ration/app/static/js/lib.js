@@ -50,6 +50,36 @@ export const put = (path, body) => api(path, {method: "PUT", body});
 export const patch = (path, body) => api(path, {method: "PATCH", body});
 export const del = (path) => api(path, {method: "DELETE"});
 
+// Rezeptfotos: Vorschau (480 px) oder groß (1600 px)
+export const fotoUrl = (id, klein = true) => `api/v1/fotos/${id}${klein ? "?klein=1" : ""}`;
+// Bild wählen (am Handy Kamera oder Galerie), im Browser auf 2000 px verkleinert → data-URL
+export function bildWaehlen() {
+  return new Promise((ok) => {
+    const i = document.createElement("input");
+    i.type = "file"; i.accept = "image/*";
+    i.onchange = async () => {
+      const f = i.files[0];
+      if (!f) return ok(null);
+      try {
+        const bmp = await createImageBitmap(f), k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+        const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+        c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+        ok(c.toDataURL("image/jpeg", 0.88));
+      } catch {
+        const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(f);
+      }
+    };
+    i.click();
+  });
+}
+export async function fotoHochladen(rezeptId, {schritt = null, haupt = false} = {}) {
+  const daten = await bildWaehlen();
+  if (!daten) return null;
+  const f = await post(`rezepte/${encodeURIComponent(rezeptId)}/fotos`, {daten, schritt, haupt});
+  toast("Foto gespeichert");
+  return f;
+}
+
 export function toast(text, art = "") {
   const t = document.createElement("div");
   t.className = "toast " + art; t.textContent = text;

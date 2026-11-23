@@ -13,7 +13,7 @@ export default async function render(el, {arg}) {
     a = x;
     schritte = x.schritte.map((s) => ({
       titel: s.titel, text: s.text, timer_s: s.timer_s, timer_name: s.timer_name, parallel: !!s.parallel,
-      timer_geschaetzt: !!s.timer_geschaetzt, zutaten: s.zutaten.map((z) => ({zutat: z.index, anteil: z.anteil})),
+      timer_geschaetzt: !!s.timer_geschaetzt, original: s.original ?? [], foto: s.foto ?? null, zutaten: s.zutaten.map((z) => ({zutat: z.index, anteil: z.anteil})),
     }));
     dirty = false;
   };

@@ -1,4 +1,4 @@
-import {$, $$, api, bestaetigen, esc, fmt, formDialog, gehe, guarded, heute, patch, post, titel, toast} from "../lib.js";
+import {$, $$, api, bestaetigen, esc, fmt, formDialog, gehe, guarded, heute, patch, post, titel, toast, fotoUrl, fotoHochladen} from "../lib.js";
 import {nachDemKochen} from "./heute.js";
 
 // Timer-Name aus dem Schritttitel, an einer Wortgrenze gekürzt
@@ -159,13 +159,15 @@ export default async function render(el, {arg, params}) {
       ${i < N() ? `<div class="koch-grid"><div class="card schritt-gross">
           <div class="nr">Schritt ${i + 1} von ${N()}${s.parallel ? ` · <span class="tag good">läuft nebenher</span>` : ""}</div>
           <h2>${esc(s.titel)}</h2>${s.text && s.text !== s.titel ? `<p class="text">${esc(s.text)}</p>` : ""}
+          ${s.fotos?.length ? `<img class="schritt-foto" src="${fotoUrl(s.fotos[0], false)}" alt="">` : ""}
           ${s.zutaten.map((z) => `<label class="zutat-check ${drin.has(`${i}:${z.index}`) ? "drin" : ""}">
             <input type="checkbox" data-z="${i}:${z.index}" ${drin.has(`${i}:${z.index}`) ? "checked" : ""}>
             <span class="menge">${fmt(z.menge)} ${esc(z.einheit)}</span><span class="was">${esc(z.name)}${z.notiz ? ` <span class="muted small">(${esc(z.notiz)})</span>` : ""}${
               z.frueher ? ` <span class="muted small">aus Schritt ${z.frueher}</span>` : ""}</span></label>`).join("")}
           <div class="row" style="margin-top:6px">
             ${s.timer_s ? `<button class="btn primary gross" id="timer">⏱ ${s.timer_geschaetzt ? "≈ " : ""}${dauerText(s.timer_s)}${s.timer_name ? ` ${esc(s.timer_name)}` : ""} starten</button>` : ""}
-            <button class="btn gross" id="eigener">+ Timer</button></div>
+            <button class="btn gross" id="eigener">+ Timer</button>
+            ${!test && s.original?.length ? `<button class="btn gross" id="schrittfoto" title="Foto zu diesem Schritt">📷</button>` : ""}</div>
           <div class="koch-nav"><button class="btn" id="zurueck" ${i === 0 ? "disabled" : ""}>◀ Zurück</button>
             <button class="btn primary" id="weiter">${i === N() - 1 ? "Fertig ✓" : "Weiter ▶"}</button></div>
           ${anl.schritte[i + 1] ? `<div class="naechster">Als Nächstes: <b>${esc(anl.schritte[i + 1].titel)}</b></div>` : ""}</div>
@@ -184,6 +186,8 @@ export default async function render(el, {arg, params}) {
           <div class="row"><div><label>Gekocht (Portionen)</label><input id="pg" type="number" min="1" max="24" value="${sitz.portionen}"></div>
             <div><label>Gegessen (Portionen)</label><input id="pe" type="number" min="0" max="24" value="${Math.min(sitz.portionen, 1)}"></div></div>
           <p class="muted small">Bucht die Zutaten ab, der Rest wird als Rest eingebucht.</p>
+          <div class="foto-prompt" id="ergfoto"><span>📸 <b>Foto vom Ergebnis?</b> <span class="muted small" id="ergtext">Macht das Rezeptbuch schöner.</span></span>
+            <button class="btn" id="ergknopf">Foto aufnehmen</button></div>
           <div class="row"><button class="btn primary gross" id="buchen">Gekocht buchen</button>
             <button class="btn" id="ohne">Ohne Buchen beenden</button><button class="btn" id="zurueck">◀ Zurück</button></div>
           <div id="nach"></div></div>`}`;
@@ -249,6 +253,22 @@ export default async function render(el, {arg, params}) {
       await speichern({aktiv: false});
       nachDemKochen($("#nach", el), e);
     });
+    const sf = $("#schrittfoto", el);
+    if (sf) sf.onclick = () => guarded(async () => {
+      const s = anl.schritte[sitz.schritt];
+      if (!await fotoHochladen(anl.rezept_id, {schritt: s.original[0]})) return;
+      anl = await api(`kochen/anleitung/${encodeURIComponent(anl.rezept_id)}?portionen=${sitz.portionen}`); zeichnen();
+    });
+    const ek = $("#ergknopf", el);
+    if (ek) {
+      api(`rezepte/${encodeURIComponent(anl.rezept_id)}/fotos`).then((l) => {
+        const t = $("#ergtext", el);
+        if (t && !l.some((f) => f.schritt == null)) { t.textContent = "Von diesem Gericht gibt es noch kein Foto."; $("#ergfoto", el).classList.add("hervor"); }
+      }).catch(() => {});
+      ek.onclick = () => guarded(async () => {
+        if (await fotoHochladen(anl.rezept_id)) { $("#ergfoto", el).innerHTML = `<span>✓ Foto gespeichert</span>`; }
+      });
+    }
     const ohne = $("#ohne", el);
     if (ohne) ohne.onclick = () => guarded(async () => { await speichern({aktiv: false}); gehe(""); });
   };

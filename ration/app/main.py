@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -23,6 +23,7 @@ from app import (
     __version__,
     bon,
     einstellungen,
+    fotos,
     inventar,
     katalog,
     kategorisierung,
@@ -120,6 +121,7 @@ class UebernehmenIn(BaseModel):
     zutaten: list[ImportZutatIn]  # nicht aufgeführte Zutaten werden weggelassen
     schritte: list[str] | None = None  # bearbeitete Schritte, sonst die aus der Quelle
     trotz_dublette: bool = False
+    fotos: bool = True  # Haupt- und Schrittbilder der Quelle lokal speichern
 
 
 class EinkaufslisteIn(BaseModel):
@@ -459,6 +461,8 @@ async def import_vorschau(
         "url": roh.url,
         "dublette": dublette.rezept_id if dublette else None,
         "schritte": roh.schritte,
+        "bild": roh.bild,
+        "schritt_bilder": len(roh.schritt_bilder),
         "zutaten": [asdict(z) for z in zuordnung],
         "ki": asdict(ki),
     }
@@ -468,8 +472,11 @@ async def import_vorschau(
 async def import_uebernehmen(
     import_id: int,
     data: UebernehmenIn,
+    request: Request,
+    hintergrund: BackgroundTasks,
     s: Session = Depends(session),
     b: InventoryBackend = Depends(backend),
+    st: Settings = Depends(settings),
 ) -> dict:
     """Legt das geprüfte Rezept in Grocy an, merkt Aliase und Herkunft."""
     eintrag = s.get(RezeptImport, import_id)
@@ -514,6 +521,11 @@ async def import_uebernehmen(
         RezeptMeta(rezept_id=recipe.id, quelle=roh.quelle, quelle_id=roh.quelle_id, url=roh.url)
     )
     s.commit()
+    bilder = {int(k): v for k, v in (roh.schritt_bilder or {}).items()}
+    if data.fotos and (roh.bild or bilder):
+        hintergrund.add_task(
+            fotos.importieren, request.app.state.engine, st, recipe.id, roh.bild, bilder
+        )
     log.info("Import %s übernommen: %s → Rezept %s", import_id, recipe.name, recipe.id)
     return {
         "rezept_id": recipe.id,
@@ -521,6 +533,7 @@ async def import_uebernehmen(
         "zutaten": len(zutaten),
         "neue_produkte": neu,
         "weggelassen": len(roh.zutaten) - len(zutaten),
+        "fotos": (1 if roh.bild else 0) + len(bilder) if data.fotos else 0,
     }
 
 
@@ -632,6 +645,7 @@ def create_app(
     app.include_router(inventar.router)
     app.include_router(kochen.router)
     app.include_router(naehrwerte.router)
+    app.include_router(fotos.router)
 
     @app.middleware("http")
     async def aenderungen_protokollieren(request: Request, call_next):
