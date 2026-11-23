@@ -1,4 +1,4 @@
-"""Protokolle: KI-Anfragen (ai_task) und Änderungen über die API (UI, Bridge, MCP).
+"""Protokolle: KI-Anfragen (siehe app/ki.py) und Änderungen über die API (UI, Bridge, MCP).
 
 Beides liegt in der App-DB, wird beim Schreiben auf eine feste Länge gekürzt und ist in der
 Web-App unter System einsehbar. Geheimnisse (Token, Passwörter) werden nie gespeichert.
@@ -9,10 +9,21 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, delete, func, select
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    Text,
+    delete,
+    func,
+    select,
+)
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import Base
@@ -24,7 +35,8 @@ router = APIRouter(prefix="/api/v1")
 MAX_KI = 500
 MAX_AENDERUNGEN = 3000
 MAX_BODY = 8000
-GEHEIM = {"api_token", "token", "password", "passwort", "grocy_api_key", "supervisor_token"}
+GEHEIM = {"api_token", "token", "password", "passwort", "grocy_api_key", "supervisor_token",
+          "openai_api_key"}  # fmt: skip
 SCHREIBEND = {"POST", "PUT", "PATCH", "DELETE"}
 LESEND_POST = {"/api/v1/import/vorschau"}  # POST ohne Änderung an Grocy, trotzdem protokolliert
 
@@ -42,6 +54,12 @@ class KiAnfrage(Base):
     antwort: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     fehler: Mapped[str | None] = mapped_column(String, nullable=True)
     dauer_s: Mapped[float] = mapped_column(Float, default=0)
+    job: Mapped[str | None] = mapped_column(String, nullable=True)  # app.ki.JOBS
+    backend: Mapped[str | None] = mapped_column(String, nullable=True)  # ha / openai
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    geschaetzt: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # HA: ≈ Zeichen/3,5
+    kosten_eur: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class Aenderung(Base):
@@ -71,46 +89,8 @@ def _kuerzen(n: int, tabelle, s: Session) -> None:
         s.execute(delete(tabelle).where(tabelle.id <= grenze))
 
 
-class ProtokollHA:
-    """Hüllt einen HomeAssistant-Client: jede ai_task-Anfrage landet im KI-Log."""
-
-    def __init__(self, ha, engine):
-        self._ha = ha
-        self._engine = engine
-
-    def __getattr__(self, name):
-        return getattr(self._ha, name)
-
-    async def ai_task(self, entity_id, task_name, instructions, structure, attachments=None):
-        start = time.monotonic()
-        antwort, fehler = None, None
-        try:
-            antwort = await self._ha.ai_task(
-                entity_id, task_name, instructions, structure, attachments
-            )
-            return antwort
-        except Exception as err:
-            fehler = f"{type(err).__name__}: {err}"
-            raise
-        finally:
-            try:
-                with Session(self._engine) as s:
-                    s.add(
-                        KiAnfrage(
-                            aufgabe=task_name,
-                            entitaet=entity_id,
-                            anweisung=instructions,
-                            struktur=structure,
-                            anhaenge=attachments,
-                            antwort=antwort if isinstance(antwort, dict) else None,
-                            fehler=fehler,
-                            dauer_s=round(time.monotonic() - start, 2),
-                        )
-                    )
-                    _kuerzen(MAX_KI, KiAnfrage, s)
-                    s.commit()
-            except Exception:  # noqa: BLE001 - Protokoll darf die Anfrage nie stören
-                log.exception("KI-Log fehlgeschlagen")
+def kuerzen_ki(s: Session) -> None:
+    _kuerzen(MAX_KI, KiAnfrage, s)
 
 
 def quelle_von(request: Request, ingress_ip: str) -> str:
@@ -168,10 +148,16 @@ async def ki_log(limit: int = 100, s: Session = Depends(session)) -> list[dict]:
             "id": r.id,
             "zeit": r.zeit,
             "aufgabe": r.aufgabe,
+            "job": r.job,
+            "backend": r.backend or "ha",
             "entitaet": r.entitaet,
             "dauer_s": r.dauer_s,
             "fehler": r.fehler,
             "anhaenge": len(r.anhaenge or []),
+            "tokens_in": r.tokens_in,
+            "tokens_out": r.tokens_out,
+            "geschaetzt": r.geschaetzt,
+            "kosten_eur": r.kosten_eur,
             "antwort_bytes": len(json.dumps(r.antwort, ensure_ascii=False)) if r.antwort else 0,
         }
         for r in rows
@@ -194,6 +180,44 @@ async def ki_log_eintrag(eintrag_id: int, s: Session = Depends(session)) -> dict
         "antwort": r.antwort,
         "fehler": r.fehler,
         "dauer_s": r.dauer_s,
+        "job": r.job,
+        "backend": r.backend or "ha",
+        "tokens_in": r.tokens_in,
+        "tokens_out": r.tokens_out,
+        "geschaetzt": r.geschaetzt,
+        "kosten_eur": r.kosten_eur,
+    }
+
+
+ZEITRAEUME = {"tag": 1, "woche": 7, "monat": 30}
+
+
+@router.get("/log/ki-kosten")
+async def ki_kosten(zeitraum: str = "monat", s: Session = Depends(session)) -> dict:
+    """Summe je Job im Zeitraum (letzte 1/7/30 Tage). Aufrufe ohne Preis zählen nur Tokens."""
+    if zeitraum not in ZEITRAEUME:
+        raise HTTPException(422, f"zeitraum: {'/'.join(ZEITRAEUME)}")
+    seit = datetime.now() - timedelta(days=ZEITRAEUME[zeitraum])
+    jobs: dict[str, dict] = {}
+    for r in s.scalars(select(KiAnfrage).where(KiAnfrage.zeit >= seit)):
+        j = jobs.setdefault(
+            r.job or "unbekannt",
+            {"aufrufe": 0, "tokens_in": 0, "tokens_out": 0, "kosten_eur": 0.0,
+             "ohne_preis": 0, "geschaetzt": False},
+        )  # fmt: skip
+        j["aufrufe"] += 1
+        j["tokens_in"] += r.tokens_in or 0
+        j["tokens_out"] += r.tokens_out or 0
+        j["geschaetzt"] |= bool(r.geschaetzt) or r.tokens_in is None
+        if r.kosten_eur is None:
+            j["ohne_preis"] += 1
+        else:
+            j["kosten_eur"] = round(j["kosten_eur"] + r.kosten_eur, 8)
+    return {
+        "zeitraum": zeitraum,
+        "seit": seit,
+        "jobs": jobs,
+        "summe_eur": round(sum(j["kosten_eur"] for j in jobs.values()), 4),
     }
 
 

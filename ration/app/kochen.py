@@ -406,9 +406,7 @@ def struktur(n_zutaten: int, n_original: int = 0) -> dict:
     }
 
 
-async def mit_ki(
-    ha, st: Settings, r: Recipe, produkte: dict[str, Product]
-) -> tuple[list[dict], list[str]]:
+async def mit_ki(kc, r: Recipe, produkte: dict[str, Product]) -> tuple[list[dict], list[str]]:
     """LLM schreibt um, Code validiert, höchstens eine Reparaturrunde. → (Schritte, Hinweise)"""
     namen = [
         produkte[z.product_id].name if z.product_id in produkte else "?" for z in r.ingredients
@@ -428,8 +426,8 @@ async def mit_ki(
     feedback, hinweise = "", []
     schritte: list[dict] = []
     for runde in range(2):
-        daten = await ha.ai_task(
-            st.ai_task_entity,
+        daten = await kc.generate(
+            "kochanleitung",
             "rationPlaner Kochanleitung",
             ANWEISUNG.format(
                 name=r.name,
@@ -479,8 +477,7 @@ async def mit_ki(
 async def erzeugen(
     s: Session,
     b: InventoryBackend,
-    ha,
-    st: Settings,
+    kc,
     rezept_id: str,
     ki: bool,
     fallback: bool = True,
@@ -495,10 +492,9 @@ async def erzeugen(
     quelle = "code"
     schritte = aus_originalschritten(r, produkte)
     if ki and r.ingredients:
-        if not st.ai_task_entity or ha is None:
-            raise HTTPException(503, "Option ai_task_entity fehlt oder kein Zugriff auf HA")
+        kc.pruefen("kochanleitung")
         try:
-            schritte, hinweise = await mit_ki(ha, st, r, produkte)
+            schritte, hinweise = await mit_ki(kc, r, produkte)
             quelle = "ki"
         except Exception as err:  # noqa: BLE001 - Fallback statt Abbruch
             log.warning("KI-Kochanleitung %s fehlgeschlagen: %s", rezept_id, err)
@@ -533,9 +529,7 @@ async def migrieren(app, lauf_id: int) -> None:
         try:
             for rid in lauf.rezept_ids:
                 try:
-                    await erzeugen(
-                        s, app.state.backend, app.state.ha, app.state.settings, rid, True, False
-                    )
+                    await erzeugen(s, app.state.backend, app.state.ki, rid, True, False)
                 except Exception as err:  # noqa: BLE001
                     s.rollback()
                     fehlgeschlagen.append({"id": rid, "fehler": str(err) or type(err).__name__})
@@ -630,7 +624,7 @@ async def anleitung_generieren(
     st: Settings = Depends(settings),
 ) -> dict:
     """Ein Rezept umschreiben (KI oder Code), Ergebnis als Entwurf speichern."""
-    a = await erzeugen(s, b, request.app.state.ha, st, rezept_id, data.ki)
+    a = await erzeugen(s, b, request.app.state.ki, rezept_id, data.ki)
     r = await b.get_recipe(rezept_id)
     produkte = {p.id: p for p in await b.list_products()}
     return darstellen(a, a.schritte, r, produkte, r.servings, a.quelle, fotos.je_schritt(s, r.id))
@@ -709,8 +703,7 @@ async def anleitungen_migrieren(
     st: Settings = Depends(settings),
 ) -> dict:
     """Mehrere Rezepte per KI umschreiben, im Hintergrund. Ein LLM-Aufruf je Rezept."""
-    if not st.ai_task_entity or request.app.state.ha is None:
-        raise HTTPException(503, "Option ai_task_entity fehlt oder kein Zugriff auf HA")
+    request.app.state.ki.pruefen("kochanleitung")
     if s.scalars(select(AnleitungLauf).where(AnleitungLauf.status == "laeuft")).first():
         raise HTTPException(409, "Es läuft schon ein Umschreib-Lauf")
     rezepte = [r for r in await b.list_recipes() if r.ingredients]

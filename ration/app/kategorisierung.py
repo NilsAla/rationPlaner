@@ -290,7 +290,7 @@ def diff(ist: dict, neu: dict, nur_leere: bool) -> dict[str, tuple[object, objec
 
 async def ausfuehren(app, lauf_id: int) -> None:
     st: Settings = app.state.settings
-    ha = app.state.ha
+    ha, ki = app.state.ha, app.state.ki
     b: InventoryBackend = app.state.backend
     with Session(app.state.engine) as s:
         lauf = s.get(Lauf, lauf_id)
@@ -308,8 +308,8 @@ async def ausfuehren(app, lauf_id: int) -> None:
                 for i in range(0, len(produkte), BATCH):
                     teil = produkte[i : i + BATCH]
                     liste = "\n".join(f"{p.id}|{p.name}|{p.unit}" for p in teil)
-                    daten = await ha.ai_task(
-                        st.ai_task_entity,
+                    daten = await ki.generate(
+                        "kategorisierung",
                         "rationPlaner Kategorisierung Produkte",
                         ANWEISUNG_PRODUKTE.format(liste=liste, kategorien=", ".join(KATEGORIEN)),
                         STRUKTUR_PRODUKTE,
@@ -341,7 +341,7 @@ async def ausfuehren(app, lauf_id: int) -> None:
                             )
                             anzahl += 1
             if umfang.get("naehrwerte", False):
-                anzahl += await _naehrwerte_lauf(s, ha, st, b, lauf_id, umfang)
+                anzahl += await _naehrwerte_lauf(s, ki, b, lauf_id, umfang)
             if umfang.get("rezepte", True):
                 rezepte = await b.list_recipes()
                 if umfang.get("nur_ohne_attribute", True):
@@ -354,8 +354,8 @@ async def ausfuehren(app, lauf_id: int) -> None:
                         + ", ".join(namen.get(z.product_id, "?") for z in r.ingredients)
                         for r in teil
                     )
-                    daten = await ha.ai_task(
-                        st.ai_task_entity,
+                    daten = await ki.generate(
+                        "kategorisierung",
                         "rationPlaner Kategorisierung Rezepte",
                         ANWEISUNG_REZEPTE.format(liste=liste, tags=", ".join(TAGS)),
                         STRUKTUR_REZEPTE,
@@ -405,7 +405,7 @@ async def ausfuehren(app, lauf_id: int) -> None:
             s.commit()
 
 
-async def _naehrwerte_lauf(s: Session, ha, st: Settings, b, lauf_id: int, umfang: dict) -> int:
+async def _naehrwerte_lauf(s: Session, ki, b, lauf_id: int, umfang: dict) -> int:
     """KI schätzt Nährwerte je 100 g; nur als Vorschlag (Feld `naehrwerte`) mit Review."""
     vorhanden = naehrwerte.alle(s)
     produkte = [p for p in await b.list_products() if p.category != REST_KATEGORIE]
@@ -416,8 +416,8 @@ async def _naehrwerte_lauf(s: Session, ha, st: Settings, b, lauf_id: int, umfang
     anzahl = 0
     for i in range(0, len(produkte), BATCH):
         teil = produkte[i : i + BATCH]
-        daten = await ha.ai_task(
-            st.ai_task_entity,
+        daten = await ki.generate(
+            "naehrwerte",
             "rationPlaner Nährwerte",
             ANWEISUNG_NAEHRWERTE.format(liste="\n".join(f"{p.id}|{p.name}" for p in teil)),
             STRUKTUR_NAEHRWERTE,
@@ -469,8 +469,10 @@ async def kategorisieren(
     st: Settings = Depends(settings),
 ) -> dict:
     """Startet einen Lauf im Hintergrund. Ergebnis: Vorschläge zur Prüfung, nichts wird gesetzt."""
-    if not st.ai_task_entity or request.app.state.ha is None:
-        raise HTTPException(503, "Option ai_task_entity fehlt oder kein Zugriff auf HA")
+    if data.produkte or data.rezepte:
+        request.app.state.ki.pruefen("kategorisierung")
+    if data.naehrwerte:
+        request.app.state.ki.pruefen("naehrwerte")
     if s.scalars(select(Lauf).where(Lauf.status == "laeuft")).first():
         raise HTTPException(409, "Es läuft schon eine Kategorisierung")
     lauf = Lauf(umfang=data.model_dump())

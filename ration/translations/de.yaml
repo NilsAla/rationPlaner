@@ -23,6 +23,9 @@ configuration:
   api_token:
     name: API-Token
     description: Optional. Pflicht-Token für Zugriffe außerhalb von Ingress (Bridge).
+  openai_api_key:
+    name: OpenAI-API-Key
+    description: Optional. Nur für den KI-Modus „OpenAI direkt“ (Einstellungen → KI). Wird nie angezeigt oder geloggt.
   notify_service:
     name: Benachrichtigung
     description: Optional, z. B. notify.mobile_app_handy, zusätzlich zur HA-Benachrichtigung.

@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.19.1 / API 1.15)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.20.0 / API 1.16)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -60,23 +60,19 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
   `sensor.ration_laeuft_ab` nutzt `bald_tage`. Ältere App ohne `/uebersicht`: neue Entitäten
   nicht verfügbar, Rest läuft weiter.
 
-### 4. KI-Kosten und zwei KI-Backends (Entscheidung Nils)
-- **Modus HA** (Standard, wie bisher): `ai_task.generate_data`. Tokens nur **geschätzt**
-  (Zeichen/≈3,5 für Text inkl. Schema und Antwort, pauschal je Bild), im Protokoll als „≈“.
-- **Modus OpenAI direkt**: API-Key als `password`-Option in `ration/config.yaml` (Schema `password`),
-  nie loggen, nie ans Frontend (Einstellungen zeigen nur „gesetzt“). Responses/Chat-API mit
-  Structured Output (JSON Schema aus dem bestehenden `structure` ableiten), **echte Usage** aus der
-  Antwort speichern.
-- Schalter global (App-Einstellung), je Job überschreibbar: bon, import, kochanleitung,
-  kategorisierung, naehrwerte, planer. Je Job im HA-Modus eine AI-Task-Entität, im OpenAI-Modus
-  ein Modellname. Zuordnung in der App-DB (`einstellung`), nicht in den HA-Optionen.
-- Preistabelle je Modell (€ je 1 Mio. Input/Output-Tokens), in den Einstellungen pflegbar.
-- KI-Protokoll (`views/log_ki.js`, `app/protokoll.py`): Kosten je Aufruf, Summe je Job und
-  Zeitraum (Tag/Woche/Monat).
-- Umsetzung: eine Abstraktion `KiClient.generate(job, name, anweisung, struktur, anhaenge)` in
-  `app/ha.py` bzw. neu `app/ki.py`, alle bisherigen `ha.ai_task(...)`-Aufrufe darauf umstellen.
-  Regeln aus CLAUDE.md bleiben (validieren, Rohantwort loggen, IDs statt Namen).
-- **CLAUDE.md-Regel „KI nur über HA, kein API-Key in der App“ dabei anpassen** (bewusst aufgehoben).
+### 4. KI-Kosten und zwei KI-Backends – erledigt (0.20.0, API 1.16)
+- `app/ki.py`: `KiClient.generate(job, name, anweisung, struktur, anhaenge)`, alle Aufrufe
+  umgestellt (bon, import, kochanleitung, kategorisierung, naehrwerte, planer). `ProtokollHA` entfällt.
+- Einstellung `ki` (App-DB): `modus` ha/openai, `openai_modell`, `jobs` (je Job modus/entitaet/modell),
+  `preise` (€ je 1 Mio. Tokens, Schlüssel = Modell oder AI-Task-Entität). UI: Einstellungen → KI.
+- OpenAI: Chat Completions mit `response_format: json_schema` (strict), Schema aus der HA-Struktur
+  (`schema_aus_struktur`, optionale Felder als `null`, null wird vor der Rückgabe entfernt), Bilder
+  aus `/media` als data-URL, echte `usage`. Key nur als App-Option `openai_api_key`.
+- KI-Protokoll: Backend, Tokens (≈ im HA-Modus), Kosten je Aufruf, Summe je Job für 24 h/7/30 Tage
+  (`GET /log/ki-kosten`). `GET /ki/status` zeigt je Job, ob er nutzbar ist.
+- DB: neue Spalten werden beim Start per `ALTER TABLE` ergänzt (`db.spalten_ergaenzen`).
+- **Ungetestet live:** OpenAI-Modus gegen die echte API (lokal nur gemockt). Zum Testen
+  `openai_api_key` in den App-Optionen setzen, unter Einstellungen → KI einen Job auf OpenAI stellen.
 
 ### 5. Fotos: Rest
 - ~~Startseite mit Fotos~~ erledigt (0.19.0).

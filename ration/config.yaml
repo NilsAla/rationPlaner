@@ -1,6 +1,6 @@
 # Slug "ration" ist ein Platzhalter. Bei Umbenennung auch custom_components/ration/const.py anpassen.
 name: rationPlaner
-version: "0.19.1"
+version: "0.20.0"
 slug: ration
 description: Küchenbestand, Wochenplan und Einkaufsliste auf Basis von Grocy
 url: https://github.com/NilsAla/rationPlaner
@@ -34,6 +34,7 @@ schema:
   bon_konfidenz_schwelle: float(0,1)
   dubletten_schwelle: float(0.5,1)?
   api_token: password?
+  openai_api_key: password?
   notify_service: str?
   timer_entities:
     - "match(^timer\\.[a-z0-9_]+$)"

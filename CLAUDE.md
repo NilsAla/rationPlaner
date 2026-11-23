@@ -13,8 +13,11 @@ nicht stillschweigend aufweichen. Nutzer ist erfahrener Sysadmin (HAOS auf N100,
 - **Bridge** (`custom_components/ration/`): Entitäten und Services, delegiert per REST an die
   App (Coordinator pollt, Refresh nach Service-Call). Liefert auch die Küchen-Card aus.
 - **Card** (`lovelace/`): Lit, keine Logik.
-- **KI** nur über HA `ai_task.generate_data` (Entität aus Option `ai_task_entity`, OpenAI oder
-  Anthropic). Kein API-Key in der App. Bilder über `/media` als media-source übergeben.
+- **KI** nur über `KiClient.generate(job, …)` (`ration/app/ki.py`). Zwei Backends, je Job wählbar
+  (App-DB, Einstellung `ki`): HA `ai_task.generate_data` (Standard, Entität aus Option
+  `ai_task_entity` oder je Job) oder OpenAI direkt mit App-Option `openai_api_key` (`password`,
+  nie loggen, nie ans Frontend). Bilder liegen unter `/media` und gehen als media-source an HA bzw.
+  als data-URL an OpenAI. Jeder Aufruf landet mit Tokens (HA geschätzt ≈) und Kosten im KI-Protokoll.
 
 ## Grundregeln
 
@@ -70,8 +73,11 @@ ruff check . && ruff format --check . && pytest -q
 ## Übergabe
 
 Offene Aufträge, ungetestete Stellen und Akzeptanzkriterien stehen in `docs/ROADMAP.md`.
-Dort weitermachen. Geplant ist ein zweites KI-Backend (OpenAI direkt mit Key als
-password-Option, Entscheidung Nils 2026-11-23); bis es umgesetzt ist, gilt die KI-Regel oben.
+Dort weitermachen. Das zweite KI-Backend (OpenAI direkt, Entscheidung Nils 2026-11-23) ist seit
+0.20.0 umgesetzt.
+
+Nils' HA trackt den Branch `claude/project-thread-jm020d`. Nach jedem Push auf `main` auch
+`git push origin main:claude/project-thread-jm020d`, beide Branches deckungsgleich halten.
 
 ## Reihenfolge
 

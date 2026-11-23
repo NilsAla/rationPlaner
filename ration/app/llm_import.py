@@ -13,7 +13,6 @@ import json
 import logging
 from dataclasses import dataclass
 
-from app.ha import HomeAssistant
 from app.inventory.base import Product
 from app.rezept_import import STUECK, RohZutat, Zuordnung, aehnlichkeit, gramm, kern_name
 
@@ -159,15 +158,13 @@ def anwenden(zuordnung: list[Zuordnung], produkte: list[Product], daten: dict) -
     return len(geaendert)
 
 
-async def verfeinern(
-    ha: HomeAssistant, entity_id: str, zuordnung: list[Zuordnung], produkte: list[Product]
-) -> KiErgebnis:
+async def verfeinern(ki, zuordnung: list[Zuordnung], produkte: list[Product]) -> KiErgebnis:
     """Fragt die KI nur bei offenen Zutaten. Bei Fehlern bleibt der Code-Vorschlag."""
     if not any(z.aktion == "neu" for z in zuordnung):
         return KiErgebnis(aktiv=True)
     try:
-        daten = await ha.ai_task(
-            entity_id, "rationPlaner Rezept-Import", anweisung(zuordnung, produkte), STRUKTUR
+        daten = await ki.generate(
+            "import", "rationPlaner Rezept-Import", anweisung(zuordnung, produkte), STRUKTUR
         )
     except Exception as err:  # noqa: BLE001 - KI ist optional, Import muss weiterlaufen
         log.warning("KI-Zuordnung fehlgeschlagen: %s", err)

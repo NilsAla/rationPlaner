@@ -27,6 +27,7 @@ from app import (
     inventar,
     katalog,
     kategorisierung,
+    ki,
     kochen,
     kueche,
     llm_import,
@@ -104,7 +105,7 @@ class WeiterePackungIn(PackungIn):
 class ImportIn(BaseModel):
     url: str = Field(min_length=8, max_length=2000)
     html: str | None = None  # Fallback: Seitenquelltext, falls die Seite den Abruf blockt
-    ki: bool = True  # offene Zutaten per ai_task zuordnen, falls ai_task_entity gesetzt
+    ki: bool = True  # offene Zutaten per KI zuordnen, falls für den Job eingerichtet
 
 
 class ImportZutatIn(BaseModel):
@@ -443,11 +444,9 @@ async def import_vorschau(
     aliase = {a.text: a.produkt_id for a in s.scalars(select(ZutatAlias))}
     produkte = await b.list_products()
     zuordnung = rezept_import.zuordnen(roh, produkte, aliase)
-    ki = llm_import.KiErgebnis(aktiv=False)
-    if data.ki and st.ai_task_entity and request.app.state.ha is not None:
-        ki = await llm_import.verfeinern(
-            request.app.state.ha, st.ai_task_entity, zuordnung, produkte
-        )
+    ki_ = llm_import.KiErgebnis(aktiv=False)
+    if data.ki and request.app.state.ki.verfuegbar("import"):
+        ki_ = await llm_import.verfeinern(request.app.state.ki, zuordnung, produkte)
     dublette = s.scalars(select(RezeptMeta).where(RezeptMeta.quelle_id == roh.quelle_id)).first()
     eintrag = RezeptImport(url=roh.url, quelle_id=roh.quelle_id, roh=asdict(roh))
     s.add(eintrag)
@@ -465,7 +464,7 @@ async def import_vorschau(
         "bild": roh.bild,
         "schritt_bilder": len(roh.schritt_bilder),
         "zutaten": [asdict(z) for z in zuordnung],
-        "ki": asdict(ki),
+        "ki": asdict(ki_),
     }
 
 
@@ -612,6 +611,7 @@ def create_app(
     ha: HomeAssistant | None = None,
     app_settings: Settings | None = None,
     db_url: str | None = None,
+    ki_http=None,
 ) -> FastAPI:
     """Ohne Argumente: Konfiguration aus /data/options.json. Tests injizieren Fakes."""
 
@@ -629,8 +629,8 @@ def create_app(
         if ha is None and st.supervisor_token:
             app.state.ha = SupervisorHomeAssistant(st.supervisor_token)
             owned.append(app.state.ha)
-        if app.state.ha is not None:
-            app.state.ha = protokoll.ProtokollHA(app.state.ha, app.state.engine)
+        app.state.ki = ki.KiClient(app.state.ha, app.state.engine, st, ki_http)
+        owned.append(app.state.ki)
         yield
         for client in owned:
             await client.aclose()
@@ -648,6 +648,7 @@ def create_app(
     app.include_router(naehrwerte.router)
     app.include_router(fotos.router)
     app.include_router(uebersicht.router)
+    app.include_router(ki.router)
 
     @app.middleware("http")
     async def aenderungen_protokollieren(request: Request, call_next):

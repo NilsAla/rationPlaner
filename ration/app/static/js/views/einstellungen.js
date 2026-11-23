@@ -2,8 +2,10 @@ import {$, $$, AUFWAND, REGLER, WOCHENTAGE, api, bestaetigen, del, esc, guarded,
 
 // Einstellungen: Wochenrhythmus, Planer-Vorgaben, Präferenzen, Anzeige; HA-Optionen nur lesend
 export default async function render(el) {
-  const [e, buch, kt] = await Promise.all([api("einstellungen"), api("rezeptbuch"),
-    api("kochen/timer").catch((err) => ({timer: [], automatisch: true, fehler: err.message}))]);
+  const [e, buch, kt, ks] = await Promise.all([api("einstellungen"), api("rezeptbuch"),
+    api("kochen/timer").catch((err) => ({timer: [], automatisch: true, fehler: err.message})),
+    api("ki/status").catch(() => ({jobs: [], entitaeten: [], openai_key: false}))]);
+  const kiE = e.ki;
   const {planer, praeferenzen: pr, anzeige, kochen: ko, ernaehrung: er, optionen: o} = e;
   const tags = [...new Set([...buch.flatMap((r) => r.tags), ...pr.ausschluss_tags])].sort((a, b) => a.localeCompare(b, "de"));
   const theme = lokal("theme", "auto");
@@ -48,12 +50,34 @@ export default async function render(el) {
         : `<p class="muted small">${kt.fehler ? `HA nicht erreichbar (${esc(kt.fehler)}).` : "Keine Timer gefunden."} Der Kochmodus nimmt dann Browser-Timer.</p>`}
       <p class="muted tiny">${kt.automatisch ? "Automatisch erkannt (Küche/kitchen/koch im Namen). " : ""}Festlegen über die App-Option <code>timer_entities</code>
         in Home Assistant. Der Kochmodus startet jeweils den ersten freien Timer.</p></div>
+    <div class="card" style="grid-column:1/-1"><h2>KI</h2>
+      <p class="muted small">Standard für alle Aufgaben, je Aufgabe überschreibbar. <b>HA</b> nutzt <code>ai_task.generate_data</code> (Tokens geschätzt, ≈),
+        <b>OpenAI direkt</b> die App-Option <code>openai_api_key</code> (Key ${ja(ks.openai_key)}, echte Tokens).</p>
+      <div class="row"><div><label>Standard</label><select id="kimodus"><option value="ha" ${kiE.modus === "ha" ? "selected" : ""}>HA (ai_task)</option>
+          <option value="openai" ${kiE.modus === "openai" ? "selected" : ""}>OpenAI direkt</option></select></div>
+        <div><label>OpenAI-Modell (Standard)</label><input id="kimodell" value="${esc(kiE.openai_modell)}" placeholder="gpt-4.1-mini"></div>
+        <div><label>AI-Task-Entität (Standard)</label><input value="${esc(o.ai_task_entity || "–")}" disabled title="App-Option ai_task_entity"></div></div>
+      <datalist id="ki-ent">${ks.entitaeten.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>
+      <div class="tabelle"><table><thead><tr><th>Aufgabe</th><th>Modus</th><th>Entität (HA)</th><th>Modell (OpenAI)</th><th>Status</th></tr></thead><tbody>
+        ${ks.jobs.map((j) => { const c = kiE.jobs[j.job] ?? {}; return `<tr data-job="${j.job}"><td>${esc(j.name)}</td>
+          <td><select data-k="modus"><option value="">Standard</option><option value="ha" ${c.modus === "ha" ? "selected" : ""}>HA</option>
+            <option value="openai" ${c.modus === "openai" ? "selected" : ""}>OpenAI</option></select></td>
+          <td><input data-k="entitaet" list="ki-ent" value="${esc(c.entitaet ?? "")}" placeholder="Standard"></td>
+          <td><input data-k="modell" value="${esc(c.modell ?? "")}" placeholder="Standard"></td>
+          <td class="tiny">${j.fehlt ? `<span class="over">${esc(j.fehlt)}</span>` : `<span class="ok">✓</span> ${esc(j.backend === "openai" ? j.modell : j.entitaet)}`}</td></tr>`; }).join("")}
+      </tbody></table></div>
+      <h3>Preise <span class="muted tiny">(€ je 1 Mio. Tokens, je Modell oder AI-Task-Entität)</span></h3>
+      <div class="tabelle"><table><thead><tr><th>Modell / Entität</th><th>Input</th><th>Output</th><th></th></tr></thead><tbody id="preise">
+        ${[...Object.entries(kiE.preise), ["", {input: "", output: ""}]].map(([k, p]) => preisZeile(k, p)).join("")}</tbody></table></div>
+      <p class="muted tiny">Ohne Preis zeigt das KI-Protokoll nur Tokens. Preise der Anbieter ändern sich, bitte selbst pflegen.</p>
+      <button class="btn primary voll" id="kispeichern">KI-Einstellungen speichern</button></div>
     <div class="card"><h2>App-Optionen <span class="muted tiny">(nur lesen)</span></h2>
       <p class="muted tiny">Änderbar in Home Assistant unter Einstellungen → Apps → ration → Konfiguration.</p>
       <table>
         <tr><td class="muted">Version</td><td>${esc(o.version)} · API ${esc(o.api_version)}</td></tr>
         <tr><td class="muted">Grocy</td><td>${esc(o.grocy_url ?? "–")} · Key ${ja(o.grocy_api_key)}</td></tr>
         <tr><td class="muted">KI-Entität</td><td>${esc(o.ai_task_entity ?? "–")}</td></tr>
+        <tr><td class="muted">OpenAI-Key</td><td>${ja(o.openai_api_key)}</td></tr>
         <tr><td class="muted">Einkaufsliste</td><td>${esc(o.todo_entity ?? "–")}</td></tr>
         <tr><td class="muted">Timer-Entitäten</td><td>${o.timer_entities?.length ? o.timer_entities.map(esc).join(", ") : `<span class="muted">automatisch</span>`}</td></tr>
         <tr><td class="muted">Benachrichtigung</td><td>${esc(o.notify_service ?? "–")}</td></tr>
@@ -100,7 +124,27 @@ export default async function render(el) {
     for (const g of b.dataset.reset.split(",")) await del(`einstellungen/${g}`);
     toast("Zurückgesetzt"); render(el);
   }));
+  const neueZeile = () => {
+    const leer = $$("#preise tr", el).filter((tr) => !$("[data-p=k]", tr).value.trim());
+    if (!leer.length) $("#preise", el).insertAdjacentHTML("beforeend", preisZeile("", {input: "", output: ""}));
+    $$("#preise [data-p]", el).forEach((i) => i.oninput = neueZeile);
+    $$("#preise [data-weg]", el).forEach((b) => b.onclick = () => { b.closest("tr").remove(); neueZeile(); });
+  };
+  neueZeile();
+  $("#kispeichern", el).onclick = () => guarded(async () => {
+    const jobs = Object.fromEntries($$("[data-job]", el).map((tr) => [tr.dataset.job,
+      Object.fromEntries($$("[data-k]", tr).map((i) => [i.dataset.k, i.value.trim()]))]));
+    const preise = Object.fromEntries($$("#preise tr", el).map((tr) => [$("[data-p=k]", tr).value.trim(),
+      {input: +$("[data-p=i]", tr).value || 0, output: +$("[data-p=o]", tr).value || 0}]).filter(([k]) => k));
+    await put("einstellungen/ki", {modus: $("#kimodus", el).value, openai_modell: $("#kimodell", el).value.trim(), jobs, preise});
+    toast("KI-Einstellungen gespeichert"); render(el);
+  });
   $("#test", el).onclick = () => guarded(async () => {
     const r = await post("testdaten"); toast(`${r.rezepte.filter((x) => x.neu).length} Testrezepte angelegt`);
   });
 }
+
+const preisZeile = (k, p) => `<tr><td><input data-p="k" list="ki-ent" value="${esc(k)}" placeholder="z. B. gpt-4.1-mini"></td>
+  <td><input data-p="i" type="number" min="0" step="0.01" value="${p.input}" style="width:90px"></td>
+  <td><input data-p="o" type="number" min="0" step="0.01" value="${p.output}" style="width:90px"></td>
+  <td><button class="btn klein" data-weg title="Entfernen">✕</button></td></tr>`;

@@ -403,12 +403,12 @@ async def verarbeiten(app, bon_id: int) -> None:
             produkte = await b.list_products()
             endung = Path(bon.datei).suffix
             typ = next((t for t, e in BILDTYPEN.items() if e == endung), "image/jpeg")
-            daten = await ha.ai_task(
-                st.ai_task_entity,
+            daten = await app.state.ki.generate(
+                "bon",
                 "rationPlaner Kassenbon",
                 anweisung(produkte),
                 STRUKTUR,
-                attachments=[
+                [
                     {
                         "media_content_id": f"{MEDIA_SOURCE}/{UNTERORDNER}/{bon.datei}",
                         "media_content_type": typ,
@@ -486,8 +486,7 @@ async def bon_hochladen(
     st: Settings = Depends(settings),
 ) -> dict:
     """Foto hochladen. Antwortet sofort, Verarbeitung läuft im Hintergrund."""
-    if not st.ai_task_entity or request.app.state.ha is None:
-        raise HTTPException(503, "Option ai_task_entity fehlt oder kein Zugriff auf HA")
+    request.app.state.ki.pruefen("bon")
     endung = BILDTYPEN.get(datei.content_type or "")
     if endung is None:
         raise HTTPException(415, "Nur JPEG, PNG oder WebP")
@@ -513,8 +512,7 @@ async def bon_aus_base64(
     st: Settings = Depends(settings),
 ) -> dict:
     """Bild als Base64 im JSON (Skripte, Automationen, Tests über den Ingress-Proxy)."""
-    if not st.ai_task_entity or request.app.state.ha is None:
-        raise HTTPException(503, "Option ai_task_entity fehlt oder kein Zugriff auf HA")
+    request.app.state.ki.pruefen("bon")
     endung = BILDTYPEN.get(data.typ)
     if endung is None:
         raise HTTPException(415, "Nur JPEG, PNG oder WebP")
@@ -541,8 +539,7 @@ async def bon_aus_media(
     st: Settings = Depends(settings),
 ) -> dict:
     """Bon aus einem Bild unter /media verarbeiten (z. B. per Automation aus der Companion-App)."""
-    if not st.ai_task_entity or request.app.state.ha is None:
-        raise HTTPException(503, "Option ai_task_entity fehlt oder kein Zugriff auf HA")
+    request.app.state.ki.pruefen("bon")
     quelle = (st.media_dir / data.pfad).resolve()
     if not quelle.is_relative_to(st.media_dir.resolve()) or not quelle.is_file():
         raise HTTPException(404, "Bild nicht gefunden")

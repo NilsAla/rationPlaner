@@ -76,7 +76,21 @@ def make_engine(db_url: str) -> Engine:
         with engine.connect() as conn:
             conn.exec_driver_sql("PRAGMA journal_mode=WAL")
     Base.metadata.create_all(engine)
+    spalten_ergaenzen(engine)
     return engine
+
+
+def spalten_ergaenzen(engine: Engine) -> None:
+    """Schlichte Migration: neue, nullable Spalten bestehender Tabellen per ALTER TABLE anlegen."""
+    with engine.begin() as conn:
+        for tabelle in Base.metadata.sorted_tables:
+            da = {r[1] for r in conn.exec_driver_sql(f"PRAGMA table_info({tabelle.name})")}
+            for spalte in tabelle.columns:
+                if spalte.name not in da and spalte.nullable:
+                    typ = spalte.type.compile(engine.dialect)
+                    conn.exec_driver_sql(
+                        f"ALTER TABLE {tabelle.name} ADD COLUMN {spalte.name} {typ}"
+                    )
 
 
 class DubletteEntscheidung(Base):

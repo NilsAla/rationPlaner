@@ -44,7 +44,12 @@ STANDARD: dict[str, dict[str, Any]] = {
     "kochen": {"zutaten_pflicht": True},  # Weiter erst, wenn alle Zutaten abgehakt sind
     # Ziel für EINE Mahlzeit (Abendessen), je Portion. Planer nutzt es nur, wenn im_planer an ist.
     "ernaehrung": {"kcal_mahlzeit": 700, "protein_mahlzeit": 30, "im_planer": False},
+    # KI-Backend: ha (ai_task) oder openai (Key als App-Option). Je Job überschreibbar:
+    # jobs = {job: {"modus": ""|"ha"|"openai", "entitaet": "ai_task.…", "modell": "…"}}
+    # preise = {Modell oder AI-Task-Entität: {"input": €/1 Mio. Tokens, "output": €/1 Mio.}}
+    "ki": {"modus": "ha", "openai_modell": "gpt-4.1-mini", "jobs": {}, "preise": {}},
 }
+KI_JOBS = ("bon", "import", "kochanleitung", "kategorisierung", "naehrwerte", "planer")
 
 
 def _bereich(wert: object, lo: float, hi: float, name: str) -> float:
@@ -100,6 +105,8 @@ def pruefen(gruppe: str, werte: dict) -> dict:
         out["bald_tage"] = int(_bereich(out["bald_tage"], 1, 14, "bald_tage"))
     elif gruppe == "kochen" and "zutaten_pflicht" in out:
         out["zutaten_pflicht"] = bool(out["zutaten_pflicht"])
+    elif gruppe == "ki":
+        out.update(_ki_pruefen(out))
     elif gruppe == "ernaehrung":
         if "kcal_mahlzeit" in out:
             out["kcal_mahlzeit"] = int(_bereich(out["kcal_mahlzeit"], 100, 3000, "kcal_mahlzeit"))
@@ -110,6 +117,43 @@ def pruefen(gruppe: str, werte: dict) -> dict:
         if "im_planer" in out:
             out["im_planer"] = bool(out["im_planer"])
     return out
+
+
+def _ki_pruefen(out: dict) -> dict:
+    neu: dict = {}
+    if "modus" in out:
+        if out["modus"] not in ("ha", "openai"):
+            raise HTTPException(422, "modus: ha oder openai")
+        neu["modus"] = out["modus"]
+    if "openai_modell" in out:
+        neu["openai_modell"] = str(out["openai_modell"]).strip()[:80]
+    if "jobs" in out:
+        if not isinstance(out["jobs"], dict) or set(out["jobs"]) - set(KI_JOBS):
+            raise HTTPException(422, f"jobs: nur {', '.join(KI_JOBS)}")
+        jobs = {}
+        for job, j in out["jobs"].items():
+            j = j if isinstance(j, dict) else {}
+            modus = j.get("modus") or ""
+            if modus not in ("", "ha", "openai"):
+                raise HTTPException(422, f"{job}: modus leer, ha oder openai")
+            entitaet = str(j.get("entitaet") or "").strip()
+            if entitaet and not entitaet.startswith("ai_task."):
+                raise HTTPException(422, f"{job}: Entität muss ai_task.… sein")
+            jobs[job] = {"modus": modus, "entitaet": entitaet,
+                         "modell": str(j.get("modell") or "").strip()[:80]}  # fmt: skip
+        neu["jobs"] = jobs
+    if "preise" in out:
+        if not isinstance(out["preise"], dict):
+            raise HTTPException(422, "preise: {Modell: {input, output}}")
+        neu["preise"] = {
+            str(k).strip(): {
+                "input": _bereich(v.get("input"), 0, 1000, f"{k} input"),
+                "output": _bereich(v.get("output"), 0, 1000, f"{k} output"),
+            }
+            for k, v in out["preise"].items()
+            if str(k).strip() and isinstance(v, dict)
+        }
+    return neu
 
 
 def lesen(s: Session) -> dict[str, dict[str, Any]]:
@@ -125,6 +169,7 @@ def optionen(st: Settings) -> dict:
         "grocy_url": st.grocy_url,
         "grocy_api_key": bool(st.grocy_api_key),
         "ai_task_entity": st.ai_task_entity,
+        "openai_api_key": bool(st.openai_api_key),
         "todo_entity": st.todo_entity,
         "toleranz_default_pct": st.toleranz_default_pct,
         "bon_konfidenz_schwelle": st.bon_konfidenz_schwelle,

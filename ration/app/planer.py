@@ -858,7 +858,7 @@ def feste_tage(
 
 async def planen(app, lauf_id: int) -> None:
     st: Settings = app.state.settings
-    ha = app.state.ha
+    ha, ki = app.state.ha, app.state.ki
     b: InventoryBackend = app.state.backend
     with Session(app.state.engine) as s:
         lauf = s.get(PlanLauf, lauf_id)
@@ -884,7 +884,7 @@ async def planen(app, lauf_id: int) -> None:
             liste = [c for c in liste if c.rezept_id not in {t.rezept_id for t in fest.values()}]
             ki_info: dict = {"aktiv": False, "runden": 0, "probleme": [], "fehler": None}
             vorgabe: dict[date, PlanTag] = {}
-            if frei and par.get("ki", True) and st.ai_task_entity and ha is not None and liste:
+            if frei and par.get("ki", True) and ki.verfuegbar("planer") and liste:
                 ki_info["aktiv"] = True
                 erlaubt = {c.rezept_id for c in liste}
                 text = anweisung(k, frei, fest, liste, lager, start, par["portionen"])
@@ -897,8 +897,8 @@ async def planen(app, lauf_id: int) -> None:
                                 probleme
                             )
                             text += "\nGib den vollständigen Plan für alle Tage neu aus."
-                        antwort = await ha.ai_task(
-                            st.ai_task_entity, "rationPlaner Wochenplan", text, struktur_
+                        antwort = await ki.generate(
+                            "planer", "rationPlaner Wochenplan", text, struktur_
                         )
                         ki_info["runden"] = runde + 1
                         log.info(

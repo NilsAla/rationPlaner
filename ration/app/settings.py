@@ -13,6 +13,7 @@ class Settings:
     grocy_url: str = ""
     grocy_api_key: str = ""
     ai_task_entity: str = ""
+    openai_api_key: str = ""  # nur für KI-Modus „OpenAI direkt“, nie loggen oder ausliefern
     todo_entity: str = ""
     toleranz_default_pct: int = 10
     bon_konfidenz_schwelle: float = 0.85
