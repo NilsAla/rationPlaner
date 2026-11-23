@@ -5,6 +5,7 @@ Getestet gegen Grocy 4.7 (REST-API unter /api, Header GROCY-API-KEY).
 
 from __future__ import annotations
 
+import contextlib
 from datetime import date
 from typing import Any
 
@@ -660,8 +661,7 @@ class GrocyBackend:
         for c in conversions:
             pair = (c["from_qu_id"], c["to_qu_id"])
             if c.get("product_id") == remove["id"] and pair in keep_pairs and pair not in noetig:
-                try:
+                # live: Grocy hatte sie teils schon entfernt (z. B. mit der Gegenrichtung)
+                with contextlib.suppress(NotFoundError):
                     await self._delete(f"/objects/quantity_unit_conversions/{c['id']}")
-                except NotFoundError:
-                    pass  # live: Grocy hatte sie schon entfernt (z. B. mit der Gegenrichtung)
         await self._post(f"/stock/products/{keep_id}/merge/{remove_id}", {})
