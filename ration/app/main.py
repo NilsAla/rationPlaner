@@ -35,6 +35,7 @@ from app import (
     protokoll,
     rezept_import,
     testdaten,
+    uebersicht,
 )
 from app.db import (
     FuellstandAbfrage,
@@ -646,6 +647,7 @@ def create_app(
     app.include_router(kochen.router)
     app.include_router(naehrwerte.router)
     app.include_router(fotos.router)
+    app.include_router(uebersicht.router)
 
     @app.middleware("http")
     async def aenderungen_protokollieren(request: Request, call_next):

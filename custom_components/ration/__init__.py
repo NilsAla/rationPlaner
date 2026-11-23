@@ -17,7 +17,7 @@ from .const import CONF_TOKEN, CONF_URL, DOMAIN
 from .coordinator import RationCoordinator
 from .llm_api import RationLlmApi
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.IMAGE, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 

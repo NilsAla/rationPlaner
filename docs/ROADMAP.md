@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.17.0 / API 1.14)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.18.0 / API 1.15)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -28,17 +28,10 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
   „⤓ Von der Quelle“ für ältere Importe, Upload am Rezept, je Schritt und als Ergebnisfoto im
   Kochmodus-Abschluss. Rezeptbuch standardmäßig als Karten mit Foto.
 
-## Ungetestet / zuerst prüfen
+## Geprüft auf Nils' HA (2026-11-23)
 
-1. **0.17.0 auf Nils' HA**: Build mit `pillow` auf Alpine (musllinux-Wheels sollten greifen).
-   Wenn der Build scheitert: `apk add --no-cache jpeg zlib` bzw. Build-Deps im Dockerfile.
-2. **HelloFresh-Bilder live**: Die `__NEXT_DATA__`-Struktur ist angenommen, nicht gegen eine echte
-   Seite geprüft (aus der Cloud-Umgebung nicht erreichbar). Ein Rezept importieren bzw. am Rezept
-   „⤓ Von der Quelle“ klicken, Ergebnis in `/data/fotos` und im Log prüfen. Falls Schrittbilder
-   fehlen: `fotos._hf_schritte`/`_bild_url` an die echte Struktur anpassen, Test `tests/test_fotos.py`.
-3. **KI-Anleitungen**: Neues Strukturfeld `original` (Originalschritte je Kochschritt) für
-   Schrittbilder. Ältere gespeicherte Anleitungen haben es nicht → kein Schrittbild, bis neu
-   generiert oder im Editor zugeordnet (Editor-UI dafür fehlt noch, siehe unten).
+- 0.17.0 baut auf Alpine inkl. Pillow, HelloFresh-Haupt- und Schrittbilder kommen an.
+- Ältere KI-Anleitungen ohne `original` bleiben ohne Schrittbild (nur Testdaten, egal).
 
 ## Offene Aufträge (von Nils, 2026-11-23)
 
@@ -64,14 +57,12 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
 - Akzeptanz: Desktop und Handy (390 px) ohne horizontales Scrollen, keine Konsolenfehler,
   Verschieben in ≤ 2 Klicks.
 
-### 3. HA-Entitäten über die Bridge (`custom_components/ration/`)
-- Neu: `sensor.ration_gericht_heute`, `sensor.ration_gericht_morgen` (State = Name, Attribute:
-  rezept_id, portionen, status, kcal, nutri, foto-URL, zutaten, fehlend),
-  `sensor.ration_laeuft_ab` (State = Anzahl in `bald_tage`, Attribut Liste mit Name, Menge, MHD).
-- App-Seite: Endpoint z. B. `GET /api/v1/uebersicht` bzw. `/heute` um `morgen` erweitern;
-  Bridge-Coordinator pollt, Übersetzungen in `translations/de.json`/`en.json`.
-- Bei inkompatibler API-Änderung Major anheben (`SUPPORTED_API_MAJOR`), sonst Minor.
-- Akzeptanz: Bridge-Tests (`tests_bridge`) grün, Entitäten erscheinen nach Update ohne Neuanlage.
+### 3. HA-Entitäten über die Bridge – erledigt (0.18.0)
+- `GET /api/v1/uebersicht` (heute, morgen, nächste Tage mit kcal/Nutri/Foto/Ampel, läuft ab nach
+  `bald_tage`, Reste), `POST /api/v1/plan/{datum}/verschieben {ziel}` (tauscht, falls belegt).
+- Bridge: `sensor.ration_gericht_heute/_morgen`, `image.ration_gericht_heute/_morgen`,
+  `sensor.ration_laeuft_ab` nutzt `bald_tage`. Ältere App ohne `/uebersicht`: neue Entitäten
+  nicht verfügbar, Rest läuft weiter.
 
 ### 4. KI-Kosten und zwei KI-Backends (Entscheidung Nils)
 - **Modus HA** (Standard, wie bisher): `ai_task.generate_data`. Tokens nur **geschätzt**

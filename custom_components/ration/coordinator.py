@@ -1,4 +1,4 @@
-"""Pollt Heute und Status der App. Nach jedem Service-Call wird sofort aktualisiert."""
+"""Pollt Heute, Status und Übersicht der App. Nach jedem Service-Call wird sofort aktualisiert."""
 
 from __future__ import annotations
 
@@ -21,7 +21,16 @@ class RationCoordinator(DataUpdateCoordinator[dict]):
 
     async def _async_update_data(self) -> dict:
         try:
-            return {"heute": await self.api.heute(), "status": await self.api.status()}
+            daten = {"heute": await self.api.heute(), "status": await self.api.status()}
+            try:
+                daten["uebersicht"] = await self.api.uebersicht()
+            except RationAuthError:
+                raise
+            except RationApiError as err:
+                # Ältere App (API < 1.15) kennt /uebersicht nicht: neue Entitäten nicht verfügbar
+                _LOGGER.debug("Übersicht nicht abrufbar: %s", err)
+                daten["uebersicht"] = None
+            return daten
         except RationAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except RationApiError as err:

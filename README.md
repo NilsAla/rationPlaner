@@ -38,7 +38,9 @@ und eine To-do-Entität für die Einkaufsliste.
 |---|---|
 | `sensor.ration_rezept_heute` | Rezept aus dem Plan für heute, Attribute: Zutaten (skaliert), Schritte, Portionen |
 | `sensor.ration_status` | Statuszeile „24 Artikel · 3 laufen bald ab“ |
-| `sensor.ration_laeuft_ab` | Anzahl Chargen, die in 3 Tagen ablaufen, Liste als Attribut |
+| `sensor.ration_gericht_heute`, `sensor.ration_gericht_morgen` | Gericht aus dem Plan, Attribute: rezept_id, portionen, status, kcal, protein, nutri, kochbar, foto, zutaten (mit Ampel), fehlend |
+| `image.ration_gericht_heute`, `image.ration_gericht_morgen` | Foto des Gerichts (für Picture-Cards, `entity_picture`) |
+| `sensor.ration_laeuft_ab` | Anzahl Chargen, die in den nächsten `bald_tage` Tagen ablaufen (Einstellung „Anzeige“), Liste mit Name, Menge, MHD als Attribut |
 | `ration.gekocht` | Bucht ab (Rezeptmenge × Portionen, FEFO). Ohne `rezept_id` das Rezept von heute |
 | `ration.einkaufsliste_erzeugen` | Fehlmengen der geplanten Gerichte in die To-do-Liste aus `todo_entity` |
 

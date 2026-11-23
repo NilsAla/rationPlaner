@@ -60,3 +60,19 @@ class RationApi:
 
     async def status(self) -> dict:
         return await self.request("GET", "/status")
+
+    async def uebersicht(self) -> dict:
+        return await self.request("GET", "/uebersicht")
+
+    async def foto(self, foto_id: int) -> bytes:
+        try:
+            async with self._session.get(
+                f"{self._base}/fotos/{foto_id}",
+                headers=self._headers,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status >= 400:
+                    raise RationApiError(f"{resp.status}: Foto {foto_id}")
+                return await resp.read()
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise RationApiError(f"App nicht erreichbar: {err}") from err

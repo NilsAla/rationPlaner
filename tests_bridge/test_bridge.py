@@ -26,11 +26,48 @@ STATUS = {
     "laeuft_bald_ab": [{"name": "Paprika", "menge": 200, "einheit": "g", "ablauf": "2026-11-23"}],
 }
 
+GERICHT = {
+    "datum": "2026-11-23",
+    "rezept_id": "1",
+    "name": "Paprika-Pasta",
+    "portionen": 2,
+    "status": "geplant",
+    "foto": 7,
+    "kcal": 640.0,
+    "protein": 22.5,
+    "nutri": "B",
+    "aufwand": None,
+    "zutaten": [
+        {"produkt_id": "p", "name": "Paprika", "menge": 250, "einheit": "g", "ampel": "fehlt"}
+    ],
+    "fehlend": ["Paprika"],
+    "kochbar": False,
+}
+UEBERSICHT = {
+    "datum": "2026-11-22",
+    "heute": None,
+    "morgen": GERICHT,
+    "tage": [],
+    "bald_tage": 5,
+    "laeuft_ab": [
+        {"name": "Paprika", "menge": 200, "einheit": "g", "ablauf": "2026-11-23", "tage": 1},
+        {"name": "Milch", "menge": 1, "einheit": "l", "ablauf": "2026-11-26", "tage": 4},
+    ],
+    "reste": [],
+    "artikel": 3,
+    "status_text": "3 Artikel · 2 laufen bald ab",
+}
 
-def mock_app(aioclient_mock, api_version="1.0"):
+
+def mock_app(aioclient_mock, api_version="1.0", uebersicht=True):
     aioclient_mock.get(f"{URL}/api/v1/version", json={"api_version": api_version})
     aioclient_mock.get(f"{URL}/api/v1/heute", json=HEUTE)
     aioclient_mock.get(f"{URL}/api/v1/status", json=STATUS)
+    if uebersicht:
+        aioclient_mock.get(f"{URL}/api/v1/uebersicht", json=UEBERSICHT)
+    else:
+        aioclient_mock.get(f"{URL}/api/v1/uebersicht", status=404, json={"detail": "Not Found"})
+    aioclient_mock.get(f"{URL}/api/v1/fotos/7", content=b"\xff\xd8jpeg")
 
 
 async def test_config_flow(hass: HomeAssistant, aioclient_mock):
@@ -81,8 +118,8 @@ async def test_config_flow_falsche_version(hass: HomeAssistant, aioclient_mock):
     assert result["errors"] == {"base": "incompatible_version"}
 
 
-async def _setup(hass, aioclient_mock):
-    mock_app(aioclient_mock)
+async def _setup(hass, aioclient_mock, **kwargs):
+    mock_app(aioclient_mock, **kwargs)
     entry = MockConfigEntry(domain=DOMAIN, data={"url": URL}, unique_id=DOMAIN)
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -96,7 +133,38 @@ async def test_sensoren(hass: HomeAssistant, aioclient_mock):
     assert heute.state == "Paprika-Pasta"
     assert heute.attributes["zutaten"][0]["name"] == "Paprika"
     assert hass.states.get("sensor.ration_status").state == "3 Artikel · 1 laufen bald ab"
+    # laeuft_ab kommt aus der Übersicht (Einstellung bald_tage), nicht aus /status
+    ab = hass.states.get("sensor.ration_laeuft_ab")
+    assert ab.state == "2" and ab.attributes["tage"] == 5
+    assert ab.attributes["liste"][0] == {
+        "name": "Paprika",
+        "menge": 200,
+        "einheit": "g",
+        "mhd": "2026-11-23",
+    }
+    assert hass.states.get("sensor.ration_gericht_heute").state == "nichts geplant"
+    morgen = hass.states.get("sensor.ration_gericht_morgen")
+    assert morgen.state == "Paprika-Pasta"
+    assert morgen.attributes["kcal"] == 640.0 and morgen.attributes["nutri"] == "B"
+    assert morgen.attributes["fehlend"] == ["Paprika"]
+    assert morgen.attributes["foto"] == "image.ration_gericht_morgen"
+    assert hass.states.get("image.ration_gericht_heute").state == "unavailable"
+    assert hass.states.get("image.ration_gericht_morgen").state != "unavailable"
+
+
+async def test_bild_entitaet(hass: HomeAssistant, aioclient_mock, hass_client):
+    await _setup(hass, aioclient_mock)
+    client = await hass_client()
+    resp = await client.get("/api/image_proxy/image.ration_gericht_morgen")
+    assert resp.status == 200
+    assert await resp.read() == b"\xff\xd8jpeg"
+
+
+async def test_aeltere_app_ohne_uebersicht(hass: HomeAssistant, aioclient_mock):
+    await _setup(hass, aioclient_mock, uebersicht=False)
+    assert hass.states.get("sensor.ration_rezept_heute").state == "Paprika-Pasta"
     assert hass.states.get("sensor.ration_laeuft_ab").state == "1"
+    assert hass.states.get("sensor.ration_gericht_heute").state == "unavailable"
 
 
 async def test_service_gekocht(hass: HomeAssistant, aioclient_mock):
