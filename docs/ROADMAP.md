@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.19.0 / API 1.15)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.19.1 / API 1.15)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -79,10 +79,10 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
 - **CLAUDE.md-Regel „KI nur über HA, kein API-Key in der App“ dabei anpassen** (bewusst aufgehoben).
 
 ### 5. Fotos: Rest
-- Startseite mit Fotos (siehe 2).
-- Anleitungs-Editor (`views/anleitung.js`): je Schritt Foto zuordnen/hochladen (Feld `foto` bzw.
-  `original` im Schritt, Backend kann das schon).
-- Optional: Fotos in der Lovelace-Card / Sensor-Attribut `foto`.
+- ~~Startseite mit Fotos~~ erledigt (0.19.0).
+- ~~Anleitungs-Editor: je Schritt Foto zuordnen/hochladen~~ erledigt (0.19.1): Foto wählen aus
+  den Rezeptfotos, hochladen oder Originalschritte (Chips 1…n) zuordnen.
+- Sensor-Attribut `foto` + `image.ration_gericht_heute/_morgen` erledigt (0.18.0). Lovelace-Card offen.
 
 ## Getroffene Entscheidungen (nicht stillschweigend ändern)
 

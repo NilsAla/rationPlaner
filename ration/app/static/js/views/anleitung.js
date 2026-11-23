@@ -1,11 +1,12 @@
-import {$, $$, api, bestaetigen, del, esc, fmt, gehe, guarded, post, put, titel, toast} from "../lib.js";
+import {$, $$, api, bestaetigen, del, dialog, esc, fmt, fotoHochladen, fotoUrl, gehe, guarded, post, put, titel, toast} from "../lib.js";
 
 // Editor für die Kochanleitung eines Rezepts: Schritte, Zutaten je Schritt, Timer, Reihenfolge
 const STATUS = {keine: "noch keine", entwurf: "Entwurf", geprueft: "freigegeben"};
 const QUELLE = {ki: "KI", code: "Code-Vorschlag", manuell: "von Hand"};
 
 export default async function render(el, {arg}) {
-  const [a0, rezept] = await Promise.all([api(`kochen/anleitung/${arg}`), api(`rezepte/${arg}`)]);
+  const [a0, rezept, fotos0] = await Promise.all([api(`kochen/anleitung/${arg}`), api(`rezepte/${arg}`), api(`rezepte/${arg}/fotos`)]);
+  let fotos = fotos0;
   let a = a0, dirty = false;
   // Arbeitskopie im gespeicherten Format
   let schritte = [];
@@ -31,6 +32,17 @@ export default async function render(el, {arg}) {
   };
   const markDirty = () => { dirty = true; $("#dirty", el).hidden = false; };
 
+  // Schrittfoto: ausdrücklich gewählt, sonst die Fotos der zugeordneten Originalschritte
+  const schrittFotos = (s) => s.foto ? [s.foto]
+    : fotos.filter((f) => f.schritt != null && s.original.includes(f.schritt)).map((f) => f.id).slice(0, 3);
+  const fotoHtml = (s) => {
+    const ids = schrittFotos(s);
+    return `<div class="anl-foto">${ids.map((id) => `<img src="${fotoUrl(id)}" alt="" class="schritt-mini">`).join("")}
+      <button class="btn klein" data-foto>🖼 ${s.foto ? "Foto ändern" : ids.length ? "Foto (aus Original)" : "Foto zuordnen"}</button>
+      ${rezept.schritte.length ? `<span class="muted tiny">Original:</span> <span class="chips">${rezept.schritte.map((o, n) =>
+        `<button class="chip ${s.original.includes(n) ? "on" : ""}" data-o="${n}" title="${esc(o.slice(0, 120))}">${n + 1}</button>`).join("")}</span>` : ""}</div>`;
+  };
+
   const schrittHtml = (s, i) => `<div class="anl-schritt" data-i="${i}">
     <div class="kopf"><b>${i + 1}.</b>
       <input data-f="titel" value="${esc(s.titel)}" placeholder="Titel, z. B. Wasser aufsetzen" aria-label="Titel">
@@ -51,7 +63,7 @@ export default async function render(el, {arg}) {
       <div style="flex:1 1 140px"><label>Timer-Name</label><input data-f="timer_name" value="${esc(s.timer_name ?? "")}" placeholder="z. B. Nudeln"></div>
       <label class="nw" style="flex:0 0 auto"><input type="checkbox" data-f="parallel" ${s.parallel ? "checked" : ""}> läuft nebenher</label>
       ${s.timer_geschaetzt ? `<span class="tag warn" title="Dauer steht nicht im Original">≈ geschätzt</span>` : ""}
-    </div></div>`;
+    </div>${fotoHtml(s)}</div>`;
 
   const zeichnen = () => {
     el.innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(420px,100%),1fr))">
@@ -99,6 +111,12 @@ export default async function render(el, {arg}) {
         $("#fehlend", el).innerHTML = fehlendHtml();
         markDirty();
       });
+      $$("[data-o]", box).forEach((c) => c.onclick = () => {
+        const o = +c.dataset.o, pos = s.original.indexOf(o);
+        if (pos >= 0) s.original.splice(pos, 1); else s.original.push(o);
+        s.original.sort((x, y) => x - y); markDirty(); zeichnen();
+      });
+      $("[data-foto]", box).onclick = () => guarded(() => fotoWaehlen(s));
       $$("[data-m]", box).forEach((b) => b.onclick = () => {
         const j = i + +b.dataset.m;
         [schritte[i], schritte[j]] = [schritte[j], schritte[i]]; dirty = true; zeichnen();
@@ -119,7 +137,30 @@ export default async function render(el, {arg}) {
     });
   };
 
-  const leer = () => ({titel: "", text: "", zutaten: [], timer_s: null, timer_name: null, parallel: false, timer_geschaetzt: false});
+  const leer = () => ({titel: "", text: "", zutaten: [], timer_s: null, timer_name: null, parallel: false, timer_geschaetzt: false,
+    original: [], foto: null});
+
+  const fotoWaehlen = async (s) => {
+    let gewaehlt = s.foto;
+    const r = await dialog(`<h2>Foto für den Schritt</h2>
+      ${fotos.length ? `<div class="fotogrid">${fotos.map((f) => `<figure><img src="${fotoUrl(f.id)}" alt="" data-wahl-foto="${f.id}"
+        class="${f.id === s.foto ? "gewaehlt-foto" : ""}" style="cursor:pointer"><figcaption>${f.haupt ? "Hauptbild" : f.schritt != null ? `Original ${f.schritt + 1}` : esc(f.quelle)}</figcaption></figure>`).join("")}</div>`
+        : `<p class="muted">Zu diesem Rezept gibt es noch keine Fotos.</p>`}
+      <p class="muted tiny">Ohne Auswahl zeigt der Kochmodus die Fotos der zugeordneten Originalschritte.</p>`,
+    [["abbrechen", "Abbrechen"], ["upload", "📷 Hochladen"], ["kein", "Kein eigenes"], ["ok", "Übernehmen", "primary"]],
+    (d) => $$("[data-wahl-foto]", d).forEach((img) => img.onclick = () => {
+      $$("[data-wahl-foto]", d).forEach((x) => x.classList.remove("gewaehlt-foto"));
+      img.classList.add("gewaehlt-foto"); gewaehlt = +img.dataset.wahlFoto;
+    }));
+    if (r === "upload") {
+      const f = await fotoHochladen(a.rezept_id);
+      if (!f) return;
+      fotos = [...fotos, f]; s.foto = f.id;
+    } else if (r === "kein") s.foto = null;
+    else if (r === "ok") s.foto = gewaehlt ?? null;
+    else return;
+    markDirty(); zeichnen();
+  };
 
   const speichern = (status) => guarded(async () => {
     const leere = schritte.filter((s) => !s.titel.trim() && !s.text.trim()).length;

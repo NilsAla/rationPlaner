@@ -305,3 +305,7 @@ h2.gross a { color: inherit; text-decoration: none; }
   .heute-text { padding: 14px; }
   .tage-raster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+.anl-foto { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.anl-foto .schritt-mini { width: 64px; margin: 0; }
+.anl-foto .chips .chip { padding: 2px 8px; }
+img.gewaehlt-foto { outline: 3px solid var(--accent); outline-offset: 2px; }
