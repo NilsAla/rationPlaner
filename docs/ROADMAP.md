@@ -3,11 +3,60 @@
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
 
-Branch: `claude/project-thread-jm020d`, PR #3 (nicht ohne Nils mergen). Nils' HA trackt diesen
-Branch als Add-on-Repo mit Auto-Update: **jede Versionsanhebung in `ration/config.yaml` wird
-automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/config.yaml`,
+Arbeit läuft auf `main`; nach jedem Push auch `git push origin main:claude/project-thread-jm020d`
+(beide Branches deckungsgleich). Nils' HA trackt `claude/project-thread-jm020d` als Add-on-Repo
+mit Auto-Update: **jede Versionsanhebung in `ration/config.yaml` wird ausgerollt.** Der Store
+merkt neue Versionen manchmal spät; per HA-MCP `ha_manage_app(action="check_updates")`, dann
+`action="update"` nur für `bd5fe677_ration`. Version immer an vier Stellen gleich halten: `ration/config.yaml`,
 `ration/app/__init__.py` (`__version__`, `API_VERSION`), `ration/pyproject.toml`,
 `custom_components/ration/manifest.json`.
+
+## ▶ Als Nächstes (Stand 2026-11-23 abends, Nils schläft)
+
+**Stand auf Nils' HA:** 0.28.5 läuft. KI-Zuordnung (Einstellungen → KI, App-DB):
+Kategorisierung, Packungsgrößen, Bon → `ai_task.openai_stammdaten` (gpt-4.1, Temperatur 0,2,
+max 8000 Tokens, ohne Websuche/Code-Interpreter/Links); Planer, Import, Kochanleitung,
+Nährwerte → `ai_task.openai_ai_task` (gpt-4o-mini, „Recommended“). Preistabelle leer.
+Wochenende: 3 Gerichte geplant, Einkaufsliste schon in `todo.einkaufsliste` geschrieben.
+
+### 1. Mit Nils zuerst (er testet, Claude wertet per HA-MCP aus)
+- [ ] **Kategorisierung neu laufen lassen** („Auch schon kategorisierte prüfen“), danach Claude:
+  KI-Log über `/api/v1/log/ki` und offene `/api/v1/vorschlaege` durchgehen, Empfehlung je Gruppe
+  (übernehmen/ablehnen). Erwartung mit 0.28.4/0.28.5: deutlich weniger Vorschläge, keine
+  „leer → 0“, keine Kürzungen > Faktor 4. Noch offene Altlasten: Basmati-Reis ohne Modus und
+  Haltbarkeit 0; Ingwer als „Gewürze“ statt „Gemüse“; Knoblauch 14 Tage (zu knapp, eher 60);
+  Brokkoli frisch lief früher als „Tiefkühl“.
+- [ ] **Bon-Live-Nachtest** mit Test-Bon (Scan und Foto, nicht buchen), jetzt mit gpt-4.1.
+  Prüfen: Mengenzeilen als `mengenzeile`, Gebinde, ml, Namen, Annahmen. Auswertung über KI-Log.
+- [ ] **Barcode-Scan am Handy** (Android live, iPhone per Foto → `/barcode/lesen`), MHD-Schätzung.
+- [ ] **Bon-Kamera** in der Companion-App (In-App-Kamera, HTTPS nötig, Kamera-Berechtigung).
+- [ ] **Ausgaben** mit einem echten Bon; „Bereits gebuchte Bons übernehmen“.
+- [ ] **Import** nach dem Füllwort-Fix (0.25.2).
+- [ ] Optional: OpenAI-Direktmodus mit eigenem Key (bisher nur gemockt getestet).
+- [ ] Preise für gpt-4.1 / gpt-4o-mini in Einstellungen → KI eintragen (Nils), sonst nur Tokens.
+
+### 2. Bauen (Reihenfolge nach Nutzen)
+1. **Einkaufsliste abgleichen statt nur anhängen** (Nils' Frage: „was passiert, wenn ich Reis
+   einbuche?“). Heute schreibt `POST /einkaufsliste` nur hinzu, nichts wird entfernt. Ziel:
+   Einträge, die die App selbst geschrieben hat (in `einkauf_eintrag` merken, mit Todo-UID bzw.
+   Text), beim nächsten Erzeugen aktualisieren oder per `todo.remove_item` entfernen, wenn Bestand
+   oder Ersatz (Basmati statt Jasmin) reicht. Eigene Einträge von Nils nie anfassen. Optional
+   automatisch nach Einbuchen/Bon. Tests mit FakeHomeAssistant (`todo_items`/neue `todo_remove`).
+2. **Lovelace-Card** (`lovelace/`, Lit, keine Logik, von der Bridge ausgeliefert): Gericht
+   heute/morgen mit Foto (`image.ration_gericht_*`), fehlt/kochbar, „läuft bald ab“, Knöpfe
+   Gekocht und Einkaufsliste (Services). Bisher gibt es nur `lovelace/README.md`.
+3. **Ersatz verfeinern:** über verschiedene Einheiten (Gramm-Umrechnung), Ausnahme je Rezept
+   („nur genau dieses Produkt“), Hinweis „mit Fusilli“ auch im Kochmodus-Schritt.
+4. **Doppelte Rezeptzeilen nach Merge** (z. B. Salz zweimal nach „Geschmack Salz“ → Salz):
+   beim Merge gleiche Produkte im Rezept zusammenfassen (Menge addieren) statt doppelt.
+5. **KI-Plausibilität weiter:** Richtwerte auch für „geöffnet“ im Code (heute nur im Prompt);
+   Kategorie-Guard (frisch ≠ Tiefkühl, frischer Ingwer ≠ Gewürz).
+
+### 3. Gelernt heute (nicht wiederholen)
+- KI-Werte nie ungeprüft vorschlagen: gpt-4o-mini lieferte Monate statt Tage und 0 = „heute“.
+  Jede neue KI-Ausgabe bekommt Code-Guards und einen Test mit echten Antworten aus dem KI-Log.
+- Vor dem Löschen in Grocy prüfen, ob das Produkt in Rezepten steckt; lieber mergen.
+- Befehlsketten für Commit/Push mit `set -e`, sonst landet ein Commit trotz rotem Lint im Push.
 
 ## Fertig in PR #3 (Auszug der letzten Pakete)
 
