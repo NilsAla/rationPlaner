@@ -2,9 +2,12 @@ import {$, $$, AUFWAND, REGLER, WOCHENTAGE, api, bestaetigen, del, esc, guarded,
 
 // Einstellungen: Wochenrhythmus, Planer-Vorgaben, Präferenzen, Anzeige; HA-Optionen nur lesend
 export default async function render(el) {
-  const [e, buch, kt, ks] = await Promise.all([api("einstellungen"), api("rezeptbuch"),
+  const [e, buch, kt, ks, katalog] = await Promise.all([api("einstellungen"), api("rezeptbuch"),
     api("kochen/timer").catch((err) => ({timer: [], automatisch: true, fehler: err.message})),
-    api("ki/status").catch(() => ({jobs: [], entitaeten: [], openai_key: false}))]);
+    api("ki/status").catch(() => ({jobs: [], entitaeten: [], openai_key: false})), api("katalog/produkte")]);
+  const gesperrt = new Set(e.ersatz.gesperrt);
+  const gruppen = katalog.filter((p) => katalog.some((k) => k.parent_id === p.id)).map((p) => ({
+    ...p, kinder: katalog.filter((k) => k.parent_id === p.id)})).sort((a, b) => a.name.localeCompare(b.name, "de"));
   const kiE = e.ki;
   const {planer, praeferenzen: pr, anzeige, kochen: ko, ernaehrung: er, optionen: o} = e;
   const tags = [...new Set([...buch.flatMap((r) => r.tags), ...pr.ausschluss_tags])].sort((a, b) => a.localeCompare(b, "de"));
@@ -73,6 +76,12 @@ export default async function render(el) {
         ${[...Object.entries(kiE.preise), ["", {input: "", output: ""}]].map(([k, p]) => preisZeile(k, p)).join("")}</tbody></table></div>
       <p class="muted tiny">Ohne Preis zeigt das KI-Protokoll nur Tokens. Preise der Anbieter ändern sich, bitte selbst pflegen.</p>
       <button class="btn primary voll" id="kispeichern">KI-Einstellungen speichern</button></div>
+    <div class="card"><h2>Austauschbare Zutaten</h2>
+      <p class="muted small">Varianten desselben übergeordneten Produkts (gleiche Einheit) ersetzen sich: Fehlen Spaghetti, zählen Fusilli.
+        Gilt für „kochbar“, Planer, Einkaufsliste und das Abbuchen nach dem Kochen.</p>
+      ${gruppen.length ? `<table>${gruppen.map((g) => `<tr><td><label class="inline" style="margin:0"><input type="checkbox" data-ers="${esc(g.id)}" ${gesperrt.has(g.id) ? "" : "checked"}>
+          <b>${esc(g.name)}</b></label><div class="muted tiny">${g.kinder.map((k) => esc(k.name)).join(", ")}</div></td></tr>`).join("")}</table>`
+        : `<p class="muted small">Noch keine Gruppen. Am Produkt „Variante von“ setzen, z. B. Spaghetti und Fusilli → Nudeln.</p>`}</div>
     <div class="card"><h2>App-Optionen <span class="muted tiny">(nur lesen)</span></h2>
       <p class="muted tiny">Änderbar in Home Assistant unter Einstellungen → Apps → ration → Konfiguration.</p>
       <table>
@@ -142,6 +151,10 @@ export default async function render(el) {
     await put("einstellungen/ki", {modus: $("#kimodus", el).value, openai_modell: $("#kimodell", el).value.trim(), jobs, preise});
     toast("KI-Einstellungen gespeichert"); render(el);
   });
+  $$("[data-ers]", el).forEach((c) => c.onchange = () => guarded(async () => {
+    const aus = $$("[data-ers]", el).filter((x) => !x.checked).map((x) => x.dataset.ers);
+    await put("einstellungen/ersatz", {gesperrt: aus}); toast(c.checked ? "Austauschbar" : "Nicht mehr austauschbar");
+  }));
   $("#test", el).onclick = () => guarded(async () => {
     const r = await post("testdaten"); toast(`${r.rezepte.filter((x) => x.neu).length} Testrezepte angelegt`);
   });

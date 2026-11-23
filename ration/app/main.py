@@ -275,7 +275,10 @@ async def gekocht(
     if rezept_id is None:
         raise HTTPException(422, "Kein Rezept angegeben und für heute nichts geplant")
     recipe = await b.get_recipe(rezept_id)
-    ergebnis = await kueche.gekocht(b, recipe, data.portionen_gekocht, data.portionen_gegessen)
+    karte = katalog.ersatz(s, {p.id: p for p in await b.list_products()})
+    ergebnis = await kueche.gekocht(
+        b, recipe, data.portionen_gekocht, data.portionen_gegessen, karte
+    )
     if eintrag and eintrag.rezept_id == rezept_id:
         eintrag.status = "gekocht"
     vorgang = Kochvorgang(rezept_id=rezept_id, datum=date.today(), portionen=data.portionen_gekocht)
@@ -549,7 +552,8 @@ async def einkaufsliste(
         )
     ).all()
     geplant = [(await b.get_recipe(r.rezept_id), r.portionen) for r in rows]
-    fehlend = await kueche.bedarf(b, geplant, weitere_packungen(s))
+    karte = katalog.ersatz(s, {p.id: p for p in await b.list_products()})
+    fehlend = await kueche.bedarf(b, geplant, weitere_packungen(s), karte)
     ausgaben.einkauf_merken(s, [pos.produkt_id for pos in fehlend])
     s.commit()
     vorhanden = [item.lower() for item in await ha.todo_items(todo)]

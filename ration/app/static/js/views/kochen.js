@@ -204,7 +204,7 @@ export default async function render(el, {arg, params}) {
     const vorschau = $("#vorschau", el);
     if (vorschau) guarded(async () => {
       const r = await api(`rezepte/${encodeURIComponent(anl.rezept_id)}?portionen=${sitz.portionen}`);
-      vorschau.innerHTML = `<table>${r.zutaten.map((z) => `<tr><td><span class="dot ${z.ampel}"></span>${esc(z.name)}</td>
+      vorschau.innerHTML = `<table>${r.zutaten.map((z) => `<tr><td><span class="dot ${z.ampel}"></span>${esc(z.name)}${z.ersatz?.length ? ` <span class="muted tiny">↔ ${esc(z.ersatz.join(", "))}</span>` : ""}</td>
         <td class="right nw">${fmt(z.menge)} ${esc(z.einheit)}</td><td class="right nw muted tiny">da: ${fmt(z.bestand)}</td></tr>`).join("")}</table>`;
     });
     $("#neustart", el).onclick = () => guarded(async () => {

@@ -19,7 +19,7 @@ export default async function render(el, {arg, params}) {
         <input id="por" type="number" min="1" max="24" value="${r.portionen}"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="koch">👩‍🍳 Kochmodus</button><button class="btn" id="test" title="Kochmodus ohne HA-Timer und ohne Buchung">🧪 Testlauf</button><button class="btn" id="heute">🔥 Heute kochen</button><button class="btn" id="planen">📅 Einplanen</button></div></div>
       <h3>Zutaten</h3><table>${r.zutaten.map((z) => `<tr><td><span class="dot ${z.ampel}" title="${ampel[z.ampel] ?? ""}"></span>
-          <a href="#/produkt/${esc(z.produkt_id)}">${esc(z.name)}</a>${z.notiz ? `<div class="muted tiny">${esc(z.notiz)}</div>` : ""}</td>
+          <a href="#/produkt/${esc(z.produkt_id)}">${esc(z.name)}</a>${z.ersatz?.length ? ` <span class="tag" title="Austauschbare Variante">↔ ${esc(z.ersatz.join(", "))}</span>` : ""}${z.notiz ? `<div class="muted tiny">${esc(z.notiz)}</div>` : ""}</td>
         <td class="nw right">${fmt(z.menge)} ${esc(z.einheit)}</td><td class="nw muted right tiny">da: ${fmt(z.bestand)}</td></tr>`).join("")}</table></div>
     ${makros(r.naehrwerte)}
     <div class="card"><h2>Zubereitung</h2>${r.schritte.length ? `<ol class="schritte">${r.schritte.map((s, k) => `<li>${esc(s)}${(jeSchritt[k] ?? []).map((f) =>

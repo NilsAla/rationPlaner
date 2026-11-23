@@ -254,6 +254,26 @@ def auf_packungen(
     return Einkauf(product.id, product.name, gesamt, product.unit, packungen=packungen)
 
 
+def ersatz_karte(
+    produkte: dict[str, Product], gesperrt: set[str] | frozenset[str] = frozenset()
+) -> dict[str, list[str]]:
+    """Produkt → austauschbare Geschwister: gleiches Parent-Produkt, gleiche Bestandseinheit.
+
+    Spaghetti und Fusilli unter „Nudeln“ ersetzen sich gegenseitig. gesperrt: Parent-IDs, deren
+    Varianten nicht austauschbar sind (z. B. Lasagneplatten unter Nudeln).
+    """
+    gruppen: dict[tuple[str, str], list[str]] = {}
+    for p in produkte.values():
+        if p.parent_id and p.parent_id not in gesperrt:
+            gruppen.setdefault((p.parent_id, p.unit.strip().lower()), []).append(p.id)
+    karte: dict[str, list[str]] = {}
+    for ids in gruppen.values():
+        for pid in ids:
+            if len(ids) > 1:
+                karte[pid] = sorted(x for x in ids if x != pid)
+    return karte
+
+
 @dataclass
 class GekochtErgebnis:
     abgebucht: list[Position] = field(default_factory=list)
@@ -265,11 +285,16 @@ class GekochtErgebnis:
 
 
 async def gekocht(
-    backend: InventoryBackend, recipe: Recipe, portionen_gekocht: int, portionen_gegessen: int
+    backend: InventoryBackend,
+    recipe: Recipe,
+    portionen_gekocht: int,
+    portionen_gegessen: int,
+    ersatz: dict[str, list[str]] | None = None,
 ) -> GekochtErgebnis:
     """Bucht die Zutaten ab: Rezeptmenge × Portionen, FEFO, Varianten über das Parent-Produkt.
 
-    Fehlt Bestand, wird abgebucht, was da ist, und der Rest als fehlend gemeldet.
+    Fehlt Bestand, springen austauschbare Geschwister ein (Fusilli statt Spaghetti), der Rest
+    wird abgebucht, soweit da, und als fehlend gemeldet.
     """
     products = {p.id: p for p in await backend.list_products()}
     faktor = portionen_gekocht / max(recipe.servings, 1)
@@ -288,6 +313,16 @@ async def gekocht(
         if abbuchen > EPS:
             await backend.consume(product.id, abbuchen)
             ergebnis.abgebucht.append(Position(product.id, product.name, abbuchen, product.unit))
+        for sid in (ersatz or {}).get(product.id, []):
+            if bedarf - abbuchen <= EPS:
+                break
+            ersatz_p = products[sid]
+            nimm = min(bedarf - abbuchen, await backend.get_stock_amount(sid))
+            if nimm > EPS:
+                await backend.consume(sid, nimm)
+                name = f"{ersatz_p.name} (statt {product.name})"
+                ergebnis.abgebucht.append(Position(sid, name, nimm, ersatz_p.unit))
+                abbuchen += nimm
         if bedarf - abbuchen > EPS:
             ergebnis.fehlend.append(
                 Position(product.id, product.name, bedarf - abbuchen, product.unit)
@@ -300,6 +335,7 @@ async def bedarf(
     backend: InventoryBackend,
     geplant: list[tuple[Recipe, int]],
     weitere: dict[str, list[Groesse]] | None = None,
+    ersatz: dict[str, list[str]] | None = None,
 ) -> list[Einkauf]:
     """Was zu kaufen ist: Bedarf der geplanten Gerichte plus Mindestbestand, minus Bestand,
     aufgerundet auf ganze Packungen. Produkte mit Mindestbestand kommen auch ungeplant drauf.
@@ -321,9 +357,26 @@ async def bedarf(
             g = groessen(p, (weitere or {}).get(p.id))
             packs = [PackAnzahl(1, g[0].einheit, g[0].menge, g[0].quelle)] if g else []
             einkauf.append(Einkauf(p.id, p.name, g[0].menge if g else 0.0, p.unit, packungen=packs))
+    reserviert: dict[str, float] = {}  # Ersatz-Bestand, der schon für ein anderes Produkt zählt
     for product_id, benoetigt in summe.items():
         p = products[product_id]
-        differenz = benoetigt + p.min_stock - await backend.get_stock_amount(product_id)
+        vorhanden = await backend.get_stock_amount(product_id)
+        # Austauschbare Geschwister zählen mit, soweit sie nicht selbst gebraucht werden
+        for sid in (ersatz or {}).get(product_id, []):
+            fehlt = benoetigt + p.min_stock - vorhanden
+            if fehlt <= EPS:
+                break
+            frei = (
+                await backend.get_stock_amount(sid)
+                - summe.get(sid, 0.0)
+                - products[sid].min_stock
+                - reserviert.get(sid, 0.0)
+            )
+            if frei > EPS:
+                genutzt = min(frei, fehlt)
+                vorhanden += genutzt
+                reserviert[sid] = reserviert.get(sid, 0.0) + genutzt
+        differenz = benoetigt + p.min_stock - vorhanden
         if differenz > EPS:
             einkauf.append(auf_packungen(p, differenz, (weitere or {}).get(product_id)))
     return sorted(einkauf, key=lambda x: x.name)

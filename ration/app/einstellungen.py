@@ -49,6 +49,8 @@ STANDARD: dict[str, dict[str, Any]] = {
     # KI-Backend: ha (ai_task) oder openai (Key als App-Option). Je Job überschreibbar:
     # jobs = {job: {"modus": ""|"ha"|"openai", "entitaet": "ai_task.…", "modell": "…"}}
     # preise = {Modell oder AI-Task-Entität: {"input": €/1 Mio. Tokens, "output": €/1 Mio.}}
+    # Varianten eines Parent-Produkts ersetzen sich (Fusilli statt Spaghetti), außer hier gesperrt
+    "ersatz": {"gesperrt": []},
     "ki": {"modus": "ha", "openai_modell": "gpt-4.1-mini", "jobs": {}, "preise": {}},
 }
 KI_JOBS = (
@@ -121,6 +123,10 @@ def pruefen(gruppe: str, werte: dict) -> dict:
             out["spontan_pct"] = int(_bereich(out["spontan_pct"], 50, 100, "spontan_pct"))
     elif gruppe == "kochen" and "zutaten_pflicht" in out:
         out["zutaten_pflicht"] = bool(out["zutaten_pflicht"])
+    elif gruppe == "ersatz" and "gesperrt" in out:
+        if not isinstance(out["gesperrt"], list):
+            raise HTTPException(422, "gesperrt: Liste von Parent-Produkt-IDs")
+        out["gesperrt"] = sorted({str(x) for x in out["gesperrt"]})
     elif gruppe == "ki":
         out.update(_ki_pruefen(out))
     elif gruppe == "ernaehrung":

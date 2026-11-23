@@ -61,6 +61,35 @@ async def bestand_je_produkt(b: InventoryBackend, produkte: list[Product]) -> di
     return dict(menge)
 
 
+def ersatz(s: Session, produkte: dict[str, Product]) -> dict[str, list[str]]:
+    """Austauschbare Geschwister je Produkt (Einstellung „ersatz“ sperrt einzelne Gruppen)."""
+    from app import einstellungen
+
+    gesperrt = set(einstellungen.lesen(s)["ersatz"]["gesperrt"])
+    return kueche.ersatz_karte(produkte, gesperrt)
+
+
+def ampel(
+    p: Product,
+    bestand: dict[str, float],
+    bedarf: float,
+    karte: dict[str, list[str]],
+    produkte: dict[str, Product],
+) -> tuple[str, list[str]]:
+    """Ampel wie verfuegbar, aber austauschbare Geschwister zählen mit. → (Ampel, Ersatz-Namen)"""
+    eigen = verfuegbar(p, bestand.get(p.id, 0.0), bedarf)
+    if eigen == "ok" or not karte.get(p.id):
+        return eigen, []
+    da = [sid for sid in karte[p.id] if bestand.get(sid, 0.0) > kueche.EPS]
+    if not da:
+        return eigen, []
+    gesamt = bestand.get(p.id, 0.0) + sum(bestand[sid] for sid in da)
+    mit = verfuegbar(p, gesamt, bedarf)
+    if mit == eigen:
+        return eigen, []
+    return mit, [produkte[sid].name for sid in da]
+
+
 def verfuegbar(p: Product, bestand: float, bedarf: float) -> str:
     """Ampel je Zutat: ok / knapp / fehlt. Füllstand und Immer-da nach Modus."""
     if p.tracking_mode == TrackingMode.IMMER_DA:
@@ -258,6 +287,7 @@ async def rezeptbuch(
     meinung = {x.rezept_id: x for x in s.scalars(select(RezeptBewertung))}
     nw, ziel = naehrwerte.alle(s), naehrwerte.ziel_aus(s)
     bilder = fotos.hauptfotos(s)
+    karte = ersatz(s, produkte)
     result = []
     for r in await b.list_recipes():
         n = naehrwerte.rezept_naehrwerte(r, produkte, nw, ziel=ziel)
@@ -265,7 +295,7 @@ async def rezeptbuch(
             produkte[z.product_id].name
             for z in r.ingredients
             if z.product_id in produkte
-            and verfuegbar(produkte[z.product_id], bestand.get(z.product_id, 0), z.amount) != "ok"
+            and ampel(produkte[z.product_id], bestand, z.amount, karte, produkte)[0] != "ok"
         ]
         m = meta.get(r.id)
         result.append(
@@ -326,10 +356,12 @@ async def rezept_detail(
     ziel = portionen or r.servings
     faktor = ziel / max(r.servings, 1)
     m = s.get(RezeptMeta, r.id)
+    karte = ersatz(s, produkte)
     zutaten = []
     for z in r.ingredients:
         p = produkte.get(z.product_id)
         menge = z.amount * faktor
+        a, statt = ampel(p, bestand, menge, karte, produkte) if p else ("fehlt", [])
         zutaten.append(
             {
                 "produkt_id": z.product_id,
@@ -339,7 +371,8 @@ async def rezept_detail(
                 "einheit": p.unit if p else "",
                 "notiz": z.note,
                 "bestand": round(bestand.get(z.product_id, 0.0), 1),
-                "ampel": verfuegbar(p, bestand.get(z.product_id, 0.0), menge) if p else "fehlt",
+                "ampel": a,
+                "ersatz": statt,  # z. B. ["Fusilli"], wenn erst der Ersatz reicht
             }
         )
     return {

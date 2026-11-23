@@ -72,8 +72,14 @@ class _Charge:
 class Lager:
     """Kopie der Chargen für die Simulation. Übergeordnete Produkte umfassen ihre Varianten."""
 
-    def __init__(self, produkte: dict[str, Product], batches: list[Batch]):
+    def __init__(
+        self,
+        produkte: dict[str, Product],
+        batches: list[Batch],
+        ersatz: dict[str, list[str]] | None = None,
+    ):
         self.produkte = produkte
+        self.ersatz = ersatz or {}
         self.kinder: dict[str, set[str]] = defaultdict(set)
         for p in produkte.values():
             if p.parent_id:
@@ -86,15 +92,17 @@ class Lager:
 
     def _nutzbar(self, produkt_id: str, tag: date) -> list[_Charge]:
         familie = {produkt_id} | self.kinder.get(produkt_id, set())
+        ersatz = set(self.ersatz.get(produkt_id, [])) - familie
+        # Eigene Chargen zuerst (FEFO), Ersatz (Fusilli statt Spaghetti) nur, wenn nötig
         return sorted(
             (
                 c
                 for c in self.chargen
-                if c.produkt_id in familie
+                if (c.produkt_id in familie or c.produkt_id in ersatz)
                 and c.menge > EPS
                 and (c.ablauf is None or c.ablauf >= tag)
             ),
-            key=lambda c: c.ablauf or date.max,
+            key=lambda c: (c.produkt_id in ersatz, c.ablauf or date.max),
         )
 
     def menge(self, produkt_id: str, tag: date) -> float:
@@ -186,6 +194,7 @@ class Kontext:
     naehr: dict[str, RezeptNaehrwerte] = field(default_factory=dict)  # je Rezept, einmal gerechnet
     ziel: dict = field(default_factory=dict)  # Mahlzeiten-Ziel aus den Einstellungen
     ziel_im_planer: bool = False
+    ersatz: dict[str, list[str]] = field(default_factory=dict)  # austauschbare Geschwister
 
     def toleranz(self, p: Product) -> float:
         return (p.tolerance_pct if p.tolerance_pct is not None else self.toleranz_default) / 100
@@ -394,7 +403,7 @@ class Simulation:
 class Simulator:
     def __init__(self, k: Kontext, start: date, ende: date):
         self.k, self.start, self.ende = k, start, ende
-        self.lager = Lager(k.produkte, k.batches)
+        self.lager = Lager(k.produkte, k.batches, k.ersatz)
         self.tage: list[TagErgebnis] = []
         self.zukauf: dict[str, dict[tuple[str, float], int]] = defaultdict(dict)
         self.zukauf_menge: dict[str, float] = defaultdict(float)
@@ -837,6 +846,7 @@ async def kontext_laden(
         ),
     )
     nw = naehrwerte.alle(s)
+    k.ersatz = kueche.ersatz_karte(produkte, set(einst["ersatz"]["gesperrt"]))
     k.ziel = einst["ernaehrung"]
     k.ziel_im_planer = bool(einst["ernaehrung"]["im_planer"])
     k.naehr = {
@@ -889,7 +899,7 @@ async def planen(app, lauf_id: int) -> None:
             ende = alle[-1]
             frei = [d for d in alle if d not in fest and d >= start]
             offen_fest = {d: t for d, t in fest.items() if d >= start}
-            lager = Lager(k.produkte, k.batches)
+            lager = Lager(k.produkte, k.batches, k.ersatz)
             liste = kandidaten(k, lager, start, par["portionen"])[:MAX_KANDIDATEN]
             liste = [c for c in liste if c.rezept_id not in {t.rezept_id for t in fest.values()}]
             ki_info: dict = {"aktiv": False, "runden": 0, "probleme": [], "fehler": None}
@@ -1083,7 +1093,7 @@ async def plan_kandidaten(
     """Bewertete Rezepte für einen Tag mit den gespeicherten Präferenzen (ohne KI)."""
     tag = datum or date.today()
     k = await kontext_laden(b, s, st, tag)
-    lager = Lager(k.produkte, k.batches)
+    lager = Lager(k.produkte, k.batches, k.ersatz)
     por = portionen or einstellungen.lesen(s)["planer"]["portionen"]
     return [asdict(c) for c in kandidaten(k, lager, tag, por)]
 

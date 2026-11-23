@@ -13,7 +13,7 @@ from app import einstellungen, fotos, kueche, naehrwerte
 from app.db import PlanEintrag
 from app.deps import backend, session
 from app.inventory.base import InventoryBackend, Product, Recipe, TrackingMode
-from app.katalog import bestand_je_produkt, verfuegbar
+from app.katalog import ampel, bestand_je_produkt, ersatz
 
 GEWICHT_UNBEKANNT = 100.0  # g, wenn eine Zutat keine Gramm-Umrechnung hat
 STUECK = {"stück", "stk", "st"}
@@ -29,6 +29,7 @@ def gericht(
     nw: dict,
     ziel: dict,
     bilder: dict[str, int],
+    karte: dict[str, list[str]] | None = None,
 ) -> dict:
     """Ein Planeintrag mit Zutaten (auf die geplanten Portionen skaliert) und Ampel."""
     basis = {"datum": e.datum, "rezept_id": e.rezept_id, "portionen": e.portionen}
@@ -41,13 +42,15 @@ def gericht(
         if p is None:
             continue
         menge = z.amount * faktor
+        a, statt = ampel(p, bestand, menge, karte or {}, produkte)
         zutaten.append(
             {
                 "produkt_id": p.id,
                 "name": p.name,
                 "menge": round(menge, 1),
                 "einheit": p.unit,
-                "ampel": verfuegbar(p, bestand.get(p.id, 0), menge),
+                "ampel": a,
+                "ersatz": statt,
             }
         )
     n = naehrwerte.rezept_naehrwerte(r, produkte, nw, ziel=ziel)
@@ -79,6 +82,7 @@ async def uebersicht(
     rezepte = {r.id: r for r in await b.list_recipes()}
     bestand = await bestand_je_produkt(b, list(produkte.values()))
     nw, ziel, bilder = naehrwerte.alle(s), naehrwerte.ziel_aus(s), fotos.hauptfotos(s)
+    karte = ersatz(s, produkte)
     plan = {
         e.datum: e
         for e in s.scalars(
@@ -91,7 +95,11 @@ async def uebersicht(
     for i in range(tage):
         d = heute + timedelta(days=i)
         e = plan.get(d)
-        g = gericht(e, rezepte.get(e.rezept_id), produkte, bestand, nw, ziel, bilder) if e else None
+        g = (
+            gericht(e, rezepte.get(e.rezept_id), produkte, bestand, nw, ziel, bilder, karte)
+            if e
+            else None
+        )
         tage_liste.append({"datum": d, "gericht": g})
     st = await kueche.status(b, bald, heute)
     return {
@@ -144,6 +152,7 @@ def abdeckung(
     produkte: dict[str, Product],
     bestand: dict[str, float],
     faktor: float,
+    karte: dict[str, list[str]] | None = None,
 ) -> tuple[float, list[dict]]:
     """Anteil der Zutaten (nach Gramm gewichtet), der vorrätig ist, und was fehlt.
     Basics (immer da, Füllstand) zählen nicht."""
@@ -155,7 +164,9 @@ def abdeckung(
             continue
         bedarf = z.amount * faktor
         g_je = (naehrwerte.gramm(p, bedarf) or GEWICHT_UNBEKANNT) / bedarf if bedarf else 0.0
-        vorhanden = min(bestand.get(p.id, 0.0), bedarf)
+        eigen = bestand.get(p.id, 0.0)
+        mit_ersatz = eigen + sum(bestand.get(sid, 0.0) for sid in (karte or {}).get(p.id, []))
+        vorhanden = min(mit_ersatz, bedarf)
         gesamt += bedarf * g_je
         da += vorhanden * g_je
         if bedarf - vorhanden > kueche.EPS:
@@ -190,11 +201,12 @@ async def spontan(
                     druck[pid] = druck.get(pid, 0.0) + 1 / (max(tage, 0) + 1)
     geplant = s.get(PlanEintrag, heute)
     nw, ziel, bilder = naehrwerte.alle(s), naehrwerte.ziel_aus(s), fotos.hauptfotos(s)
+    karte = ersatz(s, produkte)
     treffer = []
     for r in await b.list_recipes():
         if not r.ingredients or (geplant and geplant.rezept_id == r.id):
             continue
-        anteil, fehlt = abdeckung(r, produkte, bestand, portionen / max(r.servings, 1))
+        anteil, fehlt = abdeckung(r, produkte, bestand, portionen / max(r.servings, 1), karte)
         if anteil + 1e-9 < schwelle:
             continue
         n = naehrwerte.rezept_naehrwerte(r, produkte, nw, ziel=ziel)
