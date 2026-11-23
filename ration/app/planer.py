@@ -762,9 +762,9 @@ async def kontext_laden(
     weitere: dict[str, list[Groesse]] = defaultdict(list)
     angebote: set[str] = set()
     for pk in s.scalars(select(Packung)):
-        if pk.gueltig_bis and pk.gueltig_bis < start:
+        if (pk.gueltig_bis and pk.gueltig_bis < start) or pk.bestaetigt is False:
             continue
-        weitere[pk.produkt_id].append(Groesse(pk.einheit, pk.menge, pk.quelle))
+        weitere[pk.produkt_id].append(Groesse(pk.einheit, pk.menge, pk.quelle, pk.haeufigkeit or 0))
         if pk.quelle == "angebot":
             angebote.add(pk.produkt_id)
     historie: dict[str, date] = {}

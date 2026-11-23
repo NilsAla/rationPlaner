@@ -32,6 +32,7 @@ from app import (
     kueche,
     llm_import,
     naehrwerte,
+    packungen,
     planer,
     protokoll,
     rezept_import,
@@ -352,31 +353,18 @@ async def reste(b: InventoryBackend = Depends(backend)) -> list[dict]:
 
 
 def weitere_packungen(s: Session) -> dict[str, list[kueche.Groesse]]:
-    """Weitere Packungsgrößen je Produkt, abgelaufene Angebote ausgenommen."""
-    heute = date.today()
-    result: dict[str, list[kueche.Groesse]] = {}
-    for p in s.scalars(select(Packung)):
-        if p.gueltig_bis is None or p.gueltig_bis >= heute:
-            result.setdefault(p.produkt_id, []).append(kueche.Groesse(p.einheit, p.menge, p.quelle))
-    return result
+    """Weitere Packungsgrößen je Produkt (bestätigt), abgelaufene Angebote ausgenommen."""
+    return packungen.weitere(s)
 
 
 @api.get("/packungen")
-async def packungen(
+async def packungen_liste(
     s: Session = Depends(session), b: InventoryBackend = Depends(backend)
 ) -> list[dict]:
     """Je Produkt Standard-Packung (Grocy) und weitere Größen (App)."""
     weitere: dict[str, list[dict]] = {}
     for p in s.scalars(select(Packung).order_by(Packung.menge)):
-        weitere.setdefault(p.produkt_id, []).append(
-            {
-                "id": p.id,
-                "einheit": p.einheit,
-                "menge": p.menge,
-                "quelle": p.quelle,
-                "gueltig_bis": p.gueltig_bis,
-            }
-        )
+        weitere.setdefault(p.produkt_id, []).append(packungen.als_dict(p))
     return [
         {
             "produkt_id": p.id,
@@ -649,6 +637,7 @@ def create_app(
     app.include_router(fotos.router)
     app.include_router(uebersicht.router)
     app.include_router(ki.router)
+    app.include_router(packungen.router)
 
     @app.middleware("http")
     async def aenderungen_protokollieren(request: Request, call_next):

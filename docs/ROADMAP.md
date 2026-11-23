@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.22.0 / API 1.17)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.23.0 / API 1.18)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -119,7 +119,15 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
   den Rezeptfotos, hochladen oder Originalschritte (Chips 1…n) zuordnen.
 - Sensor-Attribut `foto` + `image.ration_gericht_heute/_morgen` erledigt (0.18.0). Lovelace-Card offen.
 
-### 6. Packungsgrößen clever (offen)
+### 6. Packungsgrößen clever – erledigt (0.23.0, API 1.18)
+- Umsetzung: `app/packungen.py` (Kaufhistorie `packung_kauf`, `kauf_merken`, Varianten-Pflege
+  `PATCH /packungen/{id}`), `Packung` mit marke/haendler/ean/zuletzt/haeufigkeit/bestaetigt.
+  Bon-Buchung zählt jede Größe, die auf dem Bon stand oder bestätigt ist; neue Größe →
+  unbestätigte Variante + Vorschlag `variante` (KI-Vorschläge-Seite). KI-Lauf über
+  `POST /kategorisieren {packungen: true, monate}` (KI-Job `packungen`): Standard = häufigste
+  Größe laut Bons im Zeitraum (Code), sonst KI-typisch nur ohne Standard; gängige Größen als
+  Varianten-Vorschläge. `waehle_packungen`: nach Überhang bevorzugt gekaufte Größen.
+- Ursprüngliche Anforderung:
 1. **Varianten erweitern:** Marke/Hersteller, Händler, EAN (optional), zuletzt gesehen am,
    Häufigkeit. Liegt in der App-DB (`Packung`), Grocy bleibt Master für die Standard-Packung.
 2. **Bon-Import erkennt Größen** aus Kürzeln wie „KIDNEYB. 400G“ oder „2x250g“ (im Code geparst)

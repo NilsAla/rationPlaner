@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
 from app.inventory.base import InventoryBackend, Product, ProductPatch, Recipe, TrackingMode
@@ -165,7 +165,8 @@ class Groesse:
 
     einheit: str
     menge: float
-    quelle: str = "standard"  # standard/manuell/bon/angebot/llm
+    quelle: str = "standard"  # standard/manuell/bon/angebot/llm/kauf
+    haeufigkeit: int = 0  # so oft laut Bon gekauft
 
 
 @dataclass
@@ -197,19 +198,26 @@ class Einkauf(Position):
 
 def groessen(product: Product, weitere: list[Groesse] | None = None) -> list[Groesse]:
     """Standard-Packung aus Grocy plus weitere Größen, ohne Dubletten."""
-    alle = []
+    alle: list[Groesse] = []
     if product.pack_size:
         alle.append(Groesse(product.pack_unit or "Packung", product.pack_size))
     for g in weitere or []:
-        if g.menge > EPS and not any(abs(g.menge - x.menge) < EPS for x in alle):
+        if g.menge <= EPS:
+            continue
+        gleich = next((i for i, x in enumerate(alle) if abs(g.menge - x.menge) < EPS), None)
+        if gleich is None:
             alle.append(g)
+        elif g.haeufigkeit:  # gleiche Größe: Käufe zählen für die vorhandene
+            x = alle[gleich]
+            alle[gleich] = replace(x, haeufigkeit=x.haeufigkeit + g.haeufigkeit)
     return alle
 
 
 def waehle_packungen(fehlmenge: float, auswahl: list[Groesse]) -> list[PackAnzahl]:
     """Kombination aus höchstens zwei Größen mit kleinstem Überhang.
 
-    Gleichstand: weniger Packungen, dann mehr Angebotspackungen, dann mehr Standardpackungen.
+    Gleichstand: mehr tatsächlich gekaufte Packungen (laut Bon), weniger Packungen, dann mehr
+    Angebotspackungen, dann mehr Standardpackungen.
     """
     beste: tuple | None = None
     for i, a in enumerate(auswahl):
@@ -224,6 +232,7 @@ def waehle_packungen(fehlmenge: float, auswahl: list[Groesse]) -> list[PackAnzah
                 ueberhang = sum(n * g.menge for n, g in kombi) - fehlmenge
                 key = (
                     round(ueberhang, 6),
+                    -sum(n for n, g in kombi if g.haeufigkeit > 0),
                     sum(n for n, _ in kombi),
                     -sum(n for n, g in kombi if g.quelle == "angebot"),
                     -sum(n for n, g in kombi if g.quelle == "standard"),

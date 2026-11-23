@@ -15,8 +15,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import JSON, DateTime, Integer, String, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app import naehrwerte
-from app.db import Base
+from app import kueche, naehrwerte, packungen
+from app.db import Base, Packung, Preis
 from app.deps import backend, session, settings
 from app.inventory.base import (
     DueType,
@@ -342,6 +342,8 @@ async def ausfuehren(app, lauf_id: int) -> None:
                             anzahl += 1
             if umfang.get("naehrwerte", False):
                 anzahl += await _naehrwerte_lauf(s, ki, b, lauf_id, umfang)
+            if umfang.get("packungen", False):
+                anzahl += await _packungen_lauf(s, ki, b, lauf_id, umfang)
             if umfang.get("rezepte", True):
                 rezepte = await b.list_recipes()
                 if umfang.get("nur_ohne_attribute", True):
@@ -458,6 +460,8 @@ class LaufIn(BaseModel):
     nur_ohne_attribute: bool = True  # False: alle (monatlicher Lauf)
     nur_leere: bool = True  # False: auch gesetzte Werte überprüfen lassen
     produkt_ids: list[str] | None = None
+    packungen: bool = False  # Packungsgrößen analysieren (Bon-Historie, Angebote, KI-Wissen)
+    monate: int = Field(default=6, ge=1, le=36)  # Zeitraum für den Standard (häufigste Größe)
 
 
 @router.post("/kategorisieren", status_code=202)
@@ -473,6 +477,8 @@ async def kategorisieren(
         request.app.state.ki.pruefen("kategorisierung")
     if data.naehrwerte:
         request.app.state.ki.pruefen("naehrwerte")
+    if data.packungen:
+        request.app.state.ki.pruefen("packungen")
     if s.scalars(select(Lauf).where(Lauf.status == "laeuft")).first():
         raise HTTPException(409, "Es läuft schon eine Kategorisierung")
     lauf = Lauf(umfang=data.model_dump())
@@ -552,9 +558,16 @@ async def entscheiden(
         if v.status == "offen"
     }
     je_objekt: dict[tuple[str, str], dict[str, object]] = {}
-    for v in gewaehlt.values():
-        je_objekt.setdefault((v.typ, v.objekt_id), {})[v.feld] = v.neu
     fehler = []
+    for v in gewaehlt.values():
+        if v.feld == "variante":  # je Größe ein Vorschlag, eigener Schreibvorgang in der App-DB
+            try:
+                _variante_uebernehmen(s, v)
+            except Exception as err:  # noqa: BLE001
+                fehler.append(f"{v.name}: {err}")
+                v.status = "fehler"
+            continue
+        je_objekt.setdefault((v.typ, v.objekt_id), {})[v.feld] = v.neu
     for (typ, oid), felder in je_objekt.items():
         try:
             if typ == "produkt":
@@ -585,10 +598,171 @@ async def entscheiden(
             v.status = "uebernommen"
     for v in s.scalars(select(Vorschlag).where(Vorschlag.id.in_(data.ablehnen))):
         if v.status == "offen":
-            v.status = "abgelehnt"
+            v.status = "abgelehnt"  # unbestätigte Bon-Variante bleibt unbestätigt (zählt weiter)
     s.commit()
     return {
         "uebernommen": sum(1 for v in gewaehlt.values() if v.status == "uebernommen"),
         "abgelehnt": len(data.ablehnen),
         "fehler": fehler,
     }
+
+
+# --- Packungsgrößen ---------------------------------------------------------------------------
+
+ANWEISUNG_PACKUNGEN = """Du kennst das Sortiment deutscher Supermärkte (Rewe, Edeka, Aldi, Lidl,
+Kaufland, dm). Nenne je Produkt die Packungsgrößen, die es dort üblicherweise gibt.
+Produkte (id|name|bestandseinheit|gekauft laut Bons: Größe×Anzahl|bekannte Größen|Angebote):
+{liste}
+
+Felder je Produkt:
+- groessen: 1 bis 4 gängige Größen. einheit = Packungsart (Packung, Dose, Glas, Flasche, Netz,
+  Becher, Stück), menge = Inhalt in der Bestandseinheit des Produkts (z. B. 500 für 500 g),
+  marke nur, wenn die Größe typisch für eine bestimmte Marke ist, sonst leer.
+- typisch: die Größe, die ein Zwei-Personen-Haushalt am häufigsten kauft (Menge in
+  Bestandseinheit).
+Gekaufte Größen aus den Bons sind Fakten, nimm sie auf. Gib für jedes Produkt genau einen Eintrag
+mit seiner id zurück."""
+
+STRUKTUR_PACKUNGEN = {
+    "produkte": _feld(
+        {
+            "object": {
+                "multiple": True,
+                "fields": {
+                    "id": _feld({"text": {}}),
+                    "groessen": _feld(
+                        {
+                            "object": {
+                                "multiple": True,
+                                "fields": {
+                                    "einheit": _feld({"text": {}}),
+                                    "menge": _feld({"number": {}}),
+                                    "marke": _feld({"text": {}}, required=False),
+                                },
+                            }
+                        }
+                    ),
+                    "typisch": _feld({"number": {}}),
+                },
+            }
+        }
+    )
+}
+
+
+def _variante_uebernehmen(s: Session, v: Vorschlag) -> None:
+    neu = v.neu if isinstance(v.neu, dict) else {}
+    pid = neu.get("packung_id")
+    p = s.get(Packung, int(pid)) if pid else None
+    if p is None:
+        menge = float(neu["menge"])
+        p = next(
+            (
+                x
+                for x in s.scalars(select(Packung).where(Packung.produkt_id == v.objekt_id))
+                if abs(x.menge - menge) < kueche.EPS
+            ),
+            None,
+        ) or Packung(produkt_id=v.objekt_id, menge=menge, quelle=str(neu.get("quelle") or "llm"))
+        s.add(p)
+    p.einheit = str(neu.get("einheit") or p.einheit or "Packung")[:40]
+    p.marke = (str(neu.get("marke") or "").strip() or p.marke) or None
+    p.bestaetigt = True
+
+
+async def _packungen_lauf(s: Session, ki, b, lauf_id: int, umfang: dict) -> int:
+    """Standard = häufigste Größe laut Bons im Zeitraum (Code). KI ergänzt gängige Größen.
+    Alles landet als Vorschlag (Diff-Review), nichts wird gesetzt."""
+    monate = int(umfang.get("monate") or 6)
+    kaeufe = packungen.kaeufe_je_groesse(s, packungen.seit_monaten(monate))
+    varianten: dict[str, list[Packung]] = {}
+    for pk in s.scalars(select(Packung)):
+        varianten.setdefault(pk.produkt_id, []).append(pk)
+    angebote: dict[str, set[float]] = {}
+    for pr in s.scalars(select(Preis).where(Preis.quelle == "angebot")):
+        if pr.menge:
+            angebote.setdefault(pr.produkt_id, set()).add(round(pr.menge, 3))
+    produkte = [p for p in await b.list_products() if p.category != REST_KATEGORIE]
+    if ids := umfang.get("produkt_ids"):
+        produkte = [p for p in produkte if p.id in ids]
+    offen = {
+        (v.objekt_id, v.feld, json.dumps(v.neu, sort_keys=True))
+        for v in s.scalars(select(Vorschlag).where(Vorschlag.status == "offen"))
+    }
+    anzahl = 0
+
+    def vorschlagen(p: Product, feld: str, alt: object, neu: dict) -> None:
+        nonlocal anzahl
+        key = (p.id, feld, json.dumps(neu, sort_keys=True))
+        if key in offen:
+            return
+        offen.add(key)
+        s.add(Vorschlag(lauf_id=lauf_id, typ="produkt", objekt_id=p.id, name=p.name, feld=feld,
+                        alt=alt, neu=neu))  # fmt: skip
+        anzahl += 1
+
+    def fmt(x: float) -> str:
+        return f"{x:g}"
+
+    for i in range(0, len(produkte), BATCH):
+        teil = produkte[i : i + BATCH]
+        zeilen = []
+        for p in teil:
+            gekauft = ", ".join(f"{fmt(g)}×{fmt(n)}" for g, n in kaeufe.get(p.id, {}).items())
+            bekannt = [fmt(p.pack_size)] if p.pack_size else []
+            bekannt += [fmt(v.menge) for v in varianten.get(p.id, []) if v.bestaetigt is not False]
+            zeilen.append(
+                f"{p.id}|{p.name}|{p.unit}|{gekauft or '-'}|{', '.join(bekannt) or '-'}|"
+                + (", ".join(fmt(x) for x in sorted(angebote.get(p.id, ()))) or "-")
+            )
+        daten = await ki.generate(
+            "packungen",
+            "rationPlaner Packungsgrößen",
+            ANWEISUNG_PACKUNGEN.format(liste="\n".join(zeilen)),
+            STRUKTUR_PACKUNGEN,
+        )
+        log.info("Lauf %s Packungen Rohantwort: %s", lauf_id, json.dumps(daten, ensure_ascii=False))
+        by_id = {p.id: p for p in teil}
+        ki_je: dict[str, dict] = {}
+        for e in daten.get("produkte") or []:
+            if isinstance(e, dict) and str(e.get("id")) in by_id:
+                ki_je[str(e["id"])] = e
+        for p in teil:
+            e = ki_je.get(p.id, {})
+            bekannt = [p.pack_size] if p.pack_size else []
+            bekannt += [v.menge for v in varianten.get(p.id, [])]
+            # 1. Standard: häufigste gekaufte Größe (Code), sonst KI-typisch nur ohne Standard
+            standard = packungen.haeufigste(kaeufe.get(p.id, {}))
+            grund = f"häufigste Größe der letzten {monate} Monate laut Bons"
+            if standard is None and not p.pack_size:
+                standard, grund = _float(e.get("typisch"), 0.001, 100000), "KI: typische Größe"
+            if standard and not (p.pack_size and abs(p.pack_size - standard) < kueche.EPS):
+                einheit = next(
+                    (v.einheit for v in varianten.get(p.id, [])
+                     if abs(v.menge - standard) < kueche.EPS and v.einheit != "Packung"),
+                    p.pack_unit or "Packung",
+                )  # fmt: skip
+                alt = {"einheit": p.pack_unit, "menge": p.pack_size} if p.pack_size else None
+                vorschlagen(p, "packung", alt, {"einheit": einheit, "menge": standard,
+                                                "grund": grund})  # fmt: skip
+            # 2. gängige Größen, die noch nicht bekannt sind → neue Variante
+            for g in (e.get("groessen") or [])[:4]:
+                if not isinstance(g, dict):
+                    continue
+                menge = _float(g.get("menge"), 0.001, 100000)
+                if menge is None or any(abs(menge - x) < kueche.EPS for x in bekannt):
+                    continue
+                bekannt.append(menge)
+                vorschlagen(
+                    p,
+                    "variante",
+                    None,
+                    {
+                        "einheit": str(g.get("einheit") or "Packung").strip()[:40] or "Packung",
+                        "menge": menge,
+                        "marke": str(g.get("marke") or "").strip()[:60] or None,
+                        "quelle": "llm",
+                    },
+                )
+        s.commit()
+    return anzahl

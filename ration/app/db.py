@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Date, DateTime, Float, Integer, String, create_engine, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    create_engine,
+    func,
+)
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -35,6 +45,27 @@ class Packung(Base):
     menge: Mapped[float] = mapped_column(Float)  # in Bestandseinheit des Produkts
     quelle: Mapped[str] = mapped_column(String, default="manuell")  # manuell/bon/angebot/llm
     gueltig_bis: Mapped[date | None] = mapped_column(Date, nullable=True)  # Angebot
+    marke: Mapped[str | None] = mapped_column(String, nullable=True)
+    haendler: Mapped[str | None] = mapped_column(String, nullable=True)
+    ean: Mapped[str | None] = mapped_column(String, nullable=True)
+    zuletzt: Mapped[date | None] = mapped_column(Date, nullable=True)  # zuletzt auf einem Bon
+    haeufigkeit: Mapped[int | None] = mapped_column(Integer, nullable=True)  # gekaufte Packungen
+    # False = aus einem Bon erkannt, noch nicht bestätigt (Vorschlag); None/True = gilt
+    bestaetigt: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+
+class PackungKauf(Base):
+    """Jeder Kauf einer Packungsgröße laut Bon: Grundlage für Häufigkeit und Standard-Vorschlag."""
+
+    __tablename__ = "packung_kauf"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    produkt_id: Mapped[str] = mapped_column(String, index=True)
+    menge: Mapped[float] = mapped_column(Float)  # je Packung, Bestandseinheit
+    anzahl: Mapped[float] = mapped_column(Float, default=1)
+    datum: Mapped[date] = mapped_column(Date)
+    markt: Mapped[str | None] = mapped_column(String, nullable=True)
+    packung_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class RezeptMeta(Base):

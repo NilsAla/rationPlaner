@@ -25,8 +25,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import kueche
-from app.db import BonAlias, BonImport, Packung, Preis
+from app import kueche, packungen
+from app.db import BonAlias, BonImport, Preis
 from app.deps import backend, session, settings
 from app.inventory.base import InventoryBackend, Product, ProductPatch, TrackingMode
 from app.rezept_import import _norm
@@ -625,10 +625,7 @@ async def _hinweis(ha, st: Settings, titel: str, text: str) -> None:
 
 
 def _weitere(s: Session) -> dict[str, list[kueche.Groesse]]:
-    result: dict[str, list[kueche.Groesse]] = {}
-    for p in s.scalars(select(Packung)):
-        result.setdefault(p.produkt_id, []).append(kueche.Groesse(p.einheit, p.menge, p.quelle))
-    return result
+    return packungen.weitere(s, alle=True)
 
 
 def summen_pruefung(summe: float | None, positionen: list[dict]) -> dict | None:
@@ -827,13 +824,12 @@ async def bon_buchen(
                     quelle="bon",
                 )
             )
-        if pos.get("packung_abweichend") and pos.get("packung_menge"):
-            groesse = z.menge / anzahl
-            vorhanden = s.scalars(
-                select(Packung).where(Packung.produkt_id == p.id, Packung.menge == groesse)
-            ).first()
-            if vorhanden is None:
-                s.add(Packung(produkt_id=p.id, einheit="Packung", menge=groesse, quelle="bon"))
+        # Packungsgröße zählen, wenn sie auf dem Bon stand oder bestätigt ist (keine Annahme,
+        # keine Gewichtsware). Neue Größe → Variante als Vorschlag.
+        if not pos.get("gewicht") and (pos.get("packung_menge") or not pos.get("annahme")):
+            packungen.kauf_merken(
+                s, p, z.menge / anzahl, anzahl, bon.datum or date.today(), bon.markt
+            )
         gebucht.append({"produkt_id": p.id, "name": p.name, "menge": z.menge, "einheit": p.unit})
     bon.status = "gebucht"
     s.commit()

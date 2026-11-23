@@ -49,7 +49,9 @@ STANDARD: dict[str, dict[str, Any]] = {
     # preise = {Modell oder AI-Task-Entität: {"input": €/1 Mio. Tokens, "output": €/1 Mio.}}
     "ki": {"modus": "ha", "openai_modell": "gpt-4.1-mini", "jobs": {}, "preise": {}},
 }
-KI_JOBS = ("bon", "import", "kochanleitung", "kategorisierung", "naehrwerte", "planer")
+KI_JOBS = (
+    "bon", "import", "kochanleitung", "kategorisierung", "naehrwerte", "planer", "packungen",
+)  # fmt: skip
 
 
 def _bereich(wert: object, lo: float, hi: float, name: str) -> float:
