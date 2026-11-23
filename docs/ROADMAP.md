@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.20.0 / API 1.16)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.21.0 / API 1.16)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -49,18 +49,26 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
   Sollwerte (Menge, Einheit, Anzahl) zusätzlich zum Text in `erwartung`.
 
 **Ergebnis erster Live-Test (Scan, 2026-11-23), offene Fixes:**
-- [ ] **Mehrfachmengen:** SPAGHETTI 2,97 € = 3 × 0,99 € → 1500 g (erkannt: 500 g). TOMATEN PASS.
+- [x] **Mehrfachmengen:** SPAGHETTI 2,97 € = 3 × 0,99 € → 1500 g (erkannt: 500 g). TOMATEN PASS.
   1,38 € vor Coupon = 2 × 500 g (erkannt: 1 ×). Anzahl im Code aus Betrag ÷ Einzelpreis bzw. aus
   der Zeile „N x“ ableiten. Im Zweifel Review statt raten.
-- [ ] **Gebinde:** MINERALW. 12X0,7L → 8400 ml. Muster `NxM(G|KG|ML|L)` im Code parsen, nicht per KI.
-- [ ] **Einheiten:** ml/l für Flüssiges statt g.
-- [ ] **Lesefehler:** EINWEGHANDSCHUHE wurde als „EINWEG SCHUHE“ gelesen und zu „Einweggeschirr“.
+- [x] **Gebinde:** MINERALW. 12X0,7L → 8400 ml. Muster `NxM(G|KG|ML|L)` im Code parsen, nicht per KI.
+- [x] **Einheiten:** ml/l für Flüssiges statt g.
+- [x] **Lesefehler:** EINWEGHANDSCHUHE wurde als „EINWEG SCHUHE“ gelesen und zu „Einweggeschirr“.
   Bon-Text originalgetreu übernehmen, Namensvorschlag nur aus dem Bon-Text.
-- [ ] **Annahmen:** Knoblauch bekam stillschweigend 50 g Standardpackung. Solche Werte als
+- [x] **Annahmen:** Knoblauch bekam stillschweigend 50 g Standardpackung. Solche Werte als
   „Annahme“ markieren (sichtbar im Review).
-- [ ] **Pfand und Storno** mitprüfen.
+- [x] **Pfand und Storno** mitprüfen.
 - **Akzeptanz:** Ein automatischer Test vergleicht jede Zeile gegen die Fixture (Menge, Einheit,
   Anzahl), alle grün. Danach dasselbe mit der Foto-Variante (`testbon-foto.jpg`).
+- **Umgesetzt (0.21.0):** `tests/test_bon_live.py` (KI-Antwort mit den Live-Fehlern gegen
+  `fixtures/testbon-loesung.json`, Sollwerte je Zeile jetzt in der Fixture), grün. Mengenzeilen
+  („3 x 0,99“, „0,486 kg x 3,99“) kommen als typ `mengenzeile`, der Code ordnet sie über den
+  Zeilenpreis der Ware davor/danach zu, unklar → `zweifel` (Review). Größen und Gebinde parst
+  `groesse_aus_text` (g/ml/Stück), Bon-Text vor KI. Neue Produkte mit Einheit g/ml/Stück.
+  KI-Namen, die nicht zum Bon-Text passen (`name_passt`), werden verworfen. Standard-Packung ohne
+  Aufdruck = „Annahme“ (nicht vorausgewählt); bei bekanntem Alias gilt die zuletzt bestätigte Menge.
+- **Offen: Live-Nachtest** mit Scan und Foto gegen die echte KI (Nils).
 
 ### 2. Neue Startseite – erledigt (0.19.0)
 - `views/uebersicht.js` neu: Heute groß mit Foto, nächste 6 Tage als Fotokarten (Drag&Drop,
@@ -123,6 +131,25 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
    Varianten, die tatsächlich gekauft werden (Häufigkeit/zuletzt gesehen als Tie-Breaker).
 - Akzeptanz: Tests für Größen-Parser (400G, 2x250g, 12X0,7L, 1,5KG), Abgleich und
   Häufigkeitszählung, Einkaufslisten-Auswahl mit Präferenz. Kein Stammdaten-Update ohne Review.
+
+### 7. Kostenplanung / Ausgaben-Recap (offen, Nils 2026-11-23)
+- Grundlage sind **alle** Bon-Zeilen (auch Non-Food, Snacks, Alkohol), unabhängig davon, ob sie
+  eingebucht werden. Diese Ausgaben tauchen **nicht** im Inventar auf (Verbrauchen wäre zu
+  kompliziert), sie liegen nur in der App-DB (Ausgaben-Tabelle je Bon-Zeile, Betrag nach
+  Rabatt/Storno, Pfand/Leergut getrennt).
+- Kategorie je Zeile: Gemüse, Obst, Snacks, Getränke, Alkohol, Drogerie, Haushalt usw.
+  Gebuchte Produkte nehmen ihre Produkt-Kategorie, der Rest kommt per KI-Vorschlag beim Bon-Lesen
+  (Feld im Structured Output). Kategorie je Bon-Text merken (wie Alias), damit sie beim nächsten
+  Mal ohne KI feststeht. Im Review änderbar.
+- **Monats-Recap** automatisch (z. B. am 1. als HA-Hinweis): Summe, je Kategorie, je Markt,
+  Vergleich zum Vormonat. Rechnet der Code, keine KI.
+- **Geplant vs. spontan**: Eine Bon-Zeile gilt als geplant, wenn ihr Produkt auf der erzeugten
+  Einkaufsliste bzw. im Bedarf eines geplanten Gerichts (Plan der Kaufwoche) stand, sonst als
+  spontan. Dafür Einkaufslisten-Positionen mit Datum speichern.
+- Seite „Ausgaben“: Monat wählbar, Balken je Kategorie, Anteil geplant/spontan, Top-Spontankäufe,
+  Verlauf über Monate. Desktop und 390 px.
+- Akzeptanz: Tests für Kategorisierung per gemerktem Bon-Text, Recap-Rechnung, Zuordnung
+  geplant/spontan; Bon-Zeilen ohne Buchung landen trotzdem in den Ausgaben.
 
 ## Getroffene Entscheidungen (nicht stillschweigend ändern)
 

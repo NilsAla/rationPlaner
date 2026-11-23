@@ -47,6 +47,29 @@ ZEILEN = [
     ("non_food", "EINWEGHANDSCHUHE 100ST", 1, 2.49, None, "B", "Non-Food, trotz 'Einweg'"),
 ]
 
+# Soll je Zeile nach der Auswertung (Code): Anzahl, Gesamtmenge laut Bon, Einheit (g/ml/Stück).
+# None = keine Ware oder keine Größe auf dem Bon.
+SOLL = [
+    (1, 486, "g"),  # Gewichtsware
+    (3, 1500, "g"),  # "3 x 0,99" über der Zeile
+    (1, 400, "g"),
+    (1, 800, "g"),
+    (2, 1000, "g"),  # "2 x 0,69" über der Zeile, Preis vor Coupon 1,38
+    (None, None, None),  # Coupon
+    (1, 2000, "g"),
+    (1, 750, "ml"),
+    (None, None, None),  # Rabatt
+    (1, 500, "ml"),
+    (1, 8400, "ml"),  # Gebinde 12 × 0,7 l
+    (None, None, None),  # Pfand
+    (1, None, None),  # Knoblauch: Größe steht nicht auf dem Bon
+    (1, 500, "g"),  # wird storniert
+    (None, None, None),  # Storno
+    (1, None, None),
+    (None, None, None),  # Leergut
+    (1, 100, "Stück"),
+]
+
 
 def betrag(z) -> float:
     typ, _, anzahl, einzel, gesamt, *_ = z
@@ -153,8 +176,16 @@ def main() -> None:
         "datum": "2026-11-21",
         "summe": summe,
         "zeilen": [
-            {"typ": z[0], "text": z[1].strip(), "betrag": betrag(z), "erwartung": z[6]}
-            for z in ZEILEN
+            {
+                "typ": z[0],
+                "text": z[1].strip(),
+                "betrag": betrag(z),
+                "erwartung": z[6],
+                "anzahl": soll[0],
+                "menge": soll[1],
+                "einheit": soll[2],
+            }
+            for z, soll in zip(ZEILEN, SOLL, strict=True)
         ],
     }
     (ziel / "testbon-loesung.json").write_text(json.dumps(loesung, ensure_ascii=False, indent=1))

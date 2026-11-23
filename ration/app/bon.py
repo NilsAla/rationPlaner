@@ -16,7 +16,9 @@ import re
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import date
+from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
@@ -39,7 +41,7 @@ UNTERORDNER = Path("ration") / "bons"
 MEDIA_SOURCE = "media-source://media_source/local"
 
 # Zeilentypen. Die KI typisiert, eindeutige Bon-Wörter am Zeilenanfang gehen vor (_typ).
-TYPEN = ("artikel", "non_food", "pfand", "leergut", "rabatt", "storno")
+TYPEN = ("artikel", "non_food", "pfand", "leergut", "rabatt", "storno", "mengenzeile")
 # Zeilen, die keine Bon-Position sind (falls die KI sie trotzdem liefert). Bewusst am
 # Zeilenanfang verankert: "Tütensuppe" oder "Einweghandschuhe" sind Ware.
 SONST = re.compile(
@@ -48,6 +50,68 @@ SONST = re.compile(
 )
 STUECK = {"stück", "stk", "st", "portion"}
 MASSE_G = {"g": 1.0, "kg": 1000.0, "ml": 1.0, "l": 1000.0, "cl": 10.0}
+# Einheit laut Bon → Basiseinheit (g, ml, Stück) und Faktor
+BASIS = {
+    "g": ("g", 1.0), "kg": ("g", 1000.0), "ml": ("ml", 1.0), "cl": ("ml", 10.0),
+    "l": ("ml", 1000.0), "st": ("Stück", 1.0), "stk": ("Stück", 1.0), "stück": ("Stück", 1.0),
+}  # fmt: skip
+_ZAHL = r"(\d+(?:[.,]\d+)?)"
+_EINHEIT = r"(kg|g|ml|cl|l|stk|st)"
+# Gebinde im Bon-Text: "12X0,7L", "2x250g"; einfache Größe: "500G", "0,75L", "100ST"
+GEBINDE = re.compile(rf"(?i)(?<![\d,.])(\d{{1,3}})\s*[x×*]\s*{_ZAHL}\s?{_EINHEIT}\b")
+GROESSE = re.compile(rf"(?i)(?<![\d,.]){_ZAHL}\s?{_EINHEIT}\b")
+# Mengenzeile über/unter der Ware: "3 x 0,99", "2 Stk x 0,69", "0,486 kg x 3,99 EUR/kg"
+MENGE_STUECK = re.compile(
+    rf"(?i)^\s*(\d{{1,3}})\s*(?:stk|st|stück)?\.?\s*[x×*]\s*{_ZAHL}\s*(?:eur|€)?\s*$"
+)
+MENGE_GEWICHT = re.compile(
+    rf"(?i)^\s*{_ZAHL}\s*kg\s*[x×*]\s*{_ZAHL}\s*(?:eur|€)?\s*(?:/\s*kg)?\s*$"
+)
+
+
+def _f(text: str) -> float:
+    return float(text.replace(",", "."))
+
+
+def groesse_aus_text(text: str) -> tuple[float, str] | None:
+    """Packungsgröße aus dem Bon-Text in g, ml oder Stück (Code, nicht KI)."""
+    if m := GEBINDE.search(text):
+        basis, faktor = BASIS[m.group(3).lower()]
+        return round(int(m.group(1)) * _f(m.group(2)) * faktor, 3), basis
+    if m := GROESSE.search(text):
+        basis, faktor = BASIS[m.group(2).lower()]
+        return round(_f(m.group(1)) * faktor, 3), basis
+    return None
+
+
+def mengenzeile(text: str) -> tuple[str, float, float] | None:
+    """("stueck", Anzahl, Einzelpreis) oder ("gewicht", kg, €/kg)."""
+    if m := MENGE_GEWICHT.match(text):
+        return "gewicht", _f(m.group(1)), _f(m.group(2))
+    if m := MENGE_STUECK.match(text):
+        return "stueck", float(m.group(1)), _f(m.group(2))
+    return None
+
+
+def name_passt(name: str, text: str) -> bool:
+    """Namensvorschlag nur aus dem Bon-Text: Jedes Wort ab 4 Buchstaben muss zu mindestens
+    der Hälfte (und mindestens 4 Zeichen am Stück) im Bon-Text stehen."""
+
+    def n(x: str) -> str:
+        x = x.lower()
+        for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+            x = x.replace(a, b)
+        return x
+
+    bon = re.sub(r"[^a-z]", "", n(text))
+    for wort in re.findall(r"[a-z]+", n(name)):
+        if len(wort) < 4:
+            continue
+        m = SequenceMatcher(None, wort, bon).find_longest_match(0, len(wort), 0, len(bon))
+        if m.size < max(4, len(wort) / 2):
+            return False
+    return True
+
 
 ANWEISUNG = """Lies den Kassenbon auf dem Bild und ordne jede gekaufte Ware einem Produkt zu.
 
@@ -57,20 +121,24 @@ Katalog (id|name|einheit):
 Regeln:
 - Jede Zeile mit Betrag in Bon-Reihenfolge, auch Pfand, Leergut, Rabatte, Coupons und Stornos.
   Nicht aufnehmen: Summe, Zahlungsart, MwSt-Tabelle, Kopf- und Fußtexte.
-- Steht "2 x 0,69" oder "0,486 kg x 3,99 EUR/kg" in einer eigenen Zeile über oder unter der
-  Ware, gehört das zu dieser Ware (keine eigene Zeile).
+- Zeilen ohne eigenen Artikelnamen wie "3 x 0,99", "2 Stk x 0,69" oder "0,486 kg x 3,99 EUR/kg"
+  gibst du als eigene Position mit typ mengenzeile aus, text genau wie gedruckt, preis 0. Der
+  Code ordnet sie der passenden Ware zu.
 - typ: artikel (Lebensmittel, Getränke), non_food (Drogerie, Haushalt), pfand, leergut,
-  rabatt (auch Coupon, Preisvorteil), storno.
+  rabatt (auch Coupon, Preisvorteil), storno, mengenzeile.
 - bezug: bei rabatt und storno die Nummer (ab 0) der Zeile in deiner Liste, auf die sie sich
   beziehen; sonst leer.
-- text: der Bon-Text der Zeile, unverändert.
+- text: der Bon-Text der Zeile Zeichen für Zeichen wie gedruckt, auch Abkürzungen. Keine Wörter
+  trennen, zusammenziehen, korrigieren oder ergänzen ("EINWEGHANDSCHUHE" bleibt so).
 - anzahl: gekaufte Stückzahl (bei "2 x 1,29" → 2; bei Gewichtsware 1).
 - einzelpreis: Preis je Stück bzw. je kg, wenn er auf dem Bon steht, sonst 0.
 - preis: Betrag der Zeile in Euro wie gedruckt (Rabatt, Storno, Leergut negativ).
-- packung_menge/packung_einheit: nur wenn die Größe auf dem Bon steht ("500G", "1KG", "1,5L",
-  Gewichtsware "0,734 kg"), sonst 0 und "".
+- packung_menge/packung_einheit: Größe EINER Packung, nur wenn sie auf dem Bon steht ("500G",
+  "1KG", "1,5L"; Gebinde "12X0,7L" → 8,4 und "l"), sonst 0 und "". Nie schätzen.
 - produkt_id: nur wenn ein Katalogprodukt genau diese Ware ist, sonst leer.
 - neu_name: kurzer deutscher Produktname im Singular ohne Marke und Größe, wenn produkt_id leer.
+  Nur aus den Wörtern des Bon-Texts ableiten (Abkürzungen ausschreiben ist erlaubt), nichts
+  dazuerfinden. Unklar → Bon-Text übernehmen.
 - konfidenz: 0 bis 1, wie sicher die Zuordnung ist.
 markt: Name des Geschäfts. datum: Kaufdatum als JJJJ-MM-TT. summe: Gesamtbetrag."""
 
@@ -133,6 +201,11 @@ class Position:
     vorausgewaehlt: bool = False
     packung_abweichend: bool = False  # Größe auf dem Bon ≠ bekannte Packungen
     alternativen: list[dict] = field(default_factory=list)
+    gewicht: bool = False  # Gewichtsware: packung_menge ist das gewogene Gewicht
+    bon_menge: float | None = None  # Gesamtmenge laut Bon (Anzahl × Packung) in bon_einheit
+    bon_einheit: str | None = None  # g / ml / Stück
+    annahme: bool = False  # Menge beruht auf einer Annahme (z. B. Standard-Packung)
+    zweifel: bool = False  # Code konnte Anzahl/Gewicht nicht bestätigen → Review
 
 
 def norm_markt(markt: str | None) -> str:
@@ -154,22 +227,32 @@ def _zahl(wert: object) -> float | None:
 def menge_berechnen(
     pos: Position, p: Product, weitere: list[kueche.Groesse] | None = None
 ) -> tuple[float | None, str, bool]:
-    """Menge in Bestandseinheit, Hinweis, ob die Bon-Größe von bekannten Packungen abweicht."""
+    """Menge in Bestandseinheit, Hinweis, ob die Bon-Größe von bekannten Packungen abweicht.
+
+    packung_menge/packung_einheit stehen schon in Basiseinheit (g, ml, Stück)."""
     unit = p.unit.strip().lower()
     anzahl = pos.anzahl or 1
-    e = (pos.packung_einheit or "").strip().lower()
-    if pos.packung_menge and e in MASSE_G:
-        gramm = pos.packung_menge * MASSE_G[e]
-        if unit in ("g", "ml"):
+    groesse, basis = pos.packung_menge, pos.packung_einheit
+    if groesse and basis in ("g", "ml"):
+        faktor = {"g": 1.0, "ml": 1.0, "kg": 1000.0, "l": 1000.0}.get(unit)
+        if faktor:
+            je = groesse / faktor
             bekannt = [g.menge for g in kueche.groessen(p, weitere)]
-            abweichend = bool(bekannt) and all(abs(gramm - b) > kueche.EPS for b in bekannt)
-            return anzahl * gramm, f"{anzahl:g} × {gramm:g} {unit} laut Bon", abweichend
+            abweichend = (
+                not pos.gewicht and bool(bekannt) and all(abs(je - b) > kueche.EPS for b in bekannt)
+            )
+            if pos.gewicht:
+                return round(je, 3), f"{groesse:g} {basis} gewogen", False
+            return round(anzahl * je, 3), f"{anzahl:g} × {je:g} {p.unit} laut Bon", abweichend
         if p.grams_per_unit:
-            return anzahl * gramm / p.grams_per_unit, "über g je Einheit umgerechnet", False
+            return anzahl * groesse / p.grams_per_unit, "über g je Einheit umgerechnet", False
+    if groesse and basis == "Stück" and unit in STUECK:
+        return anzahl * groesse, f"{anzahl:g} × {groesse:g} Stück laut Bon", False
     if p.pack_size:
+        pos.annahme = True
         return (
             anzahl * p.pack_size,
-            f"{anzahl:g} × Standard-Packung {p.pack_size:g} {p.unit}",
+            f"Annahme: {anzahl:g} × Standard-Packung {p.pack_size:g} {p.unit} (nicht auf dem Bon)",
             False,
         )
     if unit in STUECK:
@@ -188,6 +271,8 @@ def _typ(e: dict, text: str) -> str:
         return "pfand"
     if re.match(r"\s*(rabatt|coupon|gutschein|preisvorteil|aktionsrabatt|nachlass)\b", t):
         return "rabatt"
+    if mengenzeile(text):
+        return "mengenzeile"
     if SONST.search(text):
         return "sonstiges"
     ki = str(e.get("typ") or "").strip().lower()
@@ -216,6 +301,7 @@ def auswerten(
     aliase: dict[tuple[str, str], str],
     weitere: dict[str, list[kueche.Groesse]],
     schwelle: float,
+    alias_mengen: dict[tuple[str, str], float] | None = None,
 ) -> tuple[str | None, date | None, float | None, list[Position]]:
     """LLM-Antwort validieren und in Positionen übersetzen. Nichts wird geraten.
 
@@ -243,6 +329,9 @@ def auswerten(
         if typ == "sonstiges":
             continue  # Summe, Zahlung, MwSt: keine Bon-Zeile
         bezug = _zahl(e.get("bezug"))
+        if typ == "mengenzeile":
+            liste.append((Position(index=-1, text=text, anzahl=1, preis=None, typ=typ), e))
+            continue
         pos = Position(
             index=len(liste),
             text=text,
@@ -252,17 +341,28 @@ def auswerten(
             anzahl=_zahl(e.get("anzahl")) or 1,
             preis=_betrag(e.get("preis")),
             einzelpreis=_betrag(e.get("einzelpreis")),
-            packung_menge=_zahl(e.get("packung_menge")) or None,
-            packung_einheit=str(e.get("packung_einheit") or "").strip() or None,
             konfidenz=min(max(_zahl(e.get("konfidenz")) or 0.0, 0.0), 1.0),
         )
+        _packung_setzen(pos, e)
         liste.append((pos, e))
+
+    # Mengenzeilen ("3 x 0,99") der Ware darüber oder darunter zuordnen, deren Preis passt
+    for k, (pos, _) in enumerate(liste):
+        if pos.typ == "mengenzeile":
+            _mengenzeile_zuordnen(pos.text, liste, k)
+    liste = [(p, e) for p, e in liste if p.typ != "mengenzeile"]
+    for i, (pos, _) in enumerate(liste):
+        pos.index = i
     positionen = [p for p, _ in liste]
 
     # 2. Anzahl × Einzelpreis, Rabatte, Stornos
     for pos in positionen:
         if pos.typ in ("artikel", "non_food"):
             _anzahl_pruefen(pos)
+            if pos.packung_menge and pos.packung_einheit:
+                anzahl = 1 if pos.gewicht else pos.anzahl
+                pos.bon_menge = round(anzahl * pos.packung_menge, 3)
+                pos.bon_einheit = pos.packung_einheit
     for k, pos in enumerate(positionen):
         if pos.typ not in ("rabatt", "storno"):
             continue
@@ -307,9 +407,10 @@ def auswerten(
         pos.betrag = pos.preis
         if pos.rabatt:
             pos.hinweis = f"Rabatt −{pos.rabatt:.2f} € verrechnet".replace(".", ",")
-        pid = aliase.get((norm_markt(markt), norm_text(pos.text))) or aliase.get(
-            ("", norm_text(pos.text))
-        )
+        schluessel = (norm_markt(markt), norm_text(pos.text))
+        if schluessel not in aliase:
+            schluessel = ("", norm_text(pos.text))
+        pid = aliase.get(schluessel)
         if pid in by_id:
             pos.quelle, pos.produkt_id = "alias", pid
         elif pos.typ == "artikel" and (llm_id := str(e.get("produkt_id") or "").strip()) in by_id:
@@ -317,33 +418,102 @@ def auswerten(
         if pos.produkt_id:
             p = by_id[pos.produkt_id]
             pos.produkt, pos.einheit = p.name, p.unit
-            menge, hinweis, pos.packung_abweichend = menge_berechnen(pos, p, weitere.get(p.id))
+            gelernt = (alias_mengen or {}).get(schluessel) if pos.quelle == "alias" else None
+            if gelernt and not pos.packung_menge:
+                # Kein Größenaufdruck, aber bei diesem Bon-Text bestätigt: keine Annahme
+                menge, hinweis = round(pos.anzahl * gelernt, 3), "Menge wie beim letzten Kauf"
+            else:
+                menge, hinweis, pos.packung_abweichend = menge_berechnen(pos, p, weitere.get(p.id))
             pos.menge = menge
             pos.hinweis = "; ".join(x for x in (pos.hinweis, hinweis) if x)
-            if pos.menge is None:
+            if pos.menge is None or pos.zweifel:
                 pos.status = "pruefen"
-            elif pos.quelle == "alias":
+            elif pos.quelle == "alias" and not pos.annahme:
                 pos.status = "sicher"
             else:
                 pos.status = "vorschlag"
-            pos.vorausgewaehlt = pos.status == "sicher" or (
-                pos.status == "vorschlag" and pos.konfidenz >= schwelle
+            pos.vorausgewaehlt = not pos.annahme and (
+                pos.status == "sicher" or (pos.status == "vorschlag" and pos.konfidenz >= schwelle)
             )
             continue
         name = str(e.get("neu_name") or "").strip()[:60]
-        pos.aktion, pos.quelle, pos.neu_name = "neu", "neu", name or pos.text.title()
-        pos.einheit = "g"
+        if name and not name_passt(name, pos.text):
+            pos.hinweis = "; ".join(
+                x for x in (pos.hinweis, f"KI-Name „{name}“ passt nicht zum Bon-Text") if x
+            )
+            name = ""
+        pos.aktion, pos.quelle, pos.neu_name = "neu", "neu", name or _name_aus_text(pos.text)
+        pos.einheit = pos.bon_einheit or "g"
         if pos.typ == "non_food":
             pos.quelle = "non_food"
             pos.hinweis = "; ".join(
                 x for x in (pos.hinweis, "Non-Food, nur buchen, wenn du es in Grocy führst") if x
             )
-        if pos.packung_menge and (pos.packung_einheit or "").lower() in MASSE_G:
-            pos.menge = pos.anzahl * pos.packung_menge * MASSE_G[pos.packung_einheit.lower()]
-            pos.status = "vorschlag"
+        if pos.bon_menge:
+            pos.menge = pos.bon_menge
+            pos.status = "pruefen" if pos.zweifel else "vorschlag"
         elif pos.typ == "artikel":
             pos.hinweis = "; ".join(x for x in (pos.hinweis, "Menge in g eintragen") if x)
     return markt, datum, summe, positionen
+
+
+def _name_aus_text(text: str) -> str:
+    """Bon-Text ohne Größenangabe als Namensvorschlag."""
+    ohne = GROESSE.sub("", GEBINDE.sub("", text))
+    return re.sub(r"\s+", " ", ohne).strip(" .,-").title() or text.title()
+
+
+def _packung_setzen(pos: Position, e: dict) -> None:
+    """Packungsgröße in Basiseinheit: Bon-Text (Code) vor KI. Gewichtsware: KI-Angabe in kg mit
+    Nachkommastellen ohne Größe im Text."""
+    aus_text = groesse_aus_text(pos.text)
+    menge = _zahl(e.get("packung_menge")) or None
+    einheit = str(e.get("packung_einheit") or "").strip().lower()
+    ki = (
+        (round(menge * BASIS[einheit][1], 3), BASIS[einheit][0])
+        if menge and einheit in BASIS
+        else None
+    )
+    if aus_text:
+        pos.packung_menge, pos.packung_einheit = aus_text
+        if ki and abs(ki[0] - aus_text[0]) > kueche.EPS:
+            pos.hinweis = (
+                f"Größe aus dem Bon-Text ({aus_text[0]:g} {aus_text[1]}), KI las {ki[0]:g}"
+            )
+    elif ki:
+        pos.packung_menge, pos.packung_einheit = ki
+        pos.gewicht = einheit == "kg" and not float(menge).is_integer()  # type: ignore[arg-type]
+
+
+def _mengenzeile_zuordnen(text: str, liste: list[tuple[Position, dict]], k: int) -> None:
+    """Ware direkt davor oder danach, deren Zeilenpreis Anzahl × Einzelpreis bzw. kg × €/kg ist.
+    Passt keine oder beide nicht eindeutig: Review statt raten."""
+    art, wert, preis = mengenzeile(text) or ("", 0.0, 0.0)
+    nachbarn = [
+        liste[j][0]
+        for j in (k - 1, k + 1)
+        if 0 <= j < len(liste) and liste[j][0].typ in ("artikel", "non_food")
+    ]
+    passend = [n for n in nachbarn if n.preis and abs(n.preis - round(wert * preis, 2)) < 0.005]
+    if len(passend) != 1:
+        for n in nachbarn:
+            n.zweifel = True
+            n.hinweis = "; ".join(
+                x for x in (n.hinweis, f"„{text.strip()}“ nicht eindeutig zuzuordnen") if x
+            )
+        return
+    ziel = passend[0]
+    ziel.einzelpreis = preis
+    if art == "gewicht":
+        ziel.anzahl, ziel.gewicht = 1, True
+        ziel.packung_menge, ziel.packung_einheit = round(wert * 1000, 3), "g"
+        gewogen = f"{wert:g} kg × {preis:.2f} €/kg".replace(".", ",")
+        ziel.hinweis = "; ".join(x for x in (ziel.hinweis, gewogen) if x)
+    else:
+        ziel.anzahl = wert
+        ziel.hinweis = "; ".join(
+            x for x in (ziel.hinweis, f"Anzahl {wert:g} aus „{text.strip()}“") if x
+        )
 
 
 def _betrag(wert: object) -> float | None:
@@ -357,22 +527,26 @@ def _betrag(wert: object) -> float | None:
 
 def _anzahl_pruefen(pos: Position) -> None:
     """Code rechnet: Passt Anzahl × Einzelpreis nicht zum Preis, gilt Preis ÷ Einzelpreis,
-    wenn das eine ganze Zahl ist. Gewichtsware (kg-Preis) bleibt bei Anzahl 1."""
+    wenn das eine ganze Zahl ist, sonst Review. Gewichtsware: Gewicht × kg-Preis prüfen."""
     if not pos.einzelpreis or not pos.preis:
         return
-    gewicht = (pos.packung_einheit or "").lower() in ("kg", "g") and pos.packung_menge
-    if gewicht and not float(pos.packung_menge).is_integer():
-        kg = pos.packung_menge * MASSE_G[pos.packung_einheit.lower()] / 1000
-        if abs(kg * pos.einzelpreis - pos.preis) > 0.02:
+    if pos.gewicht and pos.packung_menge:
+        if abs(pos.packung_menge / 1000 * pos.einzelpreis - pos.preis) > 0.02:
+            pos.zweifel = True
             pos.hinweis = "Gewicht × kg-Preis passt nicht zum Preis, bitte prüfen"
         return
     if abs(pos.anzahl * pos.einzelpreis - pos.preis) <= 0.02:
         return
     n = pos.preis / pos.einzelpreis
     if round(n) >= 1 and abs(n - round(n)) < 0.03:
-        pos.hinweis = f"Anzahl {pos.anzahl:g} → {round(n)} (Preis ÷ Einzelpreis)"
+        pos.hinweis = "; ".join(
+            x
+            for x in (pos.hinweis, f"Anzahl {pos.anzahl:g} → {round(n)} (Preis ÷ Einzelpreis)")
+            if x
+        )
         pos.anzahl = round(n)
     else:
+        pos.zweifel = True
         pos.hinweis = "Anzahl × Einzelpreis passt nicht zum Preis, bitte prüfen"
 
 
@@ -416,10 +590,12 @@ async def verarbeiten(app, bon_id: int) -> None:
                 ],
             )
             log.info("Bon %s Rohantwort: %s", bon_id, json.dumps(daten, ensure_ascii=False))
-            aliase = {(a.markt, a.text): a.produkt_id for a in s.scalars(select(BonAlias))}
+            alle = list(s.scalars(select(BonAlias)))
+            aliase = {(a.markt, a.text): a.produkt_id for a in alle}
+            alias_mengen = {(a.markt, a.text): a.menge for a in alle if a.menge}
             weitere = _weitere(s)
             markt, datum, summe, pos = auswerten(
-                daten, produkte, aliase, weitere, st.bon_konfidenz_schwelle
+                daten, produkte, aliase, weitere, st.bon_konfidenz_schwelle, alias_mengen
             )
             bon.roh, bon.markt, bon.datum, bon.summe = daten, markt, datum, summe
             bon.positionen = [asdict(p) for p in pos]
@@ -587,6 +763,7 @@ class BuchenPosIn(BaseModel):
     index: int = Field(ge=0)
     produkt_id: str | None = None
     neu_anlegen: str | None = Field(default=None, max_length=60)
+    einheit: Literal["g", "ml", "Stück"] = "g"  # Bestandseinheit für neu_anlegen
     menge: float = Field(gt=0)  # Bestandseinheit
     preis: float | None = Field(default=None, ge=0)
     mhd: date | None = None
@@ -618,7 +795,7 @@ async def bon_buchen(
         if pos is None:
             raise HTTPException(422, f"Zeile {z.index} gibt es nicht")
         if z.neu_anlegen:
-            p = await b.create_product(z.neu_anlegen.strip(), "g")
+            p = await b.create_product(z.neu_anlegen.strip(), z.einheit)
             neu.append(p.name)
         elif z.produkt_id:
             p = await b.get_product(z.produkt_id)

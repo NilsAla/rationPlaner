@@ -129,19 +129,25 @@ async function bonZeigen(box, id, produkte, fertig) {
     <div class="tabelle"><table><thead><tr><th class="check"><input type="checkbox" id="balle" checked></th><th>Bon-Text</th><th>Produkt</th><th>Menge</th><th>Preis</th></tr></thead>
     <tbody>${zeilen.map((z) => `<tr><td class="check"><input type="checkbox" data-bc="${z.index}" ${z.vorausgewaehlt ? "checked" : ""}></td>
       <td>${esc(z.text)} <span class="tag ${z.quelle === "non_food" ? "" : z.status === "sicher" ? "good" : z.status === "vorschlag" ? "warn" : "bad"}">${esc(z.quelle === "non_food" ? "Non-Food" : z.quelle)}</span>
+        ${z.annahme ? ` <span class="tag warn" title="Menge steht nicht auf dem Bon">Annahme</span>` : ""}
+        ${z.zweifel ? ` <span class="tag bad" title="Anzahl oder Gewicht passt nicht zum Preis">prüfen</span>` : ""}
         ${z.hinweis ? `<div class="muted tiny">${esc(z.hinweis)}</div>` : ""}</td>
       <td><select data-bp="${z.index}">${opts(z)}</select>
-        <input data-bn="${z.index}" value="${esc(z.neu_name ?? "")}" style="display:${z.aktion === "neu" ? "block" : "none"};margin-top:4px"></td>
+        <span data-bnbox="${z.index}" style="display:${z.aktion === "neu" ? "flex" : "none"};gap:4px;margin-top:4px">
+          <input data-bn="${z.index}" value="${esc(z.neu_name ?? "")}">
+          <select data-bu="${z.index}" style="width:auto" title="Bestandseinheit des neuen Produkts">${["g", "ml", "Stück"].map((u) =>
+            `<option ${u === (z.einheit ?? "g") ? "selected" : ""}>${u}</option>`).join("")}</select></span></td>
       <td class="nw"><input data-bm="${z.index}" type="number" min="0" step="any" value="${z.menge ?? ""}" style="width:90px">
         <span class="muted tiny" data-be="${z.index}">${esc(z.einheit ?? "g")}</span></td>
       <td class="nw right">${z.preis != null ? eur(z.preis) : ""}${z.rabatt ? `<div class="muted tiny">−${eur(z.rabatt)} Rabatt</div>` : ""}</td></tr>`).join("")}</tbody></table></div>
     <div class="row" style="margin-top:10px"><button class="btn primary" id="bbuchen">Ausgewählte buchen</button>
       <button class="btn danger" id="bweg">Bon verwerfen</button></div></div>`;
+  $$("[data-bu]", box).forEach((u) => u.onchange = () => { $(`[data-be="${u.dataset.bu}"]`, box).textContent = u.value; });
   $("#balle", box).onchange = (e) => $$("[data-bc]", box).forEach((c) => { c.checked = e.target.checked; });
   $$("[data-bp]", box).forEach((sel) => sel.onchange = () => {
     const i = sel.dataset.bp;
-    $(`[data-bn="${i}"]`, box).style.display = sel.value === "+neu" ? "block" : "none";
-    $(`[data-be="${i}"]`, box).textContent = einheit[sel.value] ?? "g";
+    $(`[data-bnbox="${i}"]`, box).style.display = sel.value === "+neu" ? "flex" : "none";
+    $(`[data-be="${i}"]`, box).textContent = einheit[sel.value] ?? $(`[data-bu="${i}"]`, box).value;
     $(`[data-bc="${i}"]`, box).checked = true;
   });
   $("#bbuchen", box).onclick = () => guarded(async () => {
@@ -151,7 +157,8 @@ async function bonZeigen(box, id, produkte, fertig) {
       const sel = $(`[data-bp="${z.index}"]`, box).value, menge = $(`[data-bm="${z.index}"]`, box).value;
       if (!menge) throw new Error(`Menge fehlt: ${z.text}`);
       positionen.push({index: z.index, menge: +menge, preis: z.preis,
-        ...(sel === "+neu" ? {neu_anlegen: $(`[data-bn="${z.index}"]`, box).value} : {produkt_id: sel})});
+        ...(sel === "+neu" ? {neu_anlegen: $(`[data-bn="${z.index}"]`, box).value, einheit: $(`[data-bu="${z.index}"]`, box).value}
+          : {produkt_id: sel})});
     }
     const e = await post(`bon/${id}/buchen`, {positionen});
     toast(`${e.gebucht.length} Positionen eingebucht` + (e.neue_produkte.length ? ` · ${e.neue_produkte.length} neue Produkte` : ""));
