@@ -1,6 +1,6 @@
 [project]
 name = "ration-app"
-version = "0.25.1"
+version = "0.25.2"
 description = "rationPlaner – HA-App für Küchenbestand und Wochenplanung"
 requires-python = ">=3.12"
 dependencies = [

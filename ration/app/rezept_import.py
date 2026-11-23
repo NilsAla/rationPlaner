@@ -196,9 +196,41 @@ def _zahl(text: str) -> float | None:
         return None
 
 
+# Füllwörter, die nicht zum Zutatennamen gehören ("nach Geschmack Salz" → "Salz")
+ZUSATZ = re.compile(
+    r"(?i)(?<![\wäöüß])(?:je\s+)?(?:nach\s+(?:geschmack|belieben|bedarf)|bei\s+bedarf|"
+    r"zum\s+(?:ab)?schmecken|zum\s+(?:be)?streuen|zum\s+garnieren|zum\s+servieren|"
+    r"zum\s+(?:an)?braten|zum\s+frittieren|zum\s+würzen|zum\s+einfetten|für\s+die\s+form|"
+    r"optional|evtl\.?|eventuell|ggf\.?|n\.\s?b\.|etwas|wenig|reichlich|"
+    r"frisch\s+gemahlen(?:er|es|e)?|aus\s+der\s+mühle)(?![\wäöüß])"
+)
+# "Salz und Pfeffer" ohne Menge: zwei Zutaten
+PAAR = re.compile(r"^([A-ZÄÖÜ][\wäöüß-]+)\s+(?:und|&|\+|sowie)\s+([A-ZÄÖÜ][\wäöüß-]+)$")
+
+
+def _ohne_zusatz(text: str) -> str:
+    text = ZUSATZ.sub(" ", text)
+    text = re.sub(r"\(\s*\)", " ", text)
+    return re.sub(r"\s+", " ", text).strip(" ,;:-")
+
+
+def zutaten_parsen(text: str) -> list[RohZutat]:
+    """Wie zutat_parsen, trennt aber "Salz und Pfeffer" (ohne Menge) in zwei Zutaten."""
+    z = zutat_parsen(text)
+    if z.menge is None and (m := PAAR.match(z.name)):
+        return [RohZutat(z.text, None, None, m.group(1)), RohZutat(z.text, None, None, m.group(2))]
+    return [z]
+
+
 def zutat_parsen(text: str) -> RohZutat:
-    """'250 g Spitzpaprika', '½ Stück Zwiebel', '2 EL Olivenöl', 'Salz'."""
-    clean = re.sub(r"\s+", " ", unescape(text)).strip()
+    """'250 g Spitzpaprika', '½ Stück Zwiebel', '2 EL Olivenöl', 'Salz', 'Salz nach Geschmack'."""
+    original = re.sub(r"\s+", " ", unescape(text)).strip()
+    clean = _ohne_zusatz(original) or original
+    # Einheit ohne Zahl: "Prise Salz", "Schuss Essig" → 1
+    if m := re.match(r"^([^\d\s]+)\s+(.+)$", clean):
+        e = EINHEIT_ALIAS.get(m.group(1).lower().rstrip("."), m.group(1).lower().rstrip("."))
+        if e in {"prise", "msp", "messerspitze", "schuss", "spritzer", "handvoll", "bund"}:
+            return RohZutat(original, 1.0, e, m.group(2).strip())
     zahl = r"(\d+(?:[.,]\d+)?(?:\s*/\s*\d+)?(?:\s*[½¼¾⅓⅔⅛])?|[½¼¾⅓⅔⅛])"
     m = re.match(rf"^{zahl}\s*(?:-\s*[\d.,]+\s*)?([^\d\s]+\.?)?\s+(.+)$", clean)
     if m and (menge := _zahl(m.group(1))) is not None:
@@ -207,10 +239,10 @@ def zutat_parsen(text: str) -> RohZutat:
         name = m.group(3)
         if einheit and einheit not in EINHEITEN:  # "2 Zwiebeln" → keine Einheit
             name, einheit = f"{m.group(2)} {name}", ""
-        return RohZutat(clean, menge, einheit or None, name.strip())
+        return RohZutat(original, menge, einheit or None, name.strip())
     if m := re.match(r"^([\d.,½¼¾]+)\s*(g|kg|ml|l)\s+(.+)$", clean, re.I):
-        return RohZutat(clean, _zahl(m.group(1)), m.group(2).lower(), m.group(3).strip())
-    return RohZutat(clean, None, None, clean)
+        return RohZutat(original, _zahl(m.group(1)), m.group(2).lower(), m.group(3).strip())
+    return RohZutat(original, None, None, clean)
 
 
 def _portionen(value: object) -> int:
@@ -289,7 +321,7 @@ def rezept_aus_html(html: str, url: str) -> RohRezept:
     from app.fotos import bilder_aus_html
 
     bild, schritt_bilder = bilder_aus_html(html, data)
-    zutaten = [zutat_parsen(str(z)) for z in data.get("recipeIngredient") or []]
+    zutaten = [x for z in data.get("recipeIngredient") or [] for x in zutaten_parsen(str(z))]
     if not zutaten:
         raise ImportError_("Rezept ohne Zutatenliste")
     return RohRezept(

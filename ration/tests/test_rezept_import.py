@@ -25,11 +25,32 @@ URL = "https://www.hellofresh.de/recipes/testpfanne-mit-paprika-0123456789abcdef
         ("1 Esslöffel Öl", 1, "el", "Öl"),
         ("2 Teelöffel Zucker", 2, "tl", "Zucker"),
         ("1 Stk. Ei", 1, "stück", "Ei"),
+        ("nach Geschmack Salz", None, None, "Salz"),
+        ("Salz nach Geschmack", None, None, "Salz"),
+        ("Salz, nach Belieben", None, None, "Salz"),
+        ("Pfeffer (frisch gemahlen)", None, None, "Pfeffer"),
+        ("etwas Olivenöl zum Anbraten", None, None, "Olivenöl"),
+        ("1 EL Butter zum Einfetten", 1, "el", "Butter"),
+        ("Prise Salz", 1, "prise", "Salz"),
+        ("1 Bund Petersilie, optional", 1, "bund", "Petersilie"),
+        ("Pfeffer aus der Mühle", None, None, "Pfeffer"),
+        ("nach Geschmack", None, None, "nach Geschmack"),  # nur Füllwort: Text bleibt
     ],
 )
 def test_zutat_parsen(text, menge, einheit, name):
     z = ri.zutat_parsen(text)
     assert (z.menge, z.einheit, z.name) == (menge, einheit, name)
+
+
+def test_salz_und_pfeffer_getrennt():
+    assert [z.name for z in ri.zutaten_parsen("Salz und Pfeffer")] == ["Salz", "Pfeffer"]
+    assert [z.name for z in ri.zutaten_parsen("Salz & Pfeffer nach Geschmack")] == [
+        "Salz",
+        "Pfeffer",
+    ]
+    # mit Menge oder mehrteiligem Namen nicht trennen
+    assert len(ri.zutaten_parsen("200 g Erbsen und Möhren")) == 1
+    assert ri.zutat_parsen("nach Geschmack Salz").text == "nach Geschmack Salz"  # Original bleibt
 
 
 def test_quelle_hellofresh_id():
