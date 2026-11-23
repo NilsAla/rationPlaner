@@ -110,6 +110,9 @@ async function bonZeigen(box, id, produkte, fertig) {
       ${esc(bon.status)}${bon.fehler ? ": " + esc(bon.fehler) : ""}</p></div>`; return;
   }
   const einheit = Object.fromEntries(produkte.map((p) => [p.id, p.einheit]));
+  const kats = (await api("ausgaben/kategorien").catch(() => [])).filter((k) => k !== "Pfand");
+  const katSel = (z) => kats.length ? `<select data-bk="${z.index}" class="bk" title="Ausgaben-Kategorie (nur Auswertung)">${
+    [`<option value="">${esc(z.kategorie ?? "Kategorie …")}</option>`, ...kats.map((k) => `<option ${k === z.kategorie ? "selected" : ""}>${esc(k)}</option>`)].join("")}</select>` : "";
   const opts = (z) => `<option value="+neu" ${z.aktion === "neu" ? "selected" : ""}>+ neues Produkt</option>` +
     produkte.map((p) => `<option value="${esc(p.id)}" ${p.id === z.produkt_id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
   const zeilen = bon.positionen.filter((z) => z.aktion !== "weglassen");
@@ -121,7 +124,8 @@ async function bonZeigen(box, id, produkte, fertig) {
     : `<p class="small"><span class="tag bad">Summe weicht ab</span> Bon ${eur(bon.summe)}, nachgerechnet ${eur(pr.berechnet)}
         (Differenz ${eur(pr.abweichung)}). Vermutlich fehlt eine Zeile oder ein Betrag ist falsch gelesen, bitte mit dem Bon vergleichen.</p>`;
   box.innerHTML = `<div class="card"><div class="kopf"><h2>${esc(bon.markt ?? "Bon")} <span class="muted">· ${dmy(bon.datum)} · ${eur(bon.summe ?? 0)}</span></h2></div>
-    <p class="muted small">Haken = wird gebucht. Vorausgewählt sind bekannte Bon-Texte und sichere KI-Treffer. Rabatte und Stornos sind schon verrechnet.</p>
+    <p class="muted small">Haken = wird gebucht. Vorausgewählt sind bekannte Bon-Texte und sichere KI-Treffer. Rabatte und Stornos sind schon verrechnet.
+      Alle Zeilen (auch ohne Haken) landen mit ihrer Kategorie in den <a href="#/ausgaben">Ausgaben</a>, nicht im Inventar.</p>
     ${summenHinweis}
     ${ignoriert.length ? `<details class="small"><summary>${ignoriert.length} Zeilen ohne Buchung (Pfand, Leergut, Rabatt, Storno)</summary>
       <table>${ignoriert.map((z) => `<tr><td><span class="tag">${esc(TYP[z.typ] ?? z.typ)}</span></td><td>${esc(z.text)}</td>
@@ -131,7 +135,7 @@ async function bonZeigen(box, id, produkte, fertig) {
       <td>${esc(z.text)} <span class="tag ${z.quelle === "non_food" ? "" : z.status === "sicher" ? "good" : z.status === "vorschlag" ? "warn" : "bad"}">${esc(z.quelle === "non_food" ? "Non-Food" : z.quelle)}</span>
         ${z.annahme ? ` <span class="tag warn" title="Menge steht nicht auf dem Bon">Annahme</span>` : ""}
         ${z.zweifel ? ` <span class="tag bad" title="Anzahl oder Gewicht passt nicht zum Preis">prüfen</span>` : ""}
-        ${z.hinweis ? `<div class="muted tiny">${esc(z.hinweis)}</div>` : ""}</td>
+        ${z.hinweis ? `<div class="muted tiny">${esc(z.hinweis)}</div>` : ""}${katSel(z)}</td>
       <td><select data-bp="${z.index}">${opts(z)}</select>
         <span data-bnbox="${z.index}" style="display:${z.aktion === "neu" ? "flex" : "none"};gap:4px;margin-top:4px">
           <input data-bn="${z.index}" value="${esc(z.neu_name ?? "")}">
@@ -160,7 +164,8 @@ async function bonZeigen(box, id, produkte, fertig) {
         ...(sel === "+neu" ? {neu_anlegen: $(`[data-bn="${z.index}"]`, box).value, einheit: $(`[data-bu="${z.index}"]`, box).value}
           : {produkt_id: sel})});
     }
-    const e = await post(`bon/${id}/buchen`, {positionen});
+    const kategorien = Object.fromEntries($$("[data-bk]", box).filter((s) => s.value).map((s) => [s.dataset.bk, s.value]));
+    const e = await post(`bon/${id}/buchen`, {positionen, kategorien});
     toast(`${e.gebucht.length} Positionen eingebucht` + (e.neue_produkte.length ? ` · ${e.neue_produkte.length} neue Produkte` : ""));
     fertig();
   });

@@ -21,6 +21,7 @@ export const MENUE = [
     {route: "inventar", titel: "Inventar", ico: "📦", view: "inventar"},
     {route: "einbuchen", titel: "Einbuchen & Bon", ico: "🧾", view: "einbuchen"},
     {route: "reste", titel: "Reste & Füllstand", ico: "🥡", view: "reste"},
+    {route: "ausgaben", titel: "Ausgaben", ico: "💶", view: "ausgaben"},
   ]},
   {gruppe: "Datenbank", ico: "🗂️", punkte: [
     {route: "produkte", titel: "Produkte", ico: "🥕", view: "produkte"},

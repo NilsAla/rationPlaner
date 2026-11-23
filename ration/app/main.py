@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 from collections.abc import AsyncIterator
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Session
 from app import (
     API_VERSION,
     __version__,
+    ausgaben,
     bon,
     einstellungen,
     fotos,
@@ -547,6 +549,8 @@ async def einkaufsliste(
     ).all()
     geplant = [(await b.get_recipe(r.rezept_id), r.portionen) for r in rows]
     fehlend = await kueche.bedarf(b, geplant, weitere_packungen(s))
+    ausgaben.einkauf_merken(s, [pos.produkt_id for pos in fehlend])
+    s.commit()
     vorhanden = [item.lower() for item in await ha.todo_items(todo)]
     neu, schon_da = [], []
     for pos in fehlend:
@@ -619,7 +623,10 @@ def create_app(
             owned.append(app.state.ha)
         app.state.ki = ki.KiClient(app.state.ha, app.state.engine, st, ki_http)
         owned.append(app.state.ki)
+        recap = asyncio.create_task(ausgaben.recap_schleife(app)) if st.supervisor_token else None
         yield
+        if recap:
+            recap.cancel()
         for client in owned:
             await client.aclose()
 
@@ -638,6 +645,7 @@ def create_app(
     app.include_router(uebersicht.router)
     app.include_router(ki.router)
     app.include_router(packungen.router)
+    app.include_router(ausgaben.router)
 
     @app.middleware("http")
     async def aenderungen_protokollieren(request: Request, call_next):

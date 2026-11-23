@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.23.0 / API 1.18)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.24.0 / API 1.19)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -142,7 +142,17 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
 - Akzeptanz: Tests für Größen-Parser (400G, 2x250g, 12X0,7L, 1,5KG), Abgleich und
   Häufigkeitszählung, Einkaufslisten-Auswahl mit Präferenz. Kein Stammdaten-Update ohne Review.
 
-### 7. Kostenplanung / Ausgaben-Recap (offen, Nils 2026-11-23)
+### 7. Kostenplanung / Ausgaben-Recap – erledigt (0.24.0, API 1.19)
+- Umsetzung: `app/ausgaben.py`. Beim Buchen eines Bons werden **alle** Zeilen (ohne Storno,
+  Pfand/Leergut als „Pfand“) zu `ausgabe`-Zeilen, ins Inventar geht nur, was angehakt ist.
+  Kategorie: gemerkter Bon-Text (`ausgabe_kategorie_alias`) > Produkt-Kategorie > KI-Feld
+  `kategorie` im Bon-Schema > Drogerie/Sonstiges. Geplant: Produkt auf der Einkaufsliste der 7 Tage
+  davor (`einkauf_eintrag`, gespeichert bei `POST /einkaufsliste`) oder Zutat eines Gerichts der
+  7 Tage danach. Seite „Ausgaben“ (Vorrat → Ausgaben), Kategorie und geplant je Zeile änderbar.
+  Recap am Monatsanfang als HA-Hinweis (Hintergrundschleife, nur im Add-on). Alte, schon gebuchte
+  Bons: Knopf „Bereits gebuchte Bons übernehmen“ (`POST /ausgaben/neu-berechnen`, ohne
+  Zuordnung der damals gebuchten Produkte, nur KI-Treffer).
+- Ursprüngliche Anforderung:
 - Grundlage sind **alle** Bon-Zeilen (auch Non-Food, Snacks, Alkohol), unabhängig davon, ob sie
   eingebucht werden. Diese Ausgaben tauchen **nicht** im Inventar auf (Verbrauchen wäre zu
   kompliziert), sie liegen nur in der App-DB (Ausgaben-Tabelle je Bon-Zeile, Betrag nach

@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import kueche, packungen
+from app import ausgaben, kueche, packungen
 from app.db import BonAlias, BonImport, Preis
 from app.deps import backend, session, settings
 from app.inventory.base import InventoryBackend, Product, ProductPatch, TrackingMode
@@ -140,6 +140,7 @@ Regeln:
   Nur aus den Wörtern des Bon-Texts ableiten (Abkürzungen ausschreiben ist erlaubt), nichts
   dazuerfinden. Unklar → Bon-Text übernehmen.
 - konfidenz: 0 bis 1, wie sicher die Zuordnung ist.
+- kategorie: wofür das Geld ausgegeben wurde, eine aus {kategorien}.
 markt: Name des Geschäfts. datum: Kaufdatum als JJJJ-MM-TT. summe: Gesamtbetrag."""
 
 STRUKTUR = {
@@ -166,6 +167,7 @@ STRUKTUR = {
                     "produkt_id": {"selector": {"text": {}}},
                     "neu_name": {"selector": {"text": {}}},
                     "konfidenz": {"required": True, "selector": {"number": {}}},
+                    "kategorie": {"selector": {"select": {"options": ausgaben.KATEGORIEN}}},
                 },
             }
         },
@@ -206,6 +208,7 @@ class Position:
     bon_einheit: str | None = None  # g / ml / Stück
     annahme: bool = False  # Menge beruht auf einer Annahme (z. B. Standard-Packung)
     zweifel: bool = False  # Code konnte Anzahl/Gewicht nicht bestätigen → Review
+    kategorie: str | None = None  # Ausgaben-Kategorie (KI-Vorschlag, nur für die Auswertung)
 
 
 def norm_markt(markt: str | None) -> str:
@@ -342,6 +345,7 @@ def auswerten(
             preis=_betrag(e.get("preis")),
             einzelpreis=_betrag(e.get("einzelpreis")),
             konfidenz=min(max(_zahl(e.get("konfidenz")) or 0.0, 0.0), 1.0),
+            kategorie=k if (k := str(e.get("kategorie") or "")) in ausgaben.KATEGORIEN else None,
         )
         _packung_setzen(pos, e)
         liste.append((pos, e))
@@ -554,7 +558,7 @@ def anweisung(produkte: list[Product]) -> str:
     katalog = "\n".join(
         f"{p.id}|{p.name}|{p.unit}" for p in produkte if p.category != kueche.REST_KATEGORIE
     )
-    return ANWEISUNG.format(katalog=katalog or "(leer)")
+    return ANWEISUNG.format(katalog=katalog or "(leer)", kategorien=", ".join(ausgaben.KATEGORIEN))
 
 
 # --- Ablauf ---------------------------------------------------------------------------
@@ -769,6 +773,7 @@ class BuchenPosIn(BaseModel):
 
 class BuchenIn(BaseModel):
     positionen: list[BuchenPosIn]  # nicht aufgeführte Zeilen werden nicht gebucht
+    kategorien: dict[int, str] = Field(default_factory=dict)  # Zeile → Ausgaben-Kategorie
 
 
 @router.post("/bon/{bon_id}/buchen")
@@ -787,6 +792,7 @@ async def bon_buchen(
     roh = {p["index"]: p for p in bon.positionen or []}
     markt = norm_markt(bon.markt)
     gebucht, neu = [], []
+    zuordnung: dict[int, str] = {}
     for z in data.positionen:
         pos = roh.get(z.index)
         if pos is None:
@@ -831,6 +837,12 @@ async def bon_buchen(
                 s, p, z.menge / anzahl, anzahl, bon.datum or date.today(), bon.markt
             )
         gebucht.append({"produkt_id": p.id, "name": p.name, "menge": z.menge, "einheit": p.unit})
+        zuordnung[z.index] = p.id
+    # Ausgaben: alle Zeilen des Bons, auch nicht gebuchte (Snacks, Drogerie, Alkohol)
+    bon.positionen = [
+        {**x, "gebucht_produkt_id": zuordnung.get(x["index"])} for x in bon.positionen or []
+    ]
+    await ausgaben.aus_bon(s, b, bon, zuordnung, data.kategorien)
     bon.status = "gebucht"
     s.commit()
     log.info("Bon %s gebucht: %s Zeilen, %s neue Produkte", bon_id, len(gebucht), len(neu))
