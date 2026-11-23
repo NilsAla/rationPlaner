@@ -349,7 +349,8 @@ zeigt seine Zutaten mit gerechneter Menge zum Abhaken und, wo nötig, einen Time
   Rezept, nie als Name oder Menge. Mengen rechnet der Code: Rezeptmenge × Portionen × Anteil.
 - Validierung: unbekannte Indizes fallen weg, Timer 10 s bis 6 h. Fehlen Zutaten, gibt es eine
   Reparaturrunde; was dann noch fehlt, ordnet der Code dem ersten Schritt zu, der sie nennt.
-  Steht eine Zutat in mehreren Schritten, wird sie gleichmäßig aufgeteilt.
+  Mehrfachnennung heißt „später weiterbearbeitet“ (schneiden, dann anbraten) und zeigt die volle
+  Menge mit „aus Schritt n“. Geteilt wird nur, was die KI als `teilweise` markiert (Butter halb/halb).
 - Timer, deren Dauer nicht im Original steht, werden als geschätzt (≈) markiert.
 - Einzeln: scheitert die KI, speichert die App den Code-Vorschlag mit Hinweis. Massenlauf: kein
   Fallback, die bisherige Anleitung bleibt stehen und der nächste Lauf versucht das Rezept erneut.

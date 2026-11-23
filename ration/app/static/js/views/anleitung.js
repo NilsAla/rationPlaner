@@ -68,7 +68,7 @@ export default async function render(el, {arg}) {
           <button class="btn" id="ki">✨ Mit KI neu schreiben</button>
           <button class="btn" id="code">Code-Vorschlag</button>
           ${a.gespeichert ? `<button class="btn danger" id="loeschen">Anleitung löschen</button>` : ""}</div>
-        <p class="muted tiny">Mengen rechnet der Code aus Rezept × Portionen × Anteil. Steht eine Zutat in mehreren Schritten, wird sie gleichmäßig aufgeteilt.</p></div>
+        <p class="muted tiny">Mengen rechnet der Code aus Rezept × Portionen × Anteil. Steht eine Zutat in mehreren Schritten, gilt jeweils die volle Menge (später weiterbearbeitet).</p></div>
       <div class="card"><div class="kopf"><h2>Schritte (${schritte.length})</h2>
         <div class="aktionen"><button class="btn klein" id="neu">＋ Schritt</button></div></div>
         <div id="fehlend">${fehlendHtml()}</div>

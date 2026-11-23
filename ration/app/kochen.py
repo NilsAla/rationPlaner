@@ -135,6 +135,7 @@ def schritt_pruefen(roh: dict, n_zutaten: int) -> dict | None:
     if not text and not titel:
         return None
     zutaten = []
+    teilweise = {str(x).strip() for x in (roh.get("teilweise") or [])}
     for z in roh.get("zutaten") or []:
         if isinstance(z, dict):
             idx, anteil = z.get("zutat"), z.get("anteil", 1)
@@ -145,7 +146,10 @@ def schritt_pruefen(roh: dict, n_zutaten: int) -> dict | None:
         except (TypeError, ValueError):
             continue
         if 0 <= idx < n_zutaten and 0 < anteil <= 1 and idx not in [x["zutat"] for x in zutaten]:
-            zutaten.append({"zutat": idx, "anteil": round(anteil, 3)})
+            eintrag = {"zutat": idx, "anteil": round(anteil, 3)}
+            if str(idx) in teilweise:
+                eintrag["teil"] = True  # nur für anteile_ausgleichen, wird dort entfernt
+            zutaten.append(eintrag)
     timer_s = roh.get("timer_s")
     if timer_s is None and roh.get("timer_minuten") not in (None, ""):
         try:
@@ -170,18 +174,19 @@ def schritt_pruefen(roh: dict, n_zutaten: int) -> dict | None:
 
 
 def anteile_ausgleichen(schritte: list[dict]) -> None:
-    """Steht eine Zutat in mehreren Schritten ohne eigene Teilmenge, wird sie gleich aufgeteilt."""
-    vorkommen: dict[int, list[dict]] = {}
+    """Teilmengen aus der KI-Markierung `teilweise` gleichmäßig aufteilen.
+
+    Mehrfachnennung ohne Markierung heißt: dieselbe Zutat in einem späteren Arbeitsgang
+    (schneiden, dann anbraten), also volle Menge. Geteilt wird nur, was die KI als Teilmenge
+    markiert (z. B. Butter halb in die Pfanne, halb in die Soße)."""
+    teile: dict[int, list[dict]] = {}
     for s in schritte:
         for z in s["zutaten"]:
-            vorkommen.setdefault(z["zutat"], []).append(z)
-    for liste in vorkommen.values():
-        summe = sum(z["anteil"] for z in liste)
-        if abs(summe - 1) > 0.01:
-            for z in liste:
-                z["anteil"] = (
-                    round(z["anteil"] / summe, 3) if summe > 1 else round(1 / len(liste), 3)
-                )
+            if z.pop("teil", False):
+                teile.setdefault(z["zutat"], []).append(z)
+    for liste in teile.values():
+        for z in liste:
+            z["anteil"] = round(1 / len(liste), 3) if len(liste) > 1 else 1.0
 
 
 def fehlende_zutaten(schritte: list[dict], n_zutaten: int) -> list[int]:
@@ -268,7 +273,11 @@ def darstellen(
             }
         )
     out = []
-    for s in schritte:
+    erstmals: dict[int, int] = {}  # Zutat → erster Schritt (1-basiert), für „aus Schritt n“
+    for nr, s in enumerate(schritte, 1):
+        for z in s["zutaten"]:
+            erstmals.setdefault(z["zutat"], nr)
+    for nr, s in enumerate(schritte, 1):
         out.append(
             {
                 **s,
@@ -277,6 +286,7 @@ def darstellen(
                         **zutaten[z["zutat"]],
                         "anteil": z["anteil"],
                         "menge": round(zutaten[z["zutat"]]["menge"] * z["anteil"], 1),
+                        "frueher": erstmals[z["zutat"]] if erstmals[z["zutat"]] < nr else None,
                     }
                     for z in s["zutaten"]
                     if z["zutat"] < len(zutaten)
@@ -318,13 +328,14 @@ Regeln:
 - Ein Schritt = ein Handgriff bzw. eine Phase, kurzer Titel im Imperativ (z. B. "Wasser aufsetzen",
   "Zwiebeln würfeln", "Nudeln ins Wasser"), Text 1–3 Sätze mit den Details aus dem Original.
 - zutaten: die Indizes der Zutaten, die in DIESEM Schritt verarbeitet oder in Topf/Pfanne gegeben
-  werden. Jede Zutat muss mindestens einmal vorkommen. Kommt eine Zutat in mehreren Schritten vor
-  (z. B. Butter halb/halb), nenne sie in jedem davon. Keine erfundenen Zutaten; Wasser, Salz zum
-  Kochen u. Ä. ohne Index nur im Text erwähnen.
+  werden. Jede Zutat muss mindestens einmal vorkommen. Wird eine Zutat in mehreren Schritten
+  bearbeitet (Paprika schneiden, später anbraten), nenne sie in jedem davon. teilweise: Indizes,
+  von denen in diesem Schritt nur ein Teil verwendet wird (z. B. Butter halb/halb), sonst leer.
+  Keine erfundenen Zutaten; Wasser, Salz zum Kochen u. Ä. ohne Index nur im Text erwähnen.
 - timer_minuten nur für echtes Warten/Garen (Kochzeit, Ofen, Ruhen), Wert aus dem Original
   übernehmen; bei Spannen den größeren Wert. timer_name kurz, z. B. "Nudeln".
 - parallel: true, wenn der Schritt nebenher weiterläuft, während schon der nächste beginnt
-  (z. B. Wasser kocht auf, Ofen heizt vor, Soße köchelt).
+  (z. B. Wasser aufsetzen, Ofen vorheizen, Soße köcheln), nicht bei reinen Handgriffen.
 - Nichts weglassen, was im Original steht. Höchstens {max} Schritte.
 {feedback}"""
 
@@ -341,6 +352,10 @@ def struktur(n_zutaten: int) -> dict:
                         "titel": {"required": True, "selector": {"text": {}}},
                         "text": {"required": True, "selector": {"text": {"multiline": True}}},
                         "zutaten": {
+                            "required": False,
+                            "selector": {"select": {"options": optionen, "multiple": True}},
+                        },
+                        "teilweise": {
                             "required": False,
                             "selector": {"select": {"options": optionen, "multiple": True}},
                         },

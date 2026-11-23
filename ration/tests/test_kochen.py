@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.kochen import dauern_s, schritt_pruefen
+from app.kochen import anteile_ausgleichen, dauern_s, schritt_pruefen
 from app.main import create_app
 from app.settings import Settings
 
@@ -55,6 +55,22 @@ def test_dauern_und_schritt_pruefen():
     assert s["zutaten"] == [{"zutat": 1, "anteil": 1.0}]  # doppelt, außerhalb, kaputt raus
     assert s["timer_s"] is None  # 6 s ist kein Timer
     assert schritt_pruefen({"titel": "", "text": ""}, 3) is None
+
+
+def test_anteile_nur_bei_teilweise_geteilt():
+    roh = [
+        {"titel": "Paprika schneiden", "zutaten": ["0"]},
+        {"titel": "Butter in die Pfanne", "zutaten": ["0", "1"], "teilweise": ["1"]},
+        {"titel": "Butter in die Soße", "zutaten": ["1"], "teilweise": ["1"]},
+    ]
+    schritte = [schritt_pruefen(x, 2) for x in roh]
+    anteile_ausgleichen(schritte)
+    # Paprika zweimal bearbeitet = volle Menge, Butter als Teilmenge halbiert
+    assert [[(z["zutat"], z["anteil"]) for z in s["zutaten"]] for s in schritte] == [
+        [(0, 1.0)],
+        [(0, 1.0), (1, 0.5)],
+        [(1, 0.5)],
+    ]
 
 
 def test_ohne_anleitung_code_vorschlag(k_client):
@@ -135,6 +151,7 @@ def test_bearbeiten_freigeben_veraltet(k_client, fake_backend):
     a = a.json()
     assert a["status"] == "geprueft" and a["quelle"] == "manuell"
     assert [z["menge"] for z in a["schritte"][0]["zutaten"]] == [125, 200]
+    assert a["schritte"][1]["zutaten"][0]["frueher"] == 1
     liste = k_client.get("/api/v1/kochen/anleitungen").json()
     assert liste[0]["status"] == "geprueft" and not liste[0]["veraltet"]
     import asyncio

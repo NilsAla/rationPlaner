@@ -139,7 +139,8 @@ export default async function render(el, {arg, params}) {
           <h2>${esc(s.titel)}</h2>${s.text && s.text !== s.titel ? `<p class="text">${esc(s.text)}</p>` : ""}
           ${s.zutaten.map((z) => `<label class="zutat-check ${drin.has(`${i}:${z.index}`) ? "drin" : ""}">
             <input type="checkbox" data-z="${i}:${z.index}" ${drin.has(`${i}:${z.index}`) ? "checked" : ""}>
-            <span class="menge">${fmt(z.menge)} ${esc(z.einheit)}</span><span class="was">${esc(z.name)}${z.notiz ? ` <span class="muted small">(${esc(z.notiz)})</span>` : ""}</span></label>`).join("")}
+            <span class="menge">${fmt(z.menge)} ${esc(z.einheit)}</span><span class="was">${esc(z.name)}${z.notiz ? ` <span class="muted small">(${esc(z.notiz)})</span>` : ""}${
+              z.frueher ? ` <span class="muted small">aus Schritt ${z.frueher}</span>` : ""}</span></label>`).join("")}
           <div class="row" style="margin-top:6px">
             ${s.timer_s ? `<button class="btn primary gross" id="timer">⏱ ${s.timer_geschaetzt ? "≈ " : ""}${dauerText(s.timer_s)}${s.timer_name ? ` ${esc(s.timer_name)}` : ""} starten</button>` : ""}
             <button class="btn gross" id="eigener">+ Timer</button></div>
