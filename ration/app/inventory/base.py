@@ -225,6 +225,15 @@ class InventoryBackend(Protocol):
         """Löscht ein Rezept samt Zutatenliste. Nur nach Bestätigung."""
         ...
 
+    async def find_by_barcode(self, barcode: str) -> Product | None:
+        """Produkt mit diesem Barcode (EAN), None wenn unbekannt."""
+        ...
+
+    async def add_barcode(self, product_id: str, barcode: str) -> None:
+        """Ordnet einem Produkt einen Barcode zu. Idempotent; gehört der Barcode schon einem
+        anderen Produkt, ValueError (nichts wird umgehängt)."""
+        ...
+
     async def merge_products(self, keep_id: str, remove_id: str) -> None:
         """Hängt Bestand, Rezeptzutaten und Varianten von remove auf keep um, löscht remove.
 

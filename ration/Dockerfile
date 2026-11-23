@@ -1,7 +1,7 @@
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
-RUN apk add --no-cache sqlite
+RUN apk add --no-cache sqlite zbar
 
 WORKDIR /opt/ration
 COPY pyproject.toml ./

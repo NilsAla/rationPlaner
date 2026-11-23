@@ -219,6 +219,21 @@ async def case_loeschen(b: InventoryBackend, s: ContractSetup) -> str:
     return "Eigene Produkte und Rezepte lassen sich löschen"
 
 
+async def case_barcode(b: InventoryBackend, s: ContractSetup) -> str:
+    ean = "20" + uuid.uuid4().hex[:11].translate(str.maketrans("abcdef", "123456"))
+    assert await b.find_by_barcode(ean) is None, "unbekannter Barcode liefert ein Produkt"
+    await b.add_barcode(s.child_id, ean)
+    await b.add_barcode(s.child_id, ean)  # idempotent
+    p = await b.find_by_barcode(ean)
+    assert p is not None and p.id == s.child_id, f"Barcode zeigt auf {p and p.id}"
+    try:
+        await b.add_barcode(s.parent_id, ean)
+        raise AssertionError("Barcode eines anderen Produkts wurde umgehängt")
+    except ValueError:
+        pass
+    return "Barcodes lassen sich zuordnen und finden, ohne fremde umzuhängen"
+
+
 Case = Callable[[InventoryBackend, ContractSetup], Awaitable[str]]
 
 CASES: list[tuple[str, str, Case]] = [
@@ -232,6 +247,7 @@ CASES: list[tuple[str, str, Case]] = [
     ("merge", "Rechnet Zusammenführen Bestand und Rezepte richtig um?", case_merge),
     ("inventur", "Lassen sich einzelne Chargen bearbeiten und abbuchen?", case_inventur),
     ("loeschen", "Lassen sich Produkte und Rezepte löschen?", case_loeschen),
+    ("barcode", "Lassen sich Barcodes zuordnen und finden?", case_barcode),
 ]
 
 

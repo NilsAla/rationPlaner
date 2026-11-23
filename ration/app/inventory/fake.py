@@ -36,6 +36,7 @@ class FakeBackend:
         self._locations = {loc.id: loc for loc in locations}
         self._recipes = {r.id: r for r in recipes or []}
         self._batches: list[Batch] = []
+        self._barcodes: dict[str, str] = {}
         self._ids = itertools.count(1)
 
     def add_product(self, product: Product) -> None:
@@ -224,6 +225,17 @@ class FakeBackend:
             changes["tags"] = tuple(changes["tags"])
         self._recipes[recipe_id] = replace(recipe, **changes)
         return self._recipes[recipe_id]
+
+    async def find_by_barcode(self, barcode: str) -> Product | None:
+        pid = self._barcodes.get(barcode)
+        return self._products.get(pid) if pid else None
+
+    async def add_barcode(self, product_id: str, barcode: str) -> None:
+        await self.get_product(product_id)
+        vorhanden = self._barcodes.get(barcode)
+        if vorhanden and vorhanden != product_id:
+            raise ValueError(f"Barcode {barcode} gehört schon zu Produkt {vorhanden}")
+        self._barcodes[barcode] = product_id
 
     async def merge_products(self, keep_id: str, remove_id: str) -> None:
         keep, remove = await self.get_product(keep_id), await self.get_product(remove_id)

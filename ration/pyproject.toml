@@ -1,6 +1,6 @@
 [project]
 name = "ration-app"
-version = "0.24.1"
+version = "0.25.0"
 description = "rationPlaner – HA-App für Küchenbestand und Wochenplanung"
 requires-python = ">=3.12"
 dependencies = [
@@ -10,6 +10,7 @@ dependencies = [
   "httpx>=0.27",
   "python-multipart>=0.0.9",
   "pillow>=10",
+  "pyzbar>=0.1.9",  # Barcode aus Fotos (braucht libzbar, im Dockerfile per apk)
 ]
 
 [project.optional-dependencies]

@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.24.1 / API 1.19)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.25.0 / API 1.20)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -171,7 +171,17 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
 - Akzeptanz: Tests für Kategorisierung per gemerktem Bon-Text, Recap-Rechnung, Zuordnung
   geplant/spontan; Bon-Zeilen ohne Buchung landen trotzdem in den Ausgaben.
 
-### 8. Barcode-Scan zum Einbuchen (offen, Nils 2026-11-23)
+### 8. Barcode-Scan zum Einbuchen – erledigt (0.25.0, API 1.20)
+- Umsetzung: Seite Vorrat → „Scannen“ (`views/scannen.js`), `app/barcode.py`.
+  Scannen live per `BarcodeDetector` in der In-App-Kamera (`lib.kamera`, Android/Chrome); ohne
+  BarcodeDetector (iPhone) Foto → `POST /barcode/lesen` (pyzbar + libzbar, `apk add zbar` im
+  Dockerfile, im Add-on-Image geprüft); ohne Kamera Eingabe der EAN. `GET /barcode/{ean}`:
+  Grocy-Barcode (`InventoryBackend.find_by_barcode/add_barcode`, Contract-Case `barcode`, gegen
+  Grocy 4.7.1 grün) bzw. Variante mit EAN, sonst Open Food Facts (Cache 30 Tage, User-Agent).
+  Vorschläge über Namen und OFF-Kategorien. `POST /barcode/einbuchen`: Barcode merken,
+  Größe als Variante (mit EAN/Marke), Bestand anlegen, OFF-Nährwerte nur als Vorschlag.
+  Mehrfach-Scan: gleicher Code zählt hoch, Liste bleibt im Browser bis zum Einbuchen.
+- Ursprüngliche Anforderung:
 - Ziel: Vorhandenes per Handy erfassen („2 Packungen Nudeln im Schrank“): Barcode scannen →
   Produkt und Packungsgröße erkennen → Anzahl wählen → einbuchen.
 - **Scannen im Browser:** `BarcodeDetector` (Chrome/Android) mit Fallback auf eine

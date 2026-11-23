@@ -614,6 +614,22 @@ class GrocyBackend:
                 body["note"] = zutat.note
             await self._create("recipes_pos", body)
 
+    async def find_by_barcode(self, barcode: str) -> Product | None:
+        rows = await self._get("/objects/product_barcodes", **{"query[]": f"barcode={barcode}"})
+        return await self.get_product(str(rows[0]["product_id"])) if rows else None
+
+    async def add_barcode(self, product_id: str, barcode: str) -> None:
+        rows = await self._get("/objects/product_barcodes", **{"query[]": f"barcode={barcode}"})
+        if rows:
+            if str(rows[0]["product_id"]) != str(product_id):
+                raise ValueError(
+                    f"Barcode {barcode} gehört schon zu Produkt {rows[0]['product_id']}"
+                )
+            return
+        await self._post(
+            "/objects/product_barcodes", {"product_id": int(product_id), "barcode": barcode}
+        )
+
     async def merge_products(self, keep_id: str, remove_id: str) -> None:
         """Grocy-Merge (/stock/products/{keep}/merge/{remove}) plus, was er auslässt.
 

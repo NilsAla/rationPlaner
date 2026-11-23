@@ -20,6 +20,7 @@ export const MENUE = [
   {gruppe: "Vorrat", ico: "🥫", punkte: [
     {route: "inventar", titel: "Inventar", ico: "📦", view: "inventar"},
     {route: "einbuchen", titel: "Einbuchen & Bon", ico: "🧾", view: "einbuchen"},
+    {route: "scannen", titel: "Scannen", ico: "📱", view: "scannen"},
     {route: "reste", titel: "Reste & Füllstand", ico: "🥡", view: "reste"},
     {route: "ausgaben", titel: "Ausgaben", ico: "💶", view: "ausgaben"},
   ]},
