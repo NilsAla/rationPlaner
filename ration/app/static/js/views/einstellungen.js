@@ -13,13 +13,14 @@ export default async function render(el) {
 
   el.innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr))">
     <div class="card"><div class="kopf"><h2>Wochenrhythmus</h2><div class="aktionen"><button class="btn klein" data-reset="planer,praeferenzen">Standard</button></div></div>
-      <p class="muted small">An welchen Tagen gekocht wird (Vorauswahl im Kalender) und wie viel Aufwand der Tag verträgt.</p>
+      <p class="muted small">An welchen Tagen gekocht wird (Vorauswahl im Kalender), für wie viele Personen und wie viel Aufwand der Tag verträgt.</p>
       <table>${WOCHENTAGE.map((w, i) => `<tr><td><label class="inline" style="margin:0"><input type="checkbox" data-kt="${i}" ${planer.kochtage.includes(i) ? "checked" : ""}> ${w}</label></td>
+        <td style="width:70px"><input type="number" min="1" max="12" data-pw="${i}" title="Personen" value="${planer.personen_je_wochentag?.[String(i)] ?? planer.portionen}"></td>
         <td><select data-auf="${i}">${Object.entries(AUFWAND).map(([k, t]) => `<option value="${k}" ${pr.aufwand_je_tag[String(i)] === k ? "selected" : ""}>bis ${t}</option>`).join("")}</select></td></tr>`).join("")}</table>
       <div class="chips" style="margin-top:8px"><button class="chip" data-preset="werktag">Werktags schnell</button>
         <button class="chip" data-preset="alle">Alles erlaubt</button></div></div>
     <div class="card"><h2>Planer</h2>
-      <div class="row"><div><label>Portionen je Tag</label><input id="por" type="number" min="1" max="6" value="${planer.portionen}"></div>
+      <div class="row"><div><label>Personen (Standard)</label><input id="por" type="number" min="1" max="6" value="${planer.portionen}"></div>
         <div><label>Max. ungetestete je Plan</label><input id="mu" type="number" min="0" max="7" value="${planer.max_ungetestet}"></div></div>
       <label class="inline"><input type="checkbox" id="ki" ${planer.ki ? "checked" : ""}> KI wählt aus (sonst nur der Code)</label>
       <p class="muted tiny">Die KI sieht nur die vom Code vorsortierten Kandidaten und gibt IDs zurück. Mengen, Einkauf und Verderb rechnet immer der Code.</p>
@@ -98,13 +99,14 @@ export default async function render(el) {
   }));
   $("#speichern", el).onclick = () => guarded(async () => {
     await put("einstellungen/planer", {portionen: +$("#por", el).value, max_ungetestet: +$("#mu", el).value, ki: $("#ki", el).checked,
-      kochtage: $$("[data-kt]", el).filter((c) => c.checked).map((c) => +c.dataset.kt)});
+      kochtage: $$("[data-kt]", el).filter((c) => c.checked).map((c) => +c.dataset.kt),
+      personen_je_wochentag: Object.fromEntries($$("[data-pw]", el).map((i) => [i.dataset.pw, Math.min(12, Math.max(1, +i.value || 1))]))});
     await put("einstellungen/praeferenzen", {...Object.fromEntries(REGLER.map(([k]) => [k, +$(`#r_${k}`, el).value])),
       ausschluss_tags: [...ausschluss], aufwand_je_tag: Object.fromEntries($$("[data-auf]", el).map((s) => [s.dataset.auf, s.value]))});
     toast("Einstellungen gespeichert");
   });
   // Wochenrhythmus-Felder speichern mit demselben Knopf; Änderungen dort sofort übernehmen wäre zu viel Lärm im Protokoll
-  $$("[data-kt],[data-auf]", el).forEach((x) => x.addEventListener("change", () => $("#speichern", el).classList.add("primary")));
+  $$("[data-kt],[data-auf],[data-pw]", el).forEach((x) => x.addEventListener("change", () => $("#speichern", el).classList.add("primary")));
   $$("[data-theme]", el).forEach((b) => b.onclick = () => {
     const t = b.dataset.theme; merken("theme", t);
     if (t === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = t;

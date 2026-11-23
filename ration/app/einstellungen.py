@@ -23,6 +23,8 @@ AUFWAND_STUFEN = ("schnell", "normal", "aufwaendig")
 STANDARD: dict[str, dict[str, Any]] = {
     "planer": {
         "portionen": 2,
+        # Personen je Wochentag ("0" = Montag); fehlt ein Tag, gilt portionen
+        "personen_je_wochentag": {},
         "kochtage": [0, 1, 2, 3, 4, 5, 6],  # Wochentage 0 = Montag
         "ki": True,
         "max_ungetestet": 2,
@@ -77,6 +79,15 @@ def pruefen(gruppe: str, werte: dict) -> dict:
             out["portionen"] = int(_bereich(out["portionen"], 1, 6, "portionen"))
         if "max_ungetestet" in out:
             out["max_ungetestet"] = int(_bereich(out["max_ungetestet"], 0, 7, "max_ungetestet"))
+        if "personen_je_wochentag" in out:
+            pj = out["personen_je_wochentag"]
+            if not isinstance(pj, dict) or any(
+                str(k) not in {str(i) for i in range(7)} for k in pj
+            ):
+                raise HTTPException(422, "personen_je_wochentag: Wochentag 0–6 → Personen")
+            out["personen_je_wochentag"] = {
+                str(k): int(_bereich(v, 1, 12, "Personen")) for k, v in pj.items() if v
+            }
         if "kochtage" in out:
             tage = sorted({int(_bereich(t, 0, 6, "kochtage")) for t in out["kochtage"]})
             out["kochtage"] = tage

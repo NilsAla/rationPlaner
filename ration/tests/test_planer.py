@@ -202,8 +202,9 @@ def test_plan_ki_mit_repair(p_client, fake_ha):
         ]
     }
     fake_ha.ki_antwort = [schlecht, gut]
-    lauf = erzeugen(p_client, tage=3)
+    lauf = erzeugen(p_client, tage=3, personen={d[2]: 3})
     assert lauf["ki"]["runden"] == 2 and lauf["ki"]["probleme"] == []
+    assert f"{d[2]} (" in fake_ha.ki_anfragen[0] and "3 Personen" in fake_ha.ki_anfragen[0]
     assert "Chili kommt schon vor" in fake_ha.ki_anfragen[1]
     assert "Hackfleisch 500 g bis" in fake_ha.ki_anfragen[0]
     assert [(t["rezept_id"], t["quelle"]) for t in lauf["tage"]] == [
@@ -211,7 +212,8 @@ def test_plan_ki_mit_repair(p_client, fake_ha):
         ("sahnenudeln", "ki"),
         ("paprika-pasta", "ki"),
     ]
-    assert lauf["tage"][2]["portionen"] == 3
+    # Portionen = Personen des Tages, nicht was die KI schreibt
+    assert [t["portionen"] for t in lauf["tage"]] == [2, 2, 3]
 
 
 def test_plan_ki_ausfall_code_plant(p_client, fake_ha):
@@ -293,3 +295,19 @@ def test_kochtage_aus_einstellungen(p_client):
     assert bad.status_code == 422
     kand = p_client.get(f"/api/v1/plan/vorschau-kandidaten?datum={tag(0)}").json()
     assert kand[0]["rezept_id"] == "chili"
+
+
+def test_personen_je_tag_und_wochentag(p_client):
+    p_client.put(
+        "/api/v1/einstellungen/planer", json={"personen_je_wochentag": {str(tag(1).weekday()): 4}}
+    )
+    lauf = erzeugen(p_client, tage=3, ki=False, personen={tag(2).isoformat(): 1})
+    por = {t["datum"]: t["portionen"] for t in lauf["tage"]}
+    assert por == {tag(0).isoformat(): 2, tag(1).isoformat(): 4, tag(2).isoformat(): 1}
+    assert lauf["parameter"]["personen"][tag(1).isoformat()] == 4
+    r = p_client.post(
+        "/api/v1/plan/erzeugen", json={"tage": 2, "personen": {tag(0).isoformat(): 13}}
+    )
+    assert r.status_code == 422
+    bad = p_client.put("/api/v1/einstellungen/planer", json={"personen_je_wochentag": {"9": 2}})
+    assert bad.status_code == 422

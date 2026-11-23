@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -501,6 +501,7 @@ def gierig(
     start: date,
     ende: date,
     vorgabe: dict[date, PlanTag] | None = None,
+    personen: dict[date, int] | None = None,
 ) -> list[PlanTag]:
     """Code-Auswahl: Tag für Tag der beste Kandidat gegen den simulierten Bestand.
 
@@ -521,7 +522,7 @@ def gierig(
             wahl = next(
                 (
                     c
-                    for c in kandidaten(k, sim.lager, d, portionen)
+                    for c in kandidaten(k, sim.lager, d, (personen or {}).get(d, portionen))
                     if c.rezept_id not in benutzt
                     and (c.status != "ungetestet" or ungetestet < k.max_ungetestet)
                 ),
@@ -531,7 +532,9 @@ def gierig(
                 continue
             benutzt.add(wahl.rezept_id)
             ungetestet += wahl.status == "ungetestet"
-            t = PlanTag(d, wahl.rezept_id, portionen, "code", _begruendung(wahl))
+            t = PlanTag(
+                d, wahl.rezept_id, (personen or {}).get(d, portionen), "code", _begruendung(wahl)
+            )
         sim.kochen(t)
         plan.append(t)
     return plan
@@ -567,7 +570,7 @@ Regeln:
 - Kein Rezept zweimal, höchstens {max_ungetestet} mit status ungetestet.
 - Rezepte, die bald Ablaufendes verbrauchen, früh in den Zeitraum legen.
 - Höchster Aufwand je Wochentag: {aufwand}.
-- portionen: {portionen} (1 bis 6; mehr nur, wenn sonst etwas verdirbt).
+- portionen: so viele, wie an dem Tag Personen essen (steht beim Tag; sonst {portionen}).
 - begruendung: ein kurzer Satz."""
 
 
@@ -630,8 +633,14 @@ def struktur(daten: list[date], ids: list[str]) -> dict:
     }
 
 
-def _tag_text(d: date) -> str:
-    return f"{d.isoformat()} ({WOCHENTAG[d.weekday()]})"
+def _tag_text(d: date, personen: dict[date, int] | None = None) -> str:
+    extra = f", {personen[d]} Personen" if personen and d in personen else ""
+    return f"{d.isoformat()} ({WOCHENTAG[d.weekday()]}{extra})"
+
+
+def personen_von(par: dict) -> dict[date, int]:
+    """Personen je Tag aus den Lauf-Parametern (ältere Läufe: überall portionen)."""
+    return {date.fromisoformat(k): int(v) for k, v in (par.get("personen") or {}).items()}
 
 
 def anweisung(
@@ -642,6 +651,7 @@ def anweisung(
     lager: Lager,
     start: date,
     portionen: int,
+    personen: dict[date, int] | None = None,
 ) -> str:
     bald = []
     for c in sorted(lager.chargen, key=lambda c: c.ablauf or date.max):
@@ -660,7 +670,7 @@ def anweisung(
         for c in liste
     ]
     return ANWEISUNG.format(
-        tage=", ".join(_tag_text(d) for d in daten),
+        tage=", ".join(_tag_text(d, personen) for d in daten),
         fest="; ".join(f"{_tag_text(d)}: {k.rezepte[t.rezept_id].name}" for d, t in fest.items())
         or "nichts",
         bald="; ".join(bald) or "nichts",
@@ -887,7 +897,8 @@ async def planen(app, lauf_id: int) -> None:
             if frei and par.get("ki", True) and ki.verfuegbar("planer") and liste:
                 ki_info["aktiv"] = True
                 erlaubt = {c.rezept_id for c in liste}
-                text = anweisung(k, frei, fest, liste, lager, start, par["portionen"])
+                personen = personen_von(par)
+                text = anweisung(k, frei, fest, liste, lager, start, par["portionen"], personen)
                 struktur_ = struktur(frei, sorted(erlaubt))
                 probleme: list[str] = []
                 try:
@@ -908,6 +919,11 @@ async def planen(app, lauf_id: int) -> None:
                             json.dumps(antwort, ensure_ascii=False),
                         )
                         vorgabe, probleme = pruefen(antwort, k, frei, fest, erlaubt)
+                        # Portionen = Personen des Tages (Code entscheidet, nicht die KI)
+                        vorgabe = {
+                            d: replace(t, portionen=personen.get(d, t.portionen))
+                            for d, t in vorgabe.items()
+                        }
                         if not probleme:
                             sim = simulieren(
                                 k, [*offen_fest.values(), *vorgabe.values()], start, ende
@@ -921,7 +937,9 @@ async def planen(app, lauf_id: int) -> None:
                     log.warning("Plan %s: KI fehlgeschlagen: %s", lauf_id, err)
                     ki_info["fehler"] = str(err) or type(err).__name__
             # Ungültige oder fehlende Tage füllt der Code.
-            plan = gierig(k, alle, offen_fest, par["portionen"], start, ende, vorgabe)
+            plan = gierig(
+                k, alle, offen_fest, par["portionen"], start, ende, vorgabe, personen_von(par)
+            )
             sim = simulieren(k, plan, start, ende)
             lauf.ergebnis = json.loads(
                 json.dumps(
@@ -988,7 +1006,8 @@ class PlanErzeugenIn(BaseModel):
     tage: int = Field(default=7, ge=1, le=31)
     daten: list[date] | None = Field(default=None, max_length=31)  # Kochtage direkt (Kalender)
     kochtage: list[int] | None = None  # Wochentage 0–6, Standard aus den Einstellungen
-    portionen: int | None = Field(default=None, ge=1, le=6)  # Standard aus den Einstellungen
+    portionen: int | None = Field(default=None, ge=1, le=12)  # Standard aus den Einstellungen
+    personen: dict[date, int] | None = None  # Personen je Tag, überschreibt portionen
     ki: bool | None = None
     praeferenzen: dict | None = None  # überschreibt die gespeicherten für diesen Lauf
     max_ungetestet: int | None = Field(default=None, ge=0, le=7)
@@ -1013,9 +1032,18 @@ def parameter(data: PlanErzeugenIn, s: Session) -> dict:
     prefs = einst["praeferenzen"]
     if data.praeferenzen:
         prefs = {**prefs, **einstellungen.pruefen("praeferenzen", data.praeferenzen)}
+    standard = data.portionen or planer_["portionen"]
+    je_wt = planer_.get("personen_je_wochentag") or {}
+    personen = {}
+    for d in daten:
+        n = (data.personen or {}).get(d) or je_wt.get(str(d.weekday())) or standard
+        if not 1 <= int(n) <= 12:
+            raise HTTPException(422, f"{d}: Personen 1–12")
+        personen[d.isoformat()] = int(n)
     return {
         "daten": [d.isoformat() for d in daten],
-        "portionen": data.portionen or planer_["portionen"],
+        "portionen": standard,
+        "personen": personen,
         "ki": planer_["ki"] if data.ki is None else data.ki,
         "praeferenzen": prefs,
         "max_ungetestet": (

@@ -1,6 +1,8 @@
 import {$, $$, api, del, dialog, dmy, esc, eur, fmt, guarded, heute, plusTage, post, put, toast, wt, REGLER, WOCHENTAGE} from "../lib.js";
 
-const state = {auswahl: null, monat: 0};
+const state = {auswahl: null, monat: 0, personen: {}};
+// Personen eines Tages: gewählt, sonst Standard je Wochentag, sonst Portionen-Standard
+const personenStandard = (planer, d) => planer.personen_je_wochentag?.[String((new Date(d + "T12:00:00").getDay() + 6) % 7)] ?? planer.portionen;
 
 export default async function render(el, ctx = {}) {
   const ein = ctx.params?.rezept ? {id: ctx.params.rezept, portionen: +ctx.params.portionen || null} : null;
@@ -43,8 +45,10 @@ export default async function render(el, ctx = {}) {
 
     <div class="grid">
     <div class="card"><h2>Plan vorschlagen <span class="muted">(${state.auswahl.size} Tage)</span></h2>
-      <div class="row"><div><label>Portionen je Tag</label><input id="por" type="number" min="1" max="6" value="${einst.planer.portionen}"></div>
-        <div><label>Max. ungetestete</label><input id="mu" type="number" min="0" max="7" value="${einst.planer.max_ungetestet}"></div></div>
+      ${state.auswahl.size ? `<label>Personen je Tag</label><div class="personen-liste">${[...state.auswahl].sort().map((d) =>
+        `<label class="person-tag"><span>${wt(d)}</span><input type="number" min="1" max="12" data-pers="${d}"
+          value="${state.personen[d] ?? personenStandard(einst.planer, d)}"></label>`).join("")}</div>` : ""}
+      <div class="row"><div><label>Max. ungetestete</label><input id="mu" type="number" min="0" max="7" value="${einst.planer.max_ungetestet}"></div></div>
       ${REGLER.map(([k, t, l, r]) => `<div class="regler"><span class="name">${t}</span>
         <input type="range" min="-1" max="1" step="0.25" id="r_${k}" value="${prefs[k]}">
         <div class="enden"><span>${l}</span><span>${r}</span></div></div>`).join("")}
@@ -57,6 +61,7 @@ export default async function render(el, ctx = {}) {
       <p class="muted tiny">Aufwand je Wochentag und Standard-Kochtage stellst du in den <a href="#/einstellungen">Einstellungen</a> ein.</p></div>
     <div id="ergebnis"></div></div>`;
 
+  $$("[data-pers]", el).forEach((i) => i.onchange = () => { state.personen[i.dataset.pers] = +i.value; });
   $$("[data-m]", el).forEach((b) => b.onclick = () => { state.monat = +b.dataset.m === 0 ? 0 : state.monat + +b.dataset.m; render(el, ctx); });
   $$("[data-tag]", el).forEach((z) => z.onclick = (ev) => {
     if (ev.target.closest("[data-edit]") || z.classList.contains("vergangen")) return;
@@ -90,7 +95,8 @@ export default async function render(el, ctx = {}) {
     const praeferenzen = Object.fromEntries(REGLER.map(([k]) => [k, +$(`#r_${k}`, el).value]));
     praeferenzen.ausschluss_tags = [...ausschluss];
     if ($("#std", el).checked) await put("einstellungen/praeferenzen", praeferenzen);
-    await post("plan/erzeugen", {daten: [...state.auswahl].sort(), portionen: +$("#por", el).value,
+    const personen = Object.fromEntries($$("[data-pers]", el).map((i) => [i.dataset.pers, Math.min(12, Math.max(1, +i.value || 1))]));
+    await post("plan/erzeugen", {daten: [...state.auswahl].sort(), personen,
       max_ungetestet: +$("#mu", el).value, ki: $("#ki", el).checked, ueberschreiben: $("#ueb", el).checked, praeferenzen});
     toast($("#ki", el).checked ? "Planer läuft, die KI wählt aus …" : "Planer läuft …");
     ergebnis(el, null, name, ctx);

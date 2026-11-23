@@ -1,7 +1,11 @@
 import {$, $$, api, bestaetigen, del, esc, fmt, fotoUrl, guarded, heute, nichtDa, nutriBadge, plusTage, post, put, toast, wt, ablaufText, REGLER} from "../lib.js";
 
 // Planer-Chips: neutral → rechts (+1) → links (−1) → neutral. Werte dazwischen bleiben, bis man klickt.
-const state = {regler: null, tage: null};
+const state = {regler: null, tage: null, personen: {}};
+const persStandard = (planer, d) => planer.personen_je_wochentag?.[String((new Date(d + "T12:00:00").getDay() + 6) % 7)] ?? planer.portionen;
+const personenHtml = (planer) => state.tage.size ? `<label>Personen</label><div class="personen-liste">${[...state.tage].sort().map((d) =>
+  `<label class="person-tag"><span>${kurzTag(d)}</span><input type="number" min="1" max="12" data-pers="${d}"
+    value="${state.personen[d] ?? persStandard(planer, d)}"></label>`).join("")}</div>` : "";
 const kurzTag = (d) => d === heute() ? "heute" : d === plusTage(heute(), 1) ? "morgen"
   : new Date(d + "T12:00:00").toLocaleDateString("de-DE", {weekday: "short"});
 
@@ -64,6 +68,7 @@ export default async function render(el) {
       <section class="card" id="planer-karte"><div class="kopf"><h2>Plan vorschlagen</h2></div>
         <label>Tage</label><div class="chips">${u.tage.slice(0, 7).map((t) => `<button class="chip ${state.tage.has(t.datum) ? "on" : ""}" data-pt="${t.datum}"
           title="${t.gericht ? "schon geplant: " + esc(t.gericht.name) : "frei"}">${kurzTag(t.datum)}${t.gericht ? " •" : ""}</button>`).join("")}</div>
+        <div id="pers-box">${personenHtml(einst.planer)}</div>
         <label>Wünsche</label><div class="chips">${REGLER.map(([k, t, l, r]) => reglerChip(k, t, l, r)).join("")}</div>
         <button class="btn primary voll" id="vorschlagen" ${state.tage.size ? "" : "disabled"}>${state.tage.size} ${state.tage.size === 1 ? "Tag" : "Tage"} vorschlagen</button>
         <p class="muted tiny">• = schon geplant, wird neu geplant, wenn gewählt. Mehr Optionen im <a href="#/plan">Planer</a>.</p>
@@ -146,6 +151,10 @@ export default async function render(el) {
   }));
 
   // Planer
+  const persBinden = () => $$("[data-pers]", el).forEach((i) => i.onchange = () => {
+    state.personen[i.dataset.pers] = Math.min(12, Math.max(1, +i.value || 1));
+  });
+  persBinden();
   const knopf = () => {
     const b = $("#vorschlagen", el), n = state.tage.size;
     b.disabled = !n; b.textContent = `${n} ${n === 1 ? "Tag" : "Tage"} vorschlagen`;
@@ -154,6 +163,7 @@ export default async function render(el) {
     const d = c.dataset.pt;
     state.tage.has(d) ? state.tage.delete(d) : state.tage.add(d);
     c.classList.toggle("on", state.tage.has(d)); knopf();
+    $("#pers-box", el).innerHTML = personenHtml(einst.planer); persBinden();
   });
   $$("[data-regler]", el).forEach((c) => c.onclick = () => {
     const k = c.dataset.regler, v = state.regler[k];
@@ -166,7 +176,8 @@ export default async function render(el) {
     const praeferenzen = Object.fromEntries(REGLER.map(([k]) => [k, state.regler[k]]));
     const daten = [...state.tage].sort();
     const ueberschreiben = daten.some((d) => !frei.has(d));
-    const r = await post("plan/erzeugen", {daten, praeferenzen, ueberschreiben});
+    const personen = Object.fromEntries(daten.map((d) => [d, state.personen[d] ?? persStandard(einst.planer, d)]));
+    const r = await post("plan/erzeugen", {daten, praeferenzen, ueberschreiben, personen});
     toast(einst.planer.ki ? "Planer läuft, die KI wählt aus …" : "Planer läuft …");
     vorschlag(el, r.lauf_id, rezept);
   });

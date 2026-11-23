@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.25.2 / API 1.20)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.26.0 / API 1.21)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -198,6 +198,11 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
   (MHD je Zeile optional, sonst Standard-Haltbarkeit).
 - Akzeptanz: Tests mit gemockter OFF-Antwort (Größe, Marke, Nährwerte), Barcode-Abgleich im
   FakeBackend und Contract-Test gegen Grocy; UI am Handy (390 px) mit Kamera, ohne Kamera per Eingabe.
+
+### 9. Personen je Tag im Planer – erledigt (0.26.0, API 1.21, Nils 2026-11-23)
+- `POST /plan/erzeugen {personen: {datum: n}}`, Standard je Wochentag in den Einstellungen
+  (`planer.personen_je_wochentag`, sonst `planer.portionen`). Portionen = Personen des Tages,
+  vom Code gesetzt (KI-Angabe wird überschrieben). UI: Planer, Startseite, Einstellungen.
 
 ## Getroffene Entscheidungen (nicht stillschweigend ändern)
 

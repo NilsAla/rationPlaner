@@ -1,6 +1,6 @@
 # Slug "ration" ist ein Platzhalter. Bei Umbenennung auch custom_components/ration/const.py anpassen.
 name: rationPlaner
-version: "0.25.2"
+version: "0.26.0"
 slug: ration
 description: Küchenbestand, Wochenplan und Einkaufsliste auf Basis von Grocy
 url: https://github.com/NilsAla/rationPlaner
