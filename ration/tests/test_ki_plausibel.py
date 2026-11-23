@@ -53,3 +53,28 @@ def test_packung_nur_ohne_gepflegte_und_ohne_kaeufe():
     verworfen = []
     w = produkt_werte(ki, Product(id="x", name="Joghurt", unit="g"), True, verworfen)
     assert "packung" not in w  # Käufe laut Bon vorhanden → Analyse „Packungsgrößen“ entscheidet
+
+
+# Echte Antworten aus dem Lauf vom 2026-11-23 18:31 (KI-Log #47, alter Prompt)
+LIVE = [
+    ("Ketchup", "Saucen", 12), ("Tomatenpesto", "Saucen", 12), ("Pfeffer", "Gewürze", 0),
+    ("Senf", "Saucen", 12), ("Rinderbrühe", "Saucen", 12), ("Korma-Paste", "Saucen", 12),
+    ("Sriracha Sauce", "Saucen", 12), ("Currypaste", "Saucen", 12),
+]  # fmt: skip
+
+
+def test_live_lauf_wird_komplett_abgefangen():
+    for name, kat, tage in LIVE:
+        w, v = werte(name, {"haltbarkeit_tage": tage, "kategorie": kat})
+        assert "haltbarkeit_tage" not in w, (name, w)
+    # plausible Werte desselben Laufs bleiben
+    assert (
+        werte("Honig", {"haltbarkeit_tage": 365, "kategorie": "Süßes"})[0]["haltbarkeit_tage"]
+        == 365
+    )
+    assert (
+        werte("Bio Schweinefilet", {"haltbarkeit_tage": 3, "kategorie": "Fleisch"})[0][
+            "haltbarkeit_tage"
+        ]
+        == 3
+    )

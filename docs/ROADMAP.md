@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.28.1 / API 1.23)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.28.2 / API 1.23)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -238,6 +238,13 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
 - Fotos sind ausdrücklich erwünscht (frühere Regel „keine Bilder“ aufgehoben).
 - In Nils' Grocy nur Testdaten anlegen, nichts löschen ohne Rückfrage, Test-Bon nicht buchen,
   App-Optionen in HA ändert nur Nils.
+
+## Live-Diagnose über HA (ohne Zugriff aufs Netz)
+
+Das HA-MCP kann die App-API per Ingress aufrufen: `ha_manage_app(slug="bd5fe677_ration",
+path="/api/v1/log/ki?limit=20")`, Details `/api/v1/log/ki/<id>`, ebenso jeder andere GET-Endpoint.
+Version/Update-Stand: `ha_get_app(slug="bd5fe677_ration")`. Achtung: liefert auch die
+App-Optionen inkl. Grocy-API-Key, den nie weitergeben oder committen.
 
 ## Lokal testen
 

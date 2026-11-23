@@ -4,7 +4,8 @@ const FELD = {tracking_modus: "Modus", kategorie: "Kategorie", ablauf_typ: "Abla
   haltbarkeit_offen_tage: "geöffnet", haltbarkeit_gefroren_tage: "gefroren", haltbarkeit_aufgetaut_tage: "aufgetaut",
   g_je_einheit: "g je Einheit", toleranz_pct: "Toleranz %", packung: "Packung", tags: "Tags", aufwand: "Aufwand",
   rest_haltbarkeit_tage: "Rest-Haltbarkeit", naehrwerte: "Nährwerte /100 g", variante: "Neue Größe", variante_von: "Austauschbar unter"};
-const wert = (v) => v == null ? "–" : Array.isArray(v) ? v.join(", ") : typeof v === "object" ? ("name" in v && !("menge" in v)
+const wert = (v, feld) => feld === "haltbarkeit_offen_tage" && v === 0 ? "unverändert beim Öffnen"
+  : feld === "haltbarkeit_tage" && v === -1 ? "unbegrenzt" : v == null ? "–" : Array.isArray(v) ? v.join(", ") : typeof v === "object" ? ("name" in v && !("menge" in v)
   ? `${v.name}${v.parent_id ? "" : " (neu anlegen)"}` : "kcal" in v
   ? `${fmt(v.kcal)} kcal · P ${fmt(v.protein)} · F ${fmt(v.fett)} · KH ${fmt(v.kohlenhydrate)} · Z ${fmt(v.zucker)} · Salz ${fmt(v.salz)}${v.obst_gemuese ? " · OGH" : ""}${v.roh ? " · roh" : ""}`
   : [`${v.einheit ?? ""} ${fmt(v.menge)}`, v.marke, v.haendler && `bei ${v.haendler}`, v.quelle === "bon" && "vom Bon", v.grund]
@@ -43,7 +44,7 @@ export default async function render(el) {
             <b>${g.typ === "produkt" ? `<a href="#/produkt/${esc(g.id)}">${esc(g.name)}</a>` : `<a href="#/rezept/${esc(g.id)}">${esc(g.name)}</a>`}</b>
             <span class="muted tiny">${esc(g.typ)}</span></label></td></tr>
           ${g.felder.map((v) => `<tr><td class="check"><input type="checkbox" data-v="${v.id}" data-g="${esc(g.typ + g.id)}" checked></td>
-            <td class="muted nw">${esc(FELD[v.feld] ?? v.feld)}</td><td class="muted">${esc(wert(v.alt))}</td><td>→ <b>${esc(wert(v.neu))}</b></td></tr>`).join("")}`).join("")}
+            <td class="muted nw">${esc(FELD[v.feld] ?? v.feld)}</td><td class="muted">${esc(wert(v.alt, v.feld))}</td><td>→ <b>${esc(wert(v.neu, v.feld))}</b></td></tr>`).join("")}`).join("")}
         </tbody></table></div>
         <button class="btn primary voll" id="ok">Auswahl übernehmen</button>`
       : `<div class="leer">${laeuft ? "Läuft … Ergebnis kommt gleich." : "Keine offenen Vorschläge."}</div>`}</div></div>`;

@@ -91,7 +91,10 @@ Felder je Produkt:
   getrocknete Gewürze/Pfeffer 730, Brühe (Würfel, Pulver, Glas) 540, Pesto im Glas 365,
   Öl 365, Mehl 270, Joghurt 21, Frischmilch 10, H-Milch 90, Käse 21, Hackfleisch 1,
   Hähnchen 3, Salat 5, Paprika 10, Kartoffeln 60, Zwiebeln 60.
-- haltbarkeit_offen_tage: nach dem Öffnen in Tagen (0 = egal), kleiner als ungeöffnet.
+- haltbarkeit_offen_tage: Tage nach dem Öffnen (im Kühlschrank, falls dort gelagert), kleiner
+  als ungeöffnet. Richtwerte: Currypaste/Pesto 14, Ketchup/Senf 90, Sojasauce 180, Brühe
+  (Glas/Fond) 7, Milch 3, Joghurt 5, Sahne 3, Konserven 3. 0 nur, wenn Öffnen die Haltbarkeit
+  nicht verkürzt (Nudeln, Reis, Salz, Zucker, getrocknete Gewürze).
 - haltbarkeit_gefroren_tage: eingefroren (0 = nicht einfrieren).
 - haltbarkeit_aufgetaut_tage: nach dem Auftauen (0 = egal).
 - g_je_einheit: Gramm je Bestandseinheit (bei Bestandseinheit g: 1).
