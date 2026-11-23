@@ -72,6 +72,51 @@ export function bildWaehlen() {
     i.click();
   });
 }
+/** Kamera in der App (getUserMedia), weil viele WebViews (HA-Companion-App) `capture` am
+ *  Dateifeld ignorieren und nur die Galerie anbieten. Ohne `scan`: Foto als JPEG-File.
+ *  Mit `scan` (Liste von Barcode-Formaten): erkennt per BarcodeDetector und liefert den Code.
+ *  Liefert null bei Abbruch; wirft, wenn keine Kamera verfügbar ist (Aufrufer nimmt das Dateifeld). */
+export async function kamera({titel = "Foto", scan = null} = {}) {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("Keine Kamera (nur über HTTPS bzw. Ingress verfügbar)");
+  const detector = scan && "BarcodeDetector" in window ? new window.BarcodeDetector({formats: scan}) : null;
+  if (scan && !detector) throw new Error("Barcode-Erkennung wird von diesem Browser nicht unterstützt");
+  const stream = await navigator.mediaDevices.getUserMedia({audio: false,
+    video: {facingMode: {ideal: "environment"}, width: {ideal: 3840}, height: {ideal: 2160}}});
+  const box = document.createElement("div");
+  box.className = "kamera";
+  box.innerHTML = `<video playsinline muted autoplay></video>${scan ? `<div class="kamera-rahmen"></div>` : ""}
+    <div class="kamera-leiste"><span class="kamera-titel">${esc(titel)}</span>
+      <button class="btn" data-k="ab">Abbrechen</button>${scan ? "" : `<button class="btn primary kamera-ausloeser" data-k="los" aria-label="Auslösen">📷</button>`}</div>`;
+  document.body.append(box);
+  const video = box.querySelector("video");
+  video.srcObject = stream;
+  let aktiv = true;
+  const ende = () => { aktiv = false; stream.getTracks().forEach((tr) => tr.stop()); box.remove(); };
+  return new Promise((ok) => {
+    box.querySelector("[data-k=ab]").onclick = () => { ende(); ok(null); };
+    const los = box.querySelector("[data-k=los]");
+    if (los) los.onclick = () => {
+      const c = document.createElement("canvas");
+      c.width = video.videoWidth; c.height = video.videoHeight;
+      c.getContext("2d").drawImage(video, 0, 0);
+      c.toBlob((b) => { ende(); ok(b ? new File([b], `foto-${Date.now()}.jpg`, {type: "image/jpeg"}) : null); }, "image/jpeg", 0.9);
+    };
+    if (detector) {
+      const suchen = async () => {
+        if (!aktiv) return;
+        try {
+          if (video.readyState >= 2) {
+            const treffer = await detector.detect(video);
+            if (treffer.length) { navigator.vibrate?.(60); ende(); ok(treffer[0].rawValue); return; }
+          }
+        } catch { /* nächster Frame */ }
+        setTimeout(suchen, 150);
+      };
+      video.onloadeddata = suchen;
+    }
+  });
+}
+
 export async function fotoHochladen(rezeptId, {schritt = null, haupt = false} = {}) {
   const daten = await bildWaehlen();
   if (!daten) return null;

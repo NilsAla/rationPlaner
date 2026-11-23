@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.24.0 / API 1.19)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.24.1 / API 1.19)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.

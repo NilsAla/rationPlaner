@@ -1,4 +1,4 @@
-import {$, $$, api, dmy, esc, eur, guarded, post, toast} from "../lib.js";
+import {$, $$, api, dmy, esc, eur, guarded, kamera, post, toast} from "../lib.js";
 
 // Einbuchen von Hand (mit Mehrfachzeilen) und Kassenbon per Foto
 export default async function render(el, {params}) {
@@ -20,8 +20,10 @@ export default async function render(el, {params}) {
       <div class="row" style="margin-top:8px"><button class="btn" id="mehr">+ Zeile</button><button class="btn primary" id="buchen">Alles einbuchen</button></div></div>
     <div class="card"><h2>Kassenbon fotografieren</h2>
       <div class="bon-drop" id="bdrop" tabindex="0" title="Foto wählen, hierher ziehen oder Strg+V">
-        <img id="bvor" alt="" hidden><span id="btext">📷 Foto wählen · Bild hierher ziehen · <b>Strg+V</b> fügt aus der Zwischenablage ein</span></div>
+        <img id="bvor" alt="" hidden><span id="btext">Bild hierher ziehen · <b>Strg+V</b> fügt aus der Zwischenablage ein</span></div>
+      <div class="row" style="margin-top:8px"><button class="btn" id="bkam">📷 Foto machen</button><button class="btn" id="bgal">🖼 Aus Galerie / Datei</button></div>
       <input id="bf" type="file" accept="image/*" capture="environment" hidden>
+      <input id="bg" type="file" accept="image/*" hidden>
       <button class="btn primary voll" id="bup" disabled>Hochladen &amp; lesen</button>
       <p class="muted tiny">Die KI liest den Bon im Hintergrund (ca. 30 s). Gebucht wird erst nach deiner Prüfung.</p>
       <h3>Letzte Bons</h3>${bons.length ? `<table>${bons.map((b) => `<tr class="klick" data-bon="${b.id}">
@@ -67,9 +69,20 @@ export default async function render(el, {params}) {
     $("#bup", el).disabled = false; $("#bup", el).focus();
   };
   const drop = $("#bdrop", el);
-  drop.onclick = () => $("#bf", el).click();
-  drop.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); $("#bf", el).click(); } };
-  $("#bf", el).onchange = (ev) => setzen(ev.target.files[0], ev.target.files[0]?.name ?? "Foto");
+  drop.onclick = () => $("#bg", el).click();
+  drop.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); $("#bg", el).click(); } };
+  $("#bf", el).onchange = (ev) => setzen(ev.target.files[0], "📷 Foto");
+  $("#bg", el).onchange = (ev) => setzen(ev.target.files[0], ev.target.files[0]?.name ?? "Bild");
+  $("#bkam", el).onclick = async () => {
+    try {
+      const f = await kamera({titel: "Kassenbon: ganz ins Bild, flach, gut beleuchtet"});
+      if (f) setzen(f, "📷 Foto");
+    } catch (e) {
+      // Kamera in der App nicht verfügbar (kein HTTPS, keine Berechtigung): Dateifeld mit capture
+      console.warn(e); toast(`${e.message || e}. Versuche die Kamera des Geräts …`);
+      $("#bf", el).click();
+    }
+  };
   drop.ondragover = (ev) => { ev.preventDefault(); drop.classList.add("ueber"); };
   drop.ondragleave = () => drop.classList.remove("ueber");
   drop.ondrop = (ev) => { ev.preventDefault(); drop.classList.remove("ueber"); setzen(ev.dataTransfer.files[0], "Eingefügt per Drag & Drop"); };
