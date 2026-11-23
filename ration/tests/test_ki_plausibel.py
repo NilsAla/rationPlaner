@@ -78,3 +78,26 @@ def test_live_lauf_wird_komplett_abgefangen():
         ]
         == 3
     )
+
+
+def test_nebenfelder_ohne_rauschen_und_ohne_starke_kuerzung():
+    ki = {
+        "haltbarkeit_offen_tage": 0,
+        "haltbarkeit_gefroren_tage": 0,
+        "haltbarkeit_aufgetaut_tage": 0,
+    }
+    assert werte("Nudeln", ki)[0] == {}  # leer → 0: nichts vorschlagen
+    w, v = werte("Erdnussbutter", {"haltbarkeit_offen_tage": 30}, shelf_life_opened_days=180)
+    assert "haltbarkeit_offen_tage" not in w and "Kürzung" in v[0]
+    w, _ = werte("Rinderbrühe", {"haltbarkeit_offen_tage": 7}, shelf_life_opened_days=180)
+    assert "haltbarkeit_offen_tage" not in w
+    # moderate Korrektur bleibt, neue Werte auch
+    assert werte("Cashewkerne", {"haltbarkeit_offen_tage": 30}, shelf_life_opened_days=90)[0]
+    assert (
+        werte("Babyspinat", {"haltbarkeit_gefroren_tage": 180})[0]["haltbarkeit_gefroren_tage"]
+        == 180
+    )
+    # 0 bei gepflegtem Wert (z. B. „unverändert beim Öffnen“) ist eine echte Änderung
+    assert werte("Pfeffer", {"haltbarkeit_offen_tage": 0}, shelf_life_opened_days=365)[0] == {
+        "haltbarkeit_offen_tage": 0
+    }

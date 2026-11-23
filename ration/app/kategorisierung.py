@@ -259,6 +259,23 @@ def produkt_werte(
             del w["haltbarkeit_tage"]  # nur Rauschen, gepflegter Wert bleibt
         else:
             w["haltbarkeit_tage"] = v
+    # Nebenfelder: „leer → 0“ ändert nichts (0 = Standard), nur Rauschen; starke Kürzungen
+    # gepflegter Werte (> Faktor 4, z. B. Erdnussbutter geöffnet 180 → 30) nicht vorschlagen.
+    for feld, ist in (
+        ("haltbarkeit_offen_tage", p.shelf_life_opened_days),
+        ("haltbarkeit_gefroren_tage", p.shelf_life_frozen_days),
+        ("haltbarkeit_aufgetaut_tage", p.shelf_life_thawed_days),
+    ):
+        if feld not in w:
+            continue
+        neu = int(w[feld])  # type: ignore[call-overload]
+        leer_zu_null = neu == 0 and not ist
+        rauschen = bool(ist and neu and abs(neu - ist) / ist < RAUSCHEN)
+        if leer_zu_null or rauschen:
+            del w[feld]
+        elif ist and neu and neu * PLAUSI_FAKTOR < ist:
+            del w[feld]
+            verworfen.append(f"{p.name}: {feld} {ist} → {neu} zu starke Kürzung")
     ungeoeffnet = w.get("haltbarkeit_tage", p.shelf_life_days)
     offen = w.get("haltbarkeit_offen_tage")
     if offen and isinstance(ungeoeffnet, int) and ungeoeffnet > 0 and offen > ungeoeffnet:  # type: ignore[operator]
