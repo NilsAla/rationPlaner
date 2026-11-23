@@ -344,6 +344,8 @@ async def ausfuehren(app, lauf_id: int) -> None:
                 anzahl += await _naehrwerte_lauf(s, ki, b, lauf_id, umfang)
             if umfang.get("packungen", False):
                 anzahl += await _packungen_lauf(s, ki, b, lauf_id, umfang)
+            if umfang.get("gruppen", False):
+                anzahl += await _gruppen_lauf(s, ki, b, lauf_id, umfang)
             if umfang.get("rezepte", True):
                 rezepte = await b.list_recipes()
                 if umfang.get("nur_ohne_attribute", True):
@@ -461,6 +463,7 @@ class LaufIn(BaseModel):
     nur_leere: bool = True  # False: auch gesetzte Werte überprüfen lassen
     produkt_ids: list[str] | None = None
     packungen: bool = False  # Packungsgrößen analysieren (Bon-Historie, Angebote, KI-Wissen)
+    gruppen: bool = False  # austauschbare Varianten gruppieren (Fusilli ↔ Spaghetti unter Nudeln)
     monate: int = Field(default=6, ge=1, le=36)  # Zeitraum für den Standard (häufigste Größe)
 
 
@@ -473,7 +476,7 @@ async def kategorisieren(
     st: Settings = Depends(settings),
 ) -> dict:
     """Startet einen Lauf im Hintergrund. Ergebnis: Vorschläge zur Prüfung, nichts wird gesetzt."""
-    if data.produkte or data.rezepte:
+    if data.produkte or data.rezepte or data.gruppen:
         request.app.state.ki.pruefen("kategorisierung")
     if data.naehrwerte:
         request.app.state.ki.pruefen("naehrwerte")
@@ -559,7 +562,15 @@ async def entscheiden(
     }
     je_objekt: dict[tuple[str, str], dict[str, object]] = {}
     fehler = []
-    for v in gewaehlt.values():
+    neue_eltern: dict[str, str] = {}  # Name → angelegtes Parent-Produkt (einmal je Gruppe)
+    for v in sorted(gewaehlt.values(), key=lambda v: v.feld != "variante_von"):
+        if v.feld == "variante_von":
+            try:
+                await _variante_von_uebernehmen(b, v, neue_eltern)
+            except Exception as err:  # noqa: BLE001
+                fehler.append(f"{v.name}: {err}")
+                v.status = "fehler"
+            continue
         if v.feld == "variante":  # je Größe ein Vorschlag, eigener Schreibvorgang in der App-DB
             try:
                 _variante_uebernehmen(s, v)
@@ -766,3 +777,125 @@ async def _packungen_lauf(s: Session, ki, b, lauf_id: int, umfang: dict) -> int:
                 )
         s.commit()
     return anzahl
+
+
+# --- Austauschgruppen (Variante von) ------------------------------------------------------
+
+ANWEISUNG_GRUPPEN = """Du ordnest einen Haushaltsvorrat. Finde Gruppen von Produkten, die sich in
+Rezepten gegenseitig ersetzen können, ohne dass das Gericht ein anderes wird:
+z. B. Spaghetti, Fusilli, Penne → "Nudeln"; Basmati- und Jasminreis → "Reis";
+rote und gelbe Paprika → "Paprika"; Gouda und Emmentaler gerieben → "Reibekäse".
+Nicht gruppieren, was sich im Rezept anders verhält (Lasagneplatten ≠ Spaghetti,
+Vollmilch ≠ Sahne, Weißmehl ≠ Speisestärke) oder eine andere Einheit hat.
+
+Produkte (id|name|einheit|kategorie|gehört schon zu):
+{liste}
+
+Felder je Gruppe:
+- name: kurzer Oberbegriff im Singular oder üblichen Plural ("Nudeln", "Reis").
+- parent_id: id eines Produkts aus der Liste, das genau der Oberbegriff ist (z. B. ein Produkt
+  "Nudeln"), sonst leer, dann wird ein neues Oberprodukt angelegt.
+- mitglieder: ids der austauschbaren Produkte (mindestens 2, ohne parent_id).
+Nur Gruppen, bei denen du sicher bist. Keine Gruppe ist auch eine gültige Antwort."""
+
+STRUKTUR_GRUPPEN = {
+    "gruppen": _feld(
+        {
+            "object": {
+                "multiple": True,
+                "fields": {
+                    "name": _feld({"text": {}}),
+                    "parent_id": _feld({"text": {}}, required=False),
+                    "mitglieder": _feld({"text": {"multiple": True}}),
+                },
+            }
+        }
+    )
+}
+GRUPPEN_BATCH = 80
+
+
+async def _gruppen_lauf(s: Session, ki, b, lauf_id: int, umfang: dict) -> int:
+    """KI schlägt Austauschgruppen vor; Code prüft Einheit, Ebenen und Doppelungen.
+    Ergebnis: Vorschläge „variante_von“ je Produkt (Review), nichts wird gesetzt."""
+    produkte = {p.id: p for p in await b.list_products() if p.category != REST_KATEGORIE}
+    if ids := umfang.get("produkt_ids"):
+        auswahl = [p for p in produkte.values() if p.id in ids or p.parent_id in ids]
+    else:
+        auswahl = list(produkte.values())
+    eltern = {p.parent_id for p in produkte.values() if p.parent_id}
+    offen = {
+        v.objekt_id
+        for v in s.scalars(
+            select(Vorschlag).where(Vorschlag.status == "offen", Vorschlag.feld == "variante_von")
+        )
+    }
+    auswahl.sort(key=lambda p: ((p.category or "~"), p.name.lower()))
+    anzahl = 0
+    for i in range(0, len(auswahl), GRUPPEN_BATCH):
+        teil = auswahl[i : i + GRUPPEN_BATCH]
+        liste = "\n".join(
+            f"{p.id}|{p.name}|{p.unit}|{p.category or '-'}|"
+            f"{produkte[p.parent_id].name if p.parent_id in produkte else '-'}"
+            for p in teil
+        )
+        daten = await ki.generate(
+            "kategorisierung",
+            "rationPlaner Austauschgruppen",
+            ANWEISUNG_GRUPPEN.format(liste=liste),
+            STRUKTUR_GRUPPEN,
+        )
+        log.info("Lauf %s Gruppen Rohantwort: %s", lauf_id, json.dumps(daten, ensure_ascii=False))
+        for g in daten.get("gruppen") or []:
+            if not isinstance(g, dict):
+                continue
+            name = str(g.get("name") or "").strip()[:60]
+            parent_id = str(g.get("parent_id") or "").strip() or None
+            parent = produkte.get(parent_id) if parent_id else None
+            if parent is not None and parent.parent_id:  # Grocy kennt nur eine Ebene
+                parent = None
+            if parent is None and not name:
+                continue
+            mitglieder = [
+                produkte[m]
+                for m in dict.fromkeys(str(x) for x in (g.get("mitglieder") or []))
+                if m in produkte and m != (parent.id if parent else None)
+            ]
+            einheit = (parent.unit if parent else None) or (
+                mitglieder[0].unit if mitglieder else ""
+            )
+            mitglieder = [
+                m for m in mitglieder
+                if m.unit.strip().lower() == einheit.strip().lower()
+                and m.id not in eltern  # hat selbst Varianten → bleibt Oberprodukt
+                and m.id not in offen
+            ]  # fmt: skip
+            if len(mitglieder) + (1 if parent else 0) < 2 or not mitglieder:
+                continue
+            for m in mitglieder:
+                if parent and m.parent_id == parent.id:
+                    continue  # schon richtig zugeordnet
+                alt = produkte[m.parent_id].name if m.parent_id in produkte else None
+                neu = {"parent_id": parent.id, "name": parent.name} if parent else {
+                    "parent_id": None, "name": name, "einheit": einheit}  # fmt: skip
+                s.add(Vorschlag(lauf_id=lauf_id, typ="produkt", objekt_id=m.id, name=m.name,
+                                feld="variante_von", alt=alt, neu=neu))  # fmt: skip
+                offen.add(m.id)
+                anzahl += 1
+        s.commit()
+    return anzahl
+
+
+async def _variante_von_uebernehmen(b, v: Vorschlag, neue_eltern: dict[str, str]) -> None:
+    neu = v.neu if isinstance(v.neu, dict) else {}
+    pid = neu.get("parent_id")
+    if not pid:
+        name = str(neu.get("name") or "").strip()
+        if not name:
+            raise ValueError("Gruppe ohne Namen")
+        if name not in neue_eltern:
+            neue_eltern[name] = (await b.create_product(name, str(neu.get("einheit") or "g"))).id
+        pid = neue_eltern[name]
+    if pid == v.objekt_id:
+        return
+    await b.update_product(v.objekt_id, ProductPatch(parent_id=str(pid)))

@@ -3,8 +3,9 @@ import {$, $$, api, dmy, esc, fmt, guarded, post, toast} from "../lib.js";
 const FELD = {tracking_modus: "Modus", kategorie: "Kategorie", ablauf_typ: "Ablauf", haltbarkeit_tage: "Haltbar (Tage)",
   haltbarkeit_offen_tage: "geöffnet", haltbarkeit_gefroren_tage: "gefroren", haltbarkeit_aufgetaut_tage: "aufgetaut",
   g_je_einheit: "g je Einheit", toleranz_pct: "Toleranz %", packung: "Packung", tags: "Tags", aufwand: "Aufwand",
-  rest_haltbarkeit_tage: "Rest-Haltbarkeit", naehrwerte: "Nährwerte /100 g", variante: "Neue Größe"};
-const wert = (v) => v == null ? "–" : Array.isArray(v) ? v.join(", ") : typeof v === "object" ? ("kcal" in v
+  rest_haltbarkeit_tage: "Rest-Haltbarkeit", naehrwerte: "Nährwerte /100 g", variante: "Neue Größe", variante_von: "Austauschbar unter"};
+const wert = (v) => v == null ? "–" : Array.isArray(v) ? v.join(", ") : typeof v === "object" ? ("name" in v && !("menge" in v)
+  ? `${v.name}${v.parent_id ? "" : " (neu anlegen)"}` : "kcal" in v
   ? `${fmt(v.kcal)} kcal · P ${fmt(v.protein)} · F ${fmt(v.fett)} · KH ${fmt(v.kohlenhydrate)} · Z ${fmt(v.zucker)} · Salz ${fmt(v.salz)}${v.obst_gemuese ? " · OGH" : ""}${v.roh ? " · roh" : ""}`
   : [`${v.einheit ?? ""} ${fmt(v.menge)}`, v.marke, v.haendler && `bei ${v.haendler}`, v.quelle === "bon" && "vom Bon", v.grund]
     .filter(Boolean).join(" · ")) : String(v);
@@ -22,6 +23,7 @@ export default async function render(el) {
       <label class="inline"><input type="checkbox" id="kp" checked> Produkte</label>
       <label class="inline"><input type="checkbox" id="kr" checked> Rezepte</label>
       <label class="inline"><input type="checkbox" id="kn"> Nährwerte je 100 g schätzen (Produkte ohne Werte)</label>
+      <label class="inline"><input type="checkbox" id="kgr"> Austauschbare Zutaten gruppieren (Fusilli ↔ Spaghetti unter „Nudeln“)</label>
       <label class="inline"><input type="checkbox" id="kpk"> Packungsgrößen analysieren (Bons, Angebote, KI-Wissen)</label>
       <div class="row" style="align-items:center"><label class="inline" style="flex:0 0 auto">Standard = häufigste Größe der letzten</label>
         <input id="kmon" type="number" min="1" max="36" value="6" style="flex:0 0 70px"><span class="muted small" style="flex:0 0 auto">Monate</span></div>
@@ -49,7 +51,7 @@ export default async function render(el) {
   $("#start", el).onclick = () => guarded(async () => {
     const alle = $("#kalle", el).checked;
     await post("kategorisieren", {produkte: $("#kp", el).checked, rezepte: $("#kr", el).checked, naehrwerte: $("#kn", el).checked,
-      packungen: $("#kpk", el).checked, monate: +$("#kmon", el).value || 6, nur_ohne_attribute: !alle, nur_leere: !alle});
+      packungen: $("#kpk", el).checked, gruppen: $("#kgr", el).checked, monate: +$("#kmon", el).value || 6, nur_ohne_attribute: !alle, nur_leere: !alle});
     toast("Kategorisierung läuft"); render(el);
   });
   if (!vor.length) return;

@@ -81,7 +81,8 @@ export default async function render(el) {
         Gilt für „kochbar“, Planer, Einkaufsliste und das Abbuchen nach dem Kochen.</p>
       ${gruppen.length ? `<table>${gruppen.map((g) => `<tr><td><label class="inline" style="margin:0"><input type="checkbox" data-ers="${esc(g.id)}" ${gesperrt.has(g.id) ? "" : "checked"}>
           <b>${esc(g.name)}</b></label><div class="muted tiny">${g.kinder.map((k) => esc(k.name)).join(", ")}</div></td></tr>`).join("")}</table>`
-        : `<p class="muted small">Noch keine Gruppen. Am Produkt „Variante von“ setzen, z. B. Spaghetti und Fusilli → Nudeln.</p>`}</div>
+        : `<p class="muted small">Noch keine Gruppen. Am Produkt „Variante von“ setzen, z. B. Spaghetti und Fusilli → Nudeln.</p>`}
+      <p class="muted tiny">Gruppen vorschlagen lassen: <a href="#/ki-vorschlaege">KI-Kategorisierung</a> → „Austauschbare Zutaten gruppieren“.</p></div>
     <div class="card"><h2>App-Optionen <span class="muted tiny">(nur lesen)</span></h2>
       <p class="muted tiny">Änderbar in Home Assistant unter Einstellungen → Apps → ration → Konfiguration.</p>
       <table>

@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.27.1 / API 1.22)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.28.0 / API 1.23)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -211,6 +211,9 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
   Bestand wird reserviert, nicht doppelt gezählt) und „Gekocht“ (bucht den Ersatz ab, Name
   „Fusilli (statt Spaghetti)“). Pro Gruppe abschaltbar: Einstellung `ersatz.gesperrt`
   (Einstellungen → Austauschbare Zutaten). Gruppen entstehen über „Variante von“ am Produkt.
+- 0.28.0: KI schlägt Austauschgruppen im Kategorisierungslauf vor (`gruppen: true`, Vorschlag
+  `variante_von` je Produkt). Code prüft gleiche Einheit, nur eine Ebene (Grocy), keine Produkte
+  mit eigenen Varianten; neues Oberprodukt wird erst beim Übernehmen angelegt.
 - Offen/Idee: Ersatz über verschiedene Einheiten (Gramm-Umrechnung), Ausnahme je Rezept.
 
 ### 11. MHD beim Einbuchen ohne Datum – erledigt (0.27.1)

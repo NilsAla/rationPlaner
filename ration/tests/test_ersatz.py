@@ -114,3 +114,57 @@ def test_planer_und_spontan_sehen_ersatz(client):
     lauf = client.get(f"/api/v1/plan/laeufe/{resp.json()['lauf_id']}").json()
     assert lauf["tage"][0]["rezept_id"] == "pasta"
     assert lauf["einkauf"] == []  # Planer kauft keine Spaghetti, Fusilli reichen
+
+
+@pytest.fixture
+def k_client(fake_ha, tmp_path):
+    produkte = [
+        Product(id="nudeln", name="Nudeln", unit="g"),
+        Product(id="spaghetti", name="Spaghetti", unit="g"),
+        Product(id="fusilli", name="Fusilli", unit="g"),
+        Product(id="lasagne", name="Lasagneplatten", unit="Stück"),
+        Product(id="basmati", name="Basmatireis", unit="g"),
+        Product(id="jasmin", name="Jasminreis", unit="g"),
+    ]
+    b = FakeBackend(produkte, [Location(id="v", name="Vorrat")])
+    app = create_app(
+        inventory=b,
+        ha=fake_ha,
+        app_settings=Settings(ai_task_entity="ai_task.test", data_dir=tmp_path),
+        db_url=f"sqlite:///{tmp_path / 'g.db'}",
+    )
+    with TestClient(app) as c:
+        c.backend = b
+        yield c
+
+
+def test_ki_schlaegt_gruppen_vor_review(k_client, fake_ha):
+    fake_ha.ki_antwort = {
+        "gruppen": [
+            # Lasagne hat andere Einheit → fällt raus, Parent "Nudeln" existiert
+            {
+                "name": "Nudeln",
+                "parent_id": "nudeln",
+                "mitglieder": ["spaghetti", "fusilli", "lasagne"],
+            },
+            {"name": "Reis", "parent_id": "", "mitglieder": ["basmati", "jasmin"]},
+            {"name": "Unsinn", "mitglieder": ["gibtsnicht"]},
+        ]
+    }
+    r = k_client.post(
+        "/api/v1/kategorisieren", json={"produkte": False, "rezepte": False, "gruppen": True}
+    )
+    assert r.status_code == 202, r.text
+    vor = {v["objekt_id"]: v for v in k_client.get("/api/v1/vorschlaege").json()}
+    assert set(vor) == {"spaghetti", "fusilli", "basmati", "jasmin"}
+    assert vor["spaghetti"]["neu"]["parent_id"] == "nudeln"
+    assert vor["basmati"]["neu"] == {"parent_id": None, "name": "Reis", "einheit": "g"}
+    assert "Austauschgruppen" in k_client.get("/api/v1/log/ki").json()[0]["aufgabe"]
+    # nichts gesetzt, bis übernommen
+    assert k_client.backend._products["spaghetti"].parent_id is None
+    k_client.post("/api/v1/vorschlaege", json={"uebernehmen": [v["id"] for v in vor.values()]})
+    p = k_client.backend._products
+    reis = next(x for x in p.values() if x.name == "Reis")
+    assert p["spaghetti"].parent_id == p["fusilli"].parent_id == "nudeln"
+    assert p["basmati"].parent_id == p["jasmin"].parent_id == reis.id
+    assert kueche.ersatz_karte(p)["spaghetti"] == ["fusilli"]
