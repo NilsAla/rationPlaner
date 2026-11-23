@@ -52,5 +52,5 @@ class RationLlmApi(llm.API):
             api=self,
             api_prompt=PROMPT,
             llm_context=llm_context,
-            tools=[RationTool(a) for a in AKTIONEN],
+            tools=[RationTool(a) for a in AKTIONEN if not a.nur_service],
         )

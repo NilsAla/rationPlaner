@@ -40,12 +40,52 @@ def fake_backend(basis: dict) -> FakeBackend:
 class FakeHomeAssistant:
     def __init__(self, items: list[str] | None = None):
         self.items = list(items or [])
+        self.ki_antwort: dict | Exception | list = {}  # Liste: eine Antwort je Aufruf
+        self.ki_anfragen: list[str] = []
+        self.ki_anhaenge: list = []
+        self.hinweise: list[tuple[str, str]] = []
+        self.zustaende: dict[str, dict] = {}  # entity_id → {"state": …, "attributes": {…}}
+        self.aufrufe: list[tuple[str, str, dict]] = []
+
+    async def states(self, domain: str) -> list[dict]:
+        return [
+            {"entity_id": e, **z} for e, z in self.zustaende.items() if e.startswith(domain + ".")
+        ]
+
+    async def call_service(self, domain: str, service: str, data: dict) -> None:
+        self.aufrufe.append((domain, service, data))
+        if domain == "timer" and data.get("entity_id") in self.zustaende:
+            z = self.zustaende[data["entity_id"]]
+            z["state"] = {"start": "active", "cancel": "idle", "finish": "idle",
+                          "pause": "paused"}.get(service, z["state"])  # fmt: skip
+            if service == "start":
+                z.setdefault("attributes", {})["duration"] = data.get("duration")
 
     async def todo_items(self, entity_id: str) -> list[str]:
         return list(self.items)
 
     async def todo_add(self, entity_id: str, item: str) -> None:
         self.items.append(item)
+
+    async def notify(self, title: str, message: str, service: str = "") -> None:
+        self.hinweise.append((title, message))
+
+    async def ai_task(
+        self,
+        entity_id: str,
+        task_name: str,
+        instructions: str,
+        structure: dict,
+        attachments: list[dict] | None = None,
+    ) -> dict:
+        self.ki_anfragen.append(instructions)
+        self.ki_anhaenge.append(attachments)
+        antwort = self.ki_antwort
+        if isinstance(antwort, list):
+            antwort = antwort.pop(0) if len(antwort) > 1 else antwort[0]
+        if isinstance(antwort, Exception):
+            raise antwort
+        return antwort
 
 
 @pytest.fixture

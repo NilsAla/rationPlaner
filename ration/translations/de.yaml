@@ -1,0 +1,33 @@
+configuration:
+  grocy_url:
+    name: Grocy-URL
+    description: Adresse der Grocy-App, z. B. http://a0d7b954-grocy (ohne /api).
+  grocy_api_key:
+    name: Grocy-API-Key
+    description: In Grocy unter Einstellungen → API-Schlüssel verwalten.
+  ai_task_entity:
+    name: KI-Entität
+    description: ai_task-Entität für Bon, Import, Kategorisierung, Planer und Kochanleitungen.
+  todo_entity:
+    name: Einkaufsliste
+    description: todo-Entität, in die die Einkaufsliste geschrieben wird.
+  toleranz_default_pct:
+    name: Mengen-Toleranz (%)
+    description: Standard-Toleranz je Produkt, wenn das Produkt keine eigene hat.
+  bon_konfidenz_schwelle:
+    name: Bon-Konfidenz
+    description: Ab diesem Wert ist ein KI-Treffer auf dem Bon vorausgewählt.
+  dubletten_schwelle:
+    name: Dubletten-Schwelle
+    description: Namensähnlichkeit (0,5–1), ab der zwei Produkte als mögliche Dublette gelten.
+  api_token:
+    name: API-Token
+    description: Optional. Pflicht-Token für Zugriffe außerhalb von Ingress (Bridge).
+  notify_service:
+    name: Benachrichtigung
+    description: Optional, z. B. notify.mobile_app_handy, zusätzlich zur HA-Benachrichtigung.
+  timer_entities:
+    name: Timer-Entitäten
+    description: >-
+      timer.*-Entitäten für den Kochmodus, z. B. timer.kuechenuhr1. Leer = automatisch alle
+      Timer mit Küche/kitchen/koch im Namen.

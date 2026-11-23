@@ -27,8 +27,6 @@ einkaufsliste_erzeugen:
         number:
           min: 1
           max: 14
-plan_erzeugen:
-kategorisieren:
 heute:
 bestand:
 produkte:
@@ -97,3 +95,422 @@ einbuchen:
           min: 0
           step: 0.01
           mode: box
+packungen:
+packung_setzen:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+    einheit:
+      required: true
+      selector:
+        text:
+    menge:
+      required: true
+      selector:
+        number:
+          min: 0
+          step: any
+          mode: box
+packung_hinzufuegen:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+    einheit:
+      required: true
+      selector:
+        text:
+    menge:
+      required: true
+      selector:
+        number:
+          min: 0
+          step: any
+          mode: box
+    quelle:
+      default: manuell
+      selector:
+        select:
+          options: [manuell, bon, angebot, llm]
+    gueltig_bis:
+      selector:
+        date:
+packung_loeschen:
+  fields:
+    packung_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+rezept_import_vorschau:
+  fields:
+    url:
+      required: true
+      selector:
+        text:
+          type: url
+    html:
+      selector:
+        text:
+          multiline: true
+    ki:
+      default: true
+      selector:
+        boolean:
+rezept_import_uebernehmen:
+  fields:
+    import_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    zutaten:
+      required: true
+      selector:
+        object:
+    name:
+      selector:
+        text:
+    portionen:
+      selector:
+        number:
+          min: 1
+          max: 12
+    schritte:
+      selector:
+        object:
+    trotz_dublette:
+      selector:
+        boolean:
+rezeptbuch:
+rezept_details:
+  fields:
+    rezept_id:
+      required: true
+      selector:
+        text:
+    portionen:
+      selector:
+        number:
+          min: 1
+          max: 12
+rezept_aendern:
+  fields:
+    rezept_id:
+      required: true
+      selector:
+        text:
+    name:
+      selector:
+        text:
+    portionen:
+      selector:
+        number:
+          min: 1
+          max: 12
+    zutaten:
+      selector:
+        object:
+    schritte:
+      selector:
+        object:
+    tags:
+      selector:
+        object:
+    status:
+      selector:
+        select:
+          options:
+          - getestet
+          - ungetestet
+    aufwand:
+      selector:
+        select:
+          options:
+          - schnell
+          - normal
+          - aufwaendig
+    rest_haltbarkeit_tage:
+      selector:
+        number:
+          min: 0
+          max: 30
+produkt_details:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+produkt_aendern:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+    name:
+      selector:
+        text:
+    tracking_modus:
+      selector:
+        select:
+          options:
+          - exakt
+          - menge
+          - fuellstand
+          - immer_da
+    kategorie:
+      selector:
+        text:
+    fuellstand:
+      selector:
+        select:
+          options:
+          - voll
+          - knapp
+          - leer
+    toleranz_pct:
+      selector:
+        number:
+          min: 0
+          max: 100
+    g_je_einheit:
+      selector:
+        number:
+          min: 0
+          mode: box
+    mindestbestand:
+      selector:
+        number:
+          min: 0
+          mode: box
+    ablauf_typ:
+      selector:
+        select:
+          options:
+          - mhd
+          - verbrauchsdatum
+    haltbarkeit_tage:
+      selector:
+        number:
+          min: 0
+          max: 3650
+          mode: box
+    haltbarkeit_offen_tage:
+      selector:
+        number:
+          min: 0
+          max: 3650
+          mode: box
+    haltbarkeit_gefroren_tage:
+      selector:
+        number:
+          min: 0
+          max: 3650
+          mode: box
+    haltbarkeit_aufgetaut_tage:
+      selector:
+        number:
+          min: 0
+          max: 3650
+          mode: box
+    lagerort_id:
+      selector:
+        text:
+    parent_id:
+      selector:
+        text:
+dubletten:
+  fields:
+    schwelle:
+      selector:
+        number:
+          min: 0.5
+          max: 1
+          step: 0.01
+dubletten_ignorieren:
+  fields:
+    behalten:
+      required: true
+      selector:
+        text:
+    entfernen:
+      required: true
+      selector:
+        text:
+dubletten_mergen:
+  fields:
+    behalten:
+      required: true
+      selector:
+        text:
+    entfernen:
+      required: true
+      selector:
+        text:
+reste:
+fuellstand:
+fuellstand_setzen:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+    stand:
+      required: true
+      selector:
+        select:
+          options:
+          - voll
+          - knapp
+          - leer
+abbuchen:
+  fields:
+    produkt_id:
+      required: true
+      selector:
+        text:
+    menge:
+      required: true
+      selector:
+        number:
+          min: 0
+          mode: box
+    verdorben:
+      selector:
+        boolean:
+bon_aus_media:
+  fields:
+    pfad:
+      required: true
+      selector:
+        text:
+bons:
+bon_details:
+  fields:
+    bon_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+bon_buchen:
+  fields:
+    bon_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    positionen:
+      required: true
+      selector:
+        object:
+bon_verwerfen:
+  fields:
+    bon_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+kategorisieren:
+  fields:
+    produkte:
+      selector:
+        boolean:
+    rezepte:
+      selector:
+        boolean:
+    nur_ohne_attribute:
+      selector:
+        boolean:
+    nur_leere:
+      selector:
+        boolean:
+vorschlaege:
+vorschlaege_entscheiden:
+  fields:
+    uebernehmen:
+      selector:
+        object:
+    ablehnen:
+      selector:
+        object:
+plan_erzeugen:
+  fields:
+    start:
+      selector:
+        date:
+    tage:
+      selector:
+        number:
+          min: 1
+          max: 31
+    daten:
+      selector:
+        object:
+    kochtage:
+      selector:
+        object:
+    portionen:
+      selector:
+        number:
+          min: 1
+          max: 6
+    ki:
+      selector:
+        boolean:
+    ueberschreiben:
+      selector:
+        boolean:
+    uebernehmen:
+      selector:
+        boolean:
+    praeferenzen:
+      selector:
+        object:
+    max_ungetestet:
+      selector:
+        number:
+          min: 0
+          max: 7
+plan_vorschlag:
+  fields:
+    lauf_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+plan_laeufe:
+plan_uebernehmen:
+  fields:
+    lauf_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+plan_tauschen:
+  fields:
+    datum:
+      required: true
+      selector:
+        date:
+    portionen:
+      selector:
+        number:
+          min: 1
+          max: 6
+plan_simulation:
+  fields:
+    tage:
+      selector:
+        number:
+          min: 1
+          max: 14

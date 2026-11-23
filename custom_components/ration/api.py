@@ -13,10 +13,18 @@ class RationApiError(Exception):
     pass
 
 
+class RationAuthError(RationApiError):
+    """App verlangt ein (anderes) Token."""
+
+
 class RationApi:
-    def __init__(self, session: aiohttp.ClientSession, url: str) -> None:
+    def __init__(self, session: aiohttp.ClientSession, url: str, token: str = "") -> None:
         self._session = session
         self._base = url.rstrip("/") + "/api/v1"
+        # X-Ration-Client: die App ordnet Änderungen im Protokoll der Bridge zu.
+        self._headers = {"X-Ration-Client": "bridge"}
+        if token:
+            self._headers["Authorization"] = f"Bearer {token}"
 
     async def request(
         self, method: str, path: str, json: dict | None = None, params: dict | None = None
@@ -27,9 +35,12 @@ class RationApi:
                 f"{self._base}{path}",
                 json=json,
                 params=params,
-                timeout=aiohttp.ClientTimeout(total=30),
+                headers=self._headers,
+                timeout=aiohttp.ClientTimeout(total=150),  # KI-Import braucht länger,
             ) as resp:
-                body = await resp.json(content_type=None)
+                body = None if resp.status == 204 else await resp.json(content_type=None)
+                if resp.status == 401:
+                    raise RationAuthError("App verlangt ein gültiges Token (Option api_token)")
                 if resp.status >= 400:
                     detail = body.get("detail") if isinstance(body, dict) else body
                     raise RationApiError(f"{resp.status}: {detail}")

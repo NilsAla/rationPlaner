@@ -16,11 +16,37 @@ class HomeAssistant(Protocol):
 
     async def todo_add(self, entity_id: str, item: str) -> None: ...
 
+    async def ai_task(
+        self,
+        entity_id: str,
+        task_name: str,
+        instructions: str,
+        structure: dict,
+        attachments: list[dict] | None = None,
+    ) -> dict:
+        """ai_task.generate_data mit Structured Output, liefert das data-Objekt.
+
+        attachments: [{"media_content_id": "media-source://…", "media_content_type": "image/jpeg"}]
+        """
+        ...
+
+    async def notify(self, title: str, message: str, service: str = "") -> None:
+        """Hinweis an den Nutzer: persistent_notification, zusätzlich notify.<service>."""
+        ...
+
+    async def states(self, domain: str) -> list[dict]:
+        """Zustände aller Entitäten einer Domain (entity_id, state, attributes)."""
+        ...
+
+    async def call_service(self, domain: str, service: str, data: dict[str, Any]) -> None:
+        """Beliebiger Service-Aufruf ohne Antwort, z. B. timer.start."""
+        ...
+
 
 class SupervisorHomeAssistant:
     def __init__(self, token: str, base_url: str = SUPERVISOR_CORE_API):
         self._client = httpx.AsyncClient(
-            base_url=base_url, headers={"Authorization": f"Bearer {token}"}, timeout=15.0
+            base_url=base_url, headers={"Authorization": f"Bearer {token}"}, timeout=120.0
         )
 
     async def aclose(self) -> None:
@@ -43,3 +69,38 @@ class SupervisorHomeAssistant:
 
     async def todo_add(self, entity_id: str, item: str) -> None:
         await self._service("todo", "add_item", {"entity_id": entity_id, "item": item})
+
+    async def ai_task(
+        self,
+        entity_id: str,
+        task_name: str,
+        instructions: str,
+        structure: dict,
+        attachments: list[dict] | None = None,
+    ) -> dict:
+        data: dict[str, Any] = {
+            "entity_id": entity_id,
+            "task_name": task_name,
+            "instructions": instructions,
+            "structure": structure,
+        }
+        if attachments:
+            data["attachments"] = attachments
+        result = await self._service("ai_task", "generate_data", data, response=True)
+        return result.get("service_response", {}).get("data") or {}
+
+    async def notify(self, title: str, message: str, service: str = "") -> None:
+        await self._service(
+            "persistent_notification", "create", {"title": title, "message": message}
+        )
+        if service:
+            domain, _, name = service.partition(".")
+            await self._service(domain, name, {"title": title, "message": message})
+
+    async def states(self, domain: str) -> list[dict]:
+        resp = await self._client.get("/states")
+        resp.raise_for_status()
+        return [x for x in resp.json() if x.get("entity_id", "").startswith(domain + ".")]
+
+    async def call_service(self, domain: str, service: str, data: dict[str, Any]) -> None:
+        await self._service(domain, service, data)

@@ -2,32 +2,153 @@
 
 from __future__ import annotations
 
+import html
 import math
 import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from app.inventory.base import InventoryBackend, Product, Recipe, TrackingMode
+from app.inventory.base import InventoryBackend, Product, ProductPatch, Recipe, TrackingMode
 
 # Füllstand und Immer-da werden nie abgebucht (Konzept, Bestandsführung).
 ABBUCHEN = {TrackingMode.EXAKT, TrackingMode.MENGE, None}
 EPS = 1e-6
+REST_KATEGORIE = "Rest"
+REST_EINHEIT = "Portion"
+REST_TAGE_STANDARD = 3  # wenn das Rezept keine Rest-Haltbarkeit hat
+NACHKAUF_FUELLSTAND = {"knapp", "leer"}
+
+
+def ist_rest(product: Product) -> bool:
+    return product.category == REST_KATEGORIE
 
 
 def wird_abgebucht(product: Product) -> bool:
     return product.tracking_mode in ABBUCHEN
 
 
+# Quellenlink unter den Schritten (rezept_import.quelle_link) ist kein Schritt
+QUELLE_ZEILE = re.compile(r"^(?:Quelle: |Zubereitung: siehe )Originalrezept \(")
+
+
 def schritte(description: str) -> list[str]:
     """Zerlegt Grocys HTML-Beschreibung in einzelne Schritte."""
     text = re.sub(r"(?i)</p>|<br\s*/?>|</li>|</h\d>", "\n", description)
-    text = re.sub(r"<[^>]+>", "", text)
-    text = text.replace("&nbsp;", " ").replace("&amp;", "&")
-    return [line.strip() for line in text.splitlines() if line.strip()]
+    text = html.unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
+    zeilen = (line.strip() for line in text.splitlines())
+    return [z for z in zeilen if z and not QUELLE_ZEILE.match(z)]
+
+
+def beschreibung(schritte_: list[str]) -> str:
+    """Schritte → Grocy-HTML, Umkehrung von schritte()."""
+    return "".join(f"<p>{html.escape(t.strip())}</p>" for t in schritte_ if t.strip())
 
 
 def menge(amount: float) -> str:
     return f"{round(amount, 1):g}"
+
+
+# --- Mengen in Schritt-Texten skalieren --------------------------------------------------------
+# Schritte stehen immer für die Grundportionen des Rezepts im Text („250 g Hähnchen anbraten“).
+# Beim Anzeigen für andere Portionen rechnet der Code jede erkannte Menge mit um. Zeiten,
+# Temperaturen und Maße (Minuten, °C, cm) haben keine Mengeneinheit und bleiben unverändert.
+_BRUCH = {"½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3}
+_ZAHL = r"(?:\d+(?:[.,]\d+)?|\d+/\d+|[½¼¾⅓⅔])"
+# Längere Einheiten zuerst, sonst fängt „g“ das „Gramm“ ab
+_GEWICHT = ["Kilogramm", "Milliliter", "Gramm", "Liter", "kg", "mg", "ml", "cl", "dl", "g", "l"]
+_STUECKIG = [
+    "Esslöffel", "Teelöffel", "Päckchen", "Packungen", "Packung", "Handvoll", "Scheiben",
+    "Scheibe", "Stangen", "Stange", "Knollen", "Knolle", "Prisen", "Prise", "Zehen", "Zehe",
+    "Dosen", "Dose", "Becher", "Tassen", "Tasse", "Zweige", "Zweig", "Blätter", "Blatt", "Stück",
+    "Stk.", "Stk", "Pck.", "Pck", "Msp.", "Msp", "Bund", "EL", "TL",
+]  # fmt: skip
+_EINZAHL = {
+    "Zehen": "Zehe", "Dosen": "Dose", "Prisen": "Prise", "Scheiben": "Scheibe", "Tassen": "Tasse",
+    "Packungen": "Packung", "Stangen": "Stange", "Knollen": "Knolle", "Zweige": "Zweig",
+    "Blätter": "Blatt",
+}  # fmt: skip
+_MEHRZAHL = {v: k for k, v in _EINZAHL.items()}
+_EINHEIT = "|".join(re.escape(e) for e in _GEWICHT + _STUECKIG)
+MENGE_IM_TEXT = re.compile(
+    rf"(?<![\w.,/])(?P<a>{_ZAHL})(?:\s?[-–]\s?(?P<b>{_ZAHL}))?\s?"
+    rf"(?:(?P<e>{_EINHEIT})(?![\wäöüß])|(?P<w>[A-ZÄÖÜ][\wäöüß]+))"
+)
+
+
+def _zahl(t: str) -> float:
+    if t in _BRUCH:
+        return _BRUCH[t]
+    if "/" in t:
+        z, n = t.split("/")
+        return int(z) / int(n) if int(n) else 0.0
+    return float(t.replace(",", "."))
+
+
+def _bruch(x: float) -> str:
+    """Auf Viertel gerundet, als „1½“ statt „1.5“."""
+    v = max(round(x * 4) / 4, 0.25)
+    ganz, rest = int(v), v - int(v)
+    zeichen = {0.25: "¼", 0.5: "½", 0.75: "¾"}.get(rest, "")
+    return f"{ganz if ganz else ''}{zeichen}" or "0"
+
+
+def _format(x: float, stueckig: bool) -> str:
+    if stueckig:
+        return _bruch(x)
+    if x >= 100:
+        return f"{round(x / 5) * 5:g}"
+    if x >= 10:
+        return f"{round(x):g}"
+    return f"{round(x, 1):g}".replace(".", ",")
+
+
+def _zutat_wort(wort: str, namen: list[str]) -> str | None:
+    """Erstes Wort eines Zutatennamens, wenn `wort` diese Zutat meint (Zwiebeln → Zwiebel)."""
+    w = wort.lower()
+    for n in namen:
+        erstes = re.split(r"[\s,(]", n.strip(), maxsplit=1)[0]
+        stamm = erstes.lower()
+        if len(stamm) >= 3 and len(w) >= 3 and (w.startswith(stamm) or stamm.startswith(w)):
+            return erstes
+        if w in (stamm, stamm + "er"):  # Ei/Eier
+            return erstes
+    return None
+
+
+def mengen_skalieren(text: str, faktor: float, namen: list[str] | None = None) -> str:
+    """Mengen im Schritt-Text mit `faktor` umrechnen (Zielportionen ÷ Grundportionen).
+
+    Erkannt werden Zahl + Mengeneinheit („250 g“, „2-3 EL“, „½ Bund“) und Zahl + Zutat
+    („2 Zwiebeln“, wenn Zwiebel eine Zutat des Rezepts ist). Faktor 1 lässt den Text unverändert.
+    """
+    if abs(faktor - 1) < EPS or not text:
+        return text
+    namen = namen or []
+
+    def ersetzen(m: re.Match) -> str:
+        einheit, wort = m.group("e"), m.group("w")
+        if wort is not None:
+            basis = _zutat_wort(wort, namen)
+            if basis is None:
+                return m.group(0)
+        stueckig = wort is not None or einheit not in _GEWICHT
+        werte = [_zahl(m.group("a")) * faktor]
+        if m.group("b"):
+            werte.append(_zahl(m.group("b")) * faktor)
+        zahl = "–".join(_format(v, stueckig) for v in werte)
+        groesste = max(round(v * 4) / 4 for v in werte)
+        if wort is not None:
+            # „2 Zwiebeln“ → „1 Zwiebel“; die Mehrzahl bleibt wie im Text
+            wort = basis if groesste <= 1 and len(basis) < len(wort) else wort
+            return f"{zahl} {wort}"
+        if groesste <= 1:
+            einheit = _EINZAHL.get(einheit, einheit)
+        else:
+            einheit = _MEHRZAHL.get(einheit, einheit)
+        trenner = " " if " " in m.group(0) or einheit[0].isupper() else ""
+        return f"{zahl}{trenner}{einheit}"
+
+    return MENGE_IM_TEXT.sub(ersetzen, text)
 
 
 @dataclass
@@ -38,36 +159,90 @@ class Position:
     einheit: str
 
 
+@dataclass(frozen=True)
+class Groesse:
+    """Eine kaufbare Packungsgröße: Einheit und Menge in Bestandseinheit."""
+
+    einheit: str
+    menge: float
+    quelle: str = "standard"  # standard/manuell/bon/angebot/llm
+
+
+@dataclass
+class PackAnzahl:
+    anzahl: int
+    einheit: str
+    menge: float  # je Packung, in Bestandseinheit
+    quelle: str = "standard"
+
+
 @dataclass
 class Einkauf(Position):
-    """Fehlmenge, aufgerundet auf ganze Packungen (Einkaufseinheit aus Grocy)."""
+    """Fehlmenge, aufgerundet auf ganze Packungen. Leere Liste = keine Packungsgröße bekannt."""
 
-    packungen: int | None = None
-    packung: str | None = None  # Einkaufseinheit, z. B. "Dose"
-    packung_menge: float | None = None  # Bestandseinheit je Packung
+    packungen: list[PackAnzahl] = field(default_factory=list)
 
     @property
     def text(self) -> str:
-        if self.packungen is None:
+        if not self.packungen:
+            if self.menge <= EPS:  # Füllstand ohne Packungsgröße: nur der Name
+                return self.name
             return f"{self.name} {menge(math.ceil(self.menge - EPS))} {self.einheit}".strip()
-        groesse = f"{menge(self.packung_menge)} {self.einheit}".strip()
-        return f"{self.name}, {self.packungen} × {self.packung} ({groesse})"
+        teile = [
+            f"{p.anzahl} × {p.einheit} ({menge(p.menge)} {self.einheit})".replace(" )", ")")
+            for p in self.packungen
+        ]
+        return f"{self.name}, {' + '.join(teile)}"
 
 
-def auf_packungen(product: Product, fehlmenge: float) -> Einkauf:
+def groessen(product: Product, weitere: list[Groesse] | None = None) -> list[Groesse]:
+    """Standard-Packung aus Grocy plus weitere Größen, ohne Dubletten."""
+    alle = []
+    if product.pack_size:
+        alle.append(Groesse(product.pack_unit or "Packung", product.pack_size))
+    for g in weitere or []:
+        if g.menge > EPS and not any(abs(g.menge - x.menge) < EPS for x in alle):
+            alle.append(g)
+    return alle
+
+
+def waehle_packungen(fehlmenge: float, auswahl: list[Groesse]) -> list[PackAnzahl]:
+    """Kombination aus höchstens zwei Größen mit kleinstem Überhang.
+
+    Gleichstand: weniger Packungen, dann mehr Angebotspackungen, dann mehr Standardpackungen.
+    """
+    beste: tuple | None = None
+    for i, a in enumerate(auswahl):
+        for b in auswahl[i:]:
+            max_a = math.ceil(fehlmenge / a.menge - EPS)
+            for na in range(1 if a is b else 0, max_a + 1):
+                rest = fehlmenge - na * a.menge
+                nb = 0 if a is b else max(math.ceil(rest / b.menge - EPS), 0)
+                if a is b and na != max_a:
+                    continue
+                kombi = [(n, g) for n, g in ((na, a), (nb, b)) if n > 0]
+                ueberhang = sum(n * g.menge for n, g in kombi) - fehlmenge
+                key = (
+                    round(ueberhang, 6),
+                    sum(n for n, _ in kombi),
+                    -sum(n for n, g in kombi if g.quelle == "angebot"),
+                    -sum(n for n, g in kombi if g.quelle == "standard"),
+                )
+                if beste is None or key < beste[0]:
+                    beste = (key, kombi)
+    if beste is None:
+        return []
+    kombi = sorted(beste[1], key=lambda x: -x[1].menge)
+    return [PackAnzahl(n, g.einheit, g.menge, g.quelle) for n, g in kombi]
+
+
+def auf_packungen(
+    product: Product, fehlmenge: float, weitere: list[Groesse] | None = None
+) -> Einkauf:
     """Rundet eine Fehlmenge auf ganze Packungen. Ohne Packungsgröße bleibt die Menge."""
-    if not product.pack_size:
-        return Einkauf(product.id, product.name, fehlmenge, product.unit)
-    n = max(math.ceil(fehlmenge / product.pack_size - EPS), 1)
-    return Einkauf(
-        product.id,
-        product.name,
-        n * product.pack_size,
-        product.unit,
-        packungen=n,
-        packung=product.pack_unit,
-        packung_menge=product.pack_size,
-    )
+    packungen = waehle_packungen(fehlmenge, groessen(product, weitere))
+    gesamt = sum(p.anzahl * p.menge for p in packungen) or fehlmenge
+    return Einkauf(product.id, product.name, gesamt, product.unit, packungen=packungen)
 
 
 @dataclass
@@ -76,6 +251,8 @@ class GekochtErgebnis:
     fehlend: list[Position] = field(default_factory=list)
     nicht_abgebucht: list[Position] = field(default_factory=list)
     rest_portionen: int = 0
+    rest: Position | None = None  # eingebuchtes Rest-Produkt
+    fuellstand_produkte: list[Position] = field(default_factory=list)  # zum Nachfragen
 
 
 async def gekocht(
@@ -94,6 +271,8 @@ async def gekocht(
         pos = Position(product.id, product.name, bedarf, product.unit)
         if not wird_abgebucht(product):
             ergebnis.nicht_abgebucht.append(pos)
+            if product.tracking_mode == TrackingMode.FUELLSTAND:
+                ergebnis.fuellstand_produkte.append(pos)
             continue
         vorhanden = await backend.get_stock_amount(product.id)
         abbuchen = min(bedarf, vorhanden)
@@ -104,10 +283,15 @@ async def gekocht(
             ergebnis.fehlend.append(
                 Position(product.id, product.name, bedarf - abbuchen, product.unit)
             )
+    ergebnis.rest = await rest_einbuchen(backend, recipe, ergebnis.rest_portionen)
     return ergebnis
 
 
-async def bedarf(backend: InventoryBackend, geplant: list[tuple[Recipe, int]]) -> list[Einkauf]:
+async def bedarf(
+    backend: InventoryBackend,
+    geplant: list[tuple[Recipe, int]],
+    weitere: dict[str, list[Groesse]] | None = None,
+) -> list[Einkauf]:
     """Was zu kaufen ist: Bedarf der geplanten Gerichte plus Mindestbestand, minus Bestand,
     aufgerundet auf ganze Packungen. Produkte mit Mindestbestand kommen auch ungeplant drauf.
     """
@@ -122,11 +306,17 @@ async def bedarf(backend: InventoryBackend, geplant: list[tuple[Recipe, int]]) -
         if p.min_stock > 0 and wird_abgebucht(p):
             summe.setdefault(p.id, 0)
     einkauf = []
+    # Füllstand: knapp oder leer → eine Packung (bzw. nur der Name, wenn keine Größe bekannt).
+    for p in products.values():
+        if p.tracking_mode == TrackingMode.FUELLSTAND and p.fill_level in NACHKAUF_FUELLSTAND:
+            g = groessen(p, (weitere or {}).get(p.id))
+            packs = [PackAnzahl(1, g[0].einheit, g[0].menge, g[0].quelle)] if g else []
+            einkauf.append(Einkauf(p.id, p.name, g[0].menge if g else 0.0, p.unit, packungen=packs))
     for product_id, benoetigt in summe.items():
         p = products[product_id]
         differenz = benoetigt + p.min_stock - await backend.get_stock_amount(product_id)
         if differenz > EPS:
-            einkauf.append(auf_packungen(p, differenz))
+            einkauf.append(auf_packungen(p, differenz, (weitere or {}).get(product_id)))
     return sorted(einkauf, key=lambda x: x.name)
 
 
@@ -134,10 +324,15 @@ async def bedarf(backend: InventoryBackend, geplant: list[tuple[Recipe, int]]) -
 class Status:
     artikel: int
     laeuft_bald_ab: list[dict]
+    reste: list[dict] = field(default_factory=list)
 
     @property
     def text(self) -> str:
-        return f"{self.artikel} Artikel · {len(self.laeuft_bald_ab)} laufen bald ab"
+        text = f"{self.artikel} Artikel · {len(self.laeuft_bald_ab)} laufen bald ab"
+        if self.reste:
+            portionen = sum(r["portionen"] for r in self.reste)
+            text += f" · {menge(portionen)} {'Rest' if portionen == 1 else 'Reste'}"
+        return text
 
 
 async def status(backend: InventoryBackend, tage: int = 3, heute: date | None = None) -> Status:
@@ -157,4 +352,44 @@ async def status(backend: InventoryBackend, tage: int = 3, heute: date | None = 
         for b in batches
         if b.best_before is not None and b.best_before <= grenze
     ]
-    return Status(artikel=len({b.product_id for b in batches}), laeuft_bald_ab=bald)
+    reste: dict[str, dict] = {}
+    for b in batches:
+        p = products.get(b.product_id)
+        if p and ist_rest(p):
+            r = reste.setdefault(
+                p.id, {"produkt_id": p.id, "name": p.name, "portionen": 0.0, "ablauf": None}
+            )
+            r["portionen"] += b.amount
+            if b.best_before and (r["ablauf"] is None or b.best_before.isoformat() < r["ablauf"]):
+                r["ablauf"] = b.best_before.isoformat()
+    return Status(
+        artikel=len({b.product_id for b in batches}),
+        laeuft_bald_ab=bald,
+        reste=sorted(reste.values(), key=lambda r: r["ablauf"] or "9999"),
+    )
+
+
+async def rest_einbuchen(
+    backend: InventoryBackend, recipe: Recipe, portionen: float, heute: date | None = None
+) -> Position | None:
+    """Übrige Portionen als Rest-Produkt „Rest: <Rezept>“ in den Kühlschrank buchen.
+
+    Haltbarkeit aus dem Rezept (Rest-Haltbarkeit), sonst REST_TAGE_STANDARD Tage.
+    """
+    if portionen <= EPS:
+        return None
+    heute = heute or date.today()
+    tage = recipe.leftover_days or REST_TAGE_STANDARD
+    p = await backend.create_product(f"Rest: {recipe.name}", REST_EINHEIT)
+    if not ist_rest(p):
+        p = await backend.update_product(
+            p.id,
+            ProductPatch(
+                category=REST_KATEGORIE, tracking_mode=TrackingMode.EXAKT, shelf_life_days=tage
+            ),
+        )
+    orte = await backend.list_locations()
+    kuehl = next((o for o in orte if o.name.lower().startswith("kühlschrank")), None)
+    ort = kuehl or next((o for o in orte if not o.is_freezer), orte[0])
+    await backend.add_stock(p.id, portionen, heute + timedelta(days=tage), ort.id)
+    return Position(p.id, p.name, portionen, p.unit)

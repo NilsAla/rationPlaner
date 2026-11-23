@@ -40,7 +40,36 @@ async def test_config_flow(hass: HomeAssistant, aioclient_mock):
     )
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"url": URL + "/"})
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {"url": URL}
+    assert result["data"] == {"url": URL, "token": ""}
+
+
+async def test_config_flow_token(hass: HomeAssistant, aioclient_mock):
+    aioclient_mock.get(f"{URL}/api/v1/version", status=401, json={"detail": "Token"})
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"url": URL, "token": "falsch"}
+    )
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_token_header_und_reauth(hass: HomeAssistant, aioclient_mock):
+    mock_app(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data={"url": URL, "token": "geheim"}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    headers = [call[3] for call in aioclient_mock.mock_calls if str(call[1]).endswith("/heute")]
+    assert headers and headers[0]["Authorization"] == "Bearer geheim"
+    # App verlangt plötzlich ein anderes Token: Reauth-Flow startet
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{URL}/api/v1/heute", status=401, json={"detail": "Token"})
+    coordinator = entry.runtime_data
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert flows and flows[0]["context"]["source"] == "reauth"
 
 
 async def test_config_flow_falsche_version(hass: HomeAssistant, aioclient_mock):
@@ -135,3 +164,29 @@ async def test_llm_api(hass: HomeAssistant, aioclient_mock):
 
     await hass.config_entries.async_unload(entry.entry_id)
     assert DOMAIN not in {api.id for api in llm.async_get_apis(hass)}
+
+
+async def test_service_packung_loeschen_pfad(hass: HomeAssistant, aioclient_mock):
+    await _setup(hass, aioclient_mock)
+    aioclient_mock.delete(f"{URL}/api/v1/packungen/7", status=204)
+    await hass.services.async_call(DOMAIN, "packung_loeschen", {"packung_id": 7}, blocking=True)
+    assert any(
+        c[0] == "DELETE" and str(c[1]).endswith("/packungen/7") for c in aioclient_mock.mock_calls
+    )
+
+
+async def test_tool_import_uebernehmen(hass: HomeAssistant, aioclient_mock):
+    await _setup(hass, aioclient_mock)
+    aioclient_mock.post(f"{URL}/api/v1/import/3/uebernehmen", json={"rezept_id": "9"})
+    context = llm.LLMContext(
+        platform="test", context=None, language="de", assistant=None, device_id=None
+    )
+    instance = await llm.async_get_api(hass, DOMAIN, context)
+    tool = next(t for t in instance.tools if t.name == f"{DOMAIN}_rezept_import_uebernehmen")
+    args = {"import_id": 3, "zutaten": [{"index": 0, "produkt_id": "1", "menge": 250}]}
+    result = await tool.async_call(
+        hass, llm.ToolInput(tool_name=tool.name, tool_args=args), context
+    )
+    assert result == {"rezept_id": "9"}
+    post = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
+    assert post[-1][2] == {"zutaten": [{"index": 0, "produkt_id": "1", "menge": 250.0}]}

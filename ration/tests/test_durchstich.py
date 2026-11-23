@@ -57,9 +57,39 @@ def test_gekocht_fefo_und_modi(client, fake_backend):
     assert [(p["name"], p["menge"]) for p in e["fehlend"]] == [("Nudeln", 100)]
     assert [p["name"] for p in e["nicht_abgebucht"]] == ["Olivenöl"]  # Füllstand
     assert e["rest_portionen"] == 1
-    rest = client.get("/api/v1/bestand").json()
-    assert [(b["menge"], b["mhd"]) for b in rest] == [(250, _in(5))]  # früheste Charge zuerst weg
+    paprika = [b for b in client.get("/api/v1/bestand").json() if b["produkt_id"] == "paprika"]
+    assert [(b["menge"], b["mhd"]) for b in paprika] == [(250, _in(5))]  # früheste Charge weg
     assert client.get("/api/v1/heute").json()["status"] == "gekocht"
+    # Rest: 1 Portion als „Rest: Paprika-Pasta“ im Kühlschrank, 3 Tage haltbar
+    assert e["rest"]["name"] == "Rest: Paprika-Pasta" and e["rest"]["menge"] == 1
+    reste = client.get("/api/v1/reste").json()
+    assert [(r["name"], r["portionen"], r["ablauf"]) for r in reste] == [
+        ("Rest: Paprika-Pasta", 1, _in(3))
+    ]
+    assert client.get("/api/v1/status").json()["text"].endswith("· 1 Rest")
+    # Füllstand wird beim ersten Mal abgefragt, danach 14 Tage nicht
+    assert [f["name"] for f in e["fuellstand_fragen"]] == ["Olivenöl"]
+    client.put(f"/api/v1/plan/{HEUTE}", json={"rezept_id": "paprika-pasta", "portionen": 2})
+    e2 = client.post(
+        "/api/v1/gekocht", json={"portionen_gekocht": 2, "portionen_gegessen": 2}
+    ).json()
+    assert e2["fuellstand_fragen"] == [] and e2["rest"] is None
+    # Rest gegessen
+    rest_id = reste[0]["produkt_id"]
+    r = client.post("/api/v1/bestand/abbuchen", json={"produkt_id": rest_id, "menge": 1})
+    assert r.status_code == 200 and client.get("/api/v1/reste").json() == []
+    zu_viel = client.post("/api/v1/bestand/abbuchen", json={"produkt_id": rest_id, "menge": 1})
+    assert zu_viel.status_code == 409
+
+
+def test_fuellstand_einkauf(client, fake_ha):
+    assert client.get("/api/v1/fuellstand").json() == [
+        {"produkt_id": "oel", "name": "Olivenöl", "stand": "voll"}
+    ]
+    assert client.put("/api/v1/fuellstand/nudeln", json={"stand": "leer"}).status_code == 422
+    client.put("/api/v1/fuellstand/oel", json={"stand": "knapp"})
+    e = client.post("/api/v1/einkaufsliste", json={"tage": 1}).json()
+    assert "Olivenöl" in e["hinzugefuegt"]  # ohne Packungsgröße nur der Name
 
 
 def test_gekocht_ohne_plan_und_ohne_rezept(client):
@@ -82,7 +112,7 @@ def test_einkaufsliste_summiert_und_dedupliziert(client, fake_ha):
     assert e["schon_auf_liste"] == ["Paprika rot, 4 × Stück (160 g)"]
     assert "Nudeln, 1 × Packung (500 g)" in fake_ha.items
     nudeln = next(p for p in e["positionen"] if p["name"] == "Nudeln")
-    assert nudeln["packungen"] == 1 and nudeln["menge"] == 500
+    assert nudeln["packungen"][0]["anzahl"] == 1 and nudeln["menge"] == 500
 
 
 def test_einkaufsliste_ohne_packung_ganze_einheiten(client, fake_backend, fake_ha):

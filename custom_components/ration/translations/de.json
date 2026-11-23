@@ -4,16 +4,26 @@
       "user": {
         "title": "rationPlaner verbinden",
         "data": {
-          "url": "URL der rationPlaner-App"
+          "url": "URL der rationPlaner-App",
+          "token": "Token (App-Option api_token, leer wenn nicht gesetzt)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Token erneuern",
+        "description": "Die App verlangt ein Token. Wert der App-Option api_token eintragen.",
+        "data": {
+          "token": "Token"
         }
       }
     },
     "error": {
       "cannot_connect": "App nicht erreichbar",
-      "incompatible_version": "API-Version der App passt nicht zur Bridge"
+      "incompatible_version": "API-Version der App passt nicht zur Bridge",
+      "invalid_auth": "Token falsch oder fehlt"
     },
     "abort": {
-      "already_configured": "Bereits eingerichtet"
+      "already_configured": "Bereits eingerichtet",
+      "reauth_successful": "Token aktualisiert"
     }
   },
   "services": {
@@ -34,14 +44,6 @@
           "description": "Gegessene Portionen, der Rest wird als Rest eingebucht"
         }
       }
-    },
-    "plan_erzeugen": {
-      "name": "Plan erzeugen",
-      "description": "Erzeugt den Wochenplan."
-    },
-    "kategorisieren": {
-      "name": "Kategorisieren",
-      "description": "Startet den Kategorisierungslauf (Ergebnis als Diff zur Review)."
     },
     "einkaufsliste_erzeugen": {
       "name": "Einkaufsliste erzeugen",
@@ -144,6 +146,508 @@
         "preis": {
           "name": "Preis",
           "description": "Optional"
+        }
+      }
+    },
+    "packungen": {
+      "name": "Packungen",
+      "description": "Packungsgrößen je Produkt (Antwort)."
+    },
+    "packung_setzen": {
+      "name": "Standard-Packung setzen",
+      "description": "Meistverkaufte Größe eines Produkts.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "einheit": {
+          "name": "Einheit",
+          "description": "Einkaufseinheit, z. B. Dose"
+        },
+        "menge": {
+          "name": "Menge",
+          "description": "In der Bestandseinheit des Produkts"
+        }
+      }
+    },
+    "packung_hinzufuegen": {
+      "name": "Packungsgröße hinzufügen",
+      "description": "Weitere Größe, z. B. 800-g-Dose oder Angebot.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "einheit": {
+          "name": "Einheit",
+          "description": "Einkaufseinheit, z. B. Dose"
+        },
+        "menge": {
+          "name": "Menge",
+          "description": "In der Bestandseinheit des Produkts"
+        },
+        "quelle": {
+          "name": "Quelle",
+          "description": "manuell, bon, angebot oder llm"
+        },
+        "gueltig_bis": {
+          "name": "Gültig bis",
+          "description": "Für Angebote"
+        }
+      }
+    },
+    "packung_loeschen": {
+      "name": "Packungsgröße entfernen",
+      "description": "Entfernt eine weitere Größe.",
+      "fields": {
+        "packung_id": {
+          "name": "Packung",
+          "description": "ID aus Packungen"
+        }
+      }
+    },
+    "rezept_import_vorschau": {
+      "name": "Rezept-Import: Vorschau",
+      "description": "Liest ein Rezept per Link und schlägt Zuordnungen vor (Antwort).",
+      "fields": {
+        "url": {
+          "name": "Link",
+          "description": "Rezept-URL, z. B. HelloFresh"
+        },
+        "html": {
+          "name": "Quelltext",
+          "description": "Optional, falls die Seite den Abruf blockt"
+        },
+        "ki": {
+          "name": "KI-Zuordnung",
+          "description": "Offene Zutaten per ai_task zuordnen (Standard: an)"
+        }
+      }
+    },
+    "rezept_import_uebernehmen": {
+      "name": "Rezept-Import: Übernehmen",
+      "description": "Legt die geprüfte Vorschau in Grocy an.",
+      "fields": {
+        "import_id": {
+          "name": "Import",
+          "description": "ID aus der Vorschau"
+        },
+        "zutaten": {
+          "name": "Zutaten",
+          "description": "Liste mit index, menge und produkt_id oder neu_anlegen"
+        },
+        "name": {
+          "name": "Name",
+          "description": "Optional, sonst aus der Quelle"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Optional, sonst aus der Quelle"
+        },
+        "schritte": {
+          "name": "Schritte",
+          "description": "Zubereitungsschritte, ersetzen die aus der Quelle"
+        },
+        "trotz_dublette": {
+          "name": "Trotz Dublette",
+          "description": "Auch anlegen, wenn schon importiert"
+        }
+      }
+    },
+    "rezeptbuch": {
+      "name": "Rezeptbuch",
+      "description": "Alle Rezepte mit Tags, Status und fehlenden Zutaten (Antwort)."
+    },
+    "rezept_details": {
+      "name": "Rezept-Details",
+      "description": "Rezept mit skalierten Zutaten, Bestandsampel und Schritten (Antwort).",
+      "fields": {
+        "rezept_id": {
+          "name": "Rezept",
+          "description": "ID des Rezepts"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Auf diese Portionen skalieren"
+        }
+      }
+    },
+    "rezept_aendern": {
+      "name": "Rezept ändern",
+      "description": "Ändert Name, Portionen, Zutaten, Schritte, Tags, Status oder Aufwand.",
+      "fields": {
+        "rezept_id": {
+          "name": "Rezept",
+          "description": "ID des Rezepts"
+        },
+        "name": {
+          "name": "Name",
+          "description": "Neuer Name"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Basis-Portionen"
+        },
+        "zutaten": {
+          "name": "Zutaten",
+          "description": "Ersetzt alle Zutaten: Liste aus produkt_id, menge, notiz"
+        },
+        "schritte": {
+          "name": "Schritte",
+          "description": "Liste der Zubereitungsschritte"
+        },
+        "tags": {
+          "name": "Tags",
+          "description": "Liste von Tags"
+        },
+        "status": {
+          "name": "Status",
+          "description": "getestet oder ungetestet"
+        },
+        "aufwand": {
+          "name": "Aufwand",
+          "description": "schnell, normal, aufwändig"
+        },
+        "rest_haltbarkeit_tage": {
+          "name": "Rest-Haltbarkeit",
+          "description": "Tage, die Reste halten"
+        }
+      }
+    },
+    "produkt_details": {
+      "name": "Produkt-Details",
+      "description": "Produkt mit Attributen, Packungen, Aliasen und Rezepten (Antwort).",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        }
+      }
+    },
+    "produkt_aendern": {
+      "name": "Produkt ändern",
+      "description": "Ändert Attribute eines Produkts.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "name": {
+          "name": "Name",
+          "description": "Neuer Name"
+        },
+        "tracking_modus": {
+          "name": "Tracking-Modus",
+          "description": "Wie der Bestand geführt wird"
+        },
+        "kategorie": {
+          "name": "Kategorie",
+          "description": "z. B. Gemüse"
+        },
+        "fuellstand": {
+          "name": "Füllstand",
+          "description": "Nur Modus Füllstand"
+        },
+        "toleranz_pct": {
+          "name": "Toleranz %",
+          "description": "Mengen-Toleranz"
+        },
+        "g_je_einheit": {
+          "name": "g je Einheit",
+          "description": "Gramm je Bestandseinheit"
+        },
+        "mindestbestand": {
+          "name": "Mindestbestand",
+          "description": "In Bestandseinheit"
+        },
+        "ablauf_typ": {
+          "name": "Ablauf",
+          "description": "MHD oder Verbrauchsdatum"
+        },
+        "haltbarkeit_tage": {
+          "name": "Haltbarkeit",
+          "description": "Tage"
+        },
+        "haltbarkeit_offen_tage": {
+          "name": "Haltbarkeit geöffnet",
+          "description": "Tage"
+        },
+        "haltbarkeit_gefroren_tage": {
+          "name": "Haltbarkeit gefroren",
+          "description": "Tage"
+        },
+        "haltbarkeit_aufgetaut_tage": {
+          "name": "Haltbarkeit aufgetaut",
+          "description": "Tage"
+        },
+        "lagerort_id": {
+          "name": "Lagerort",
+          "description": "ID des Standard-Lagerorts"
+        },
+        "parent_id": {
+          "name": "Variante von",
+          "description": "ID des übergeordneten Produkts, leer = keins"
+        }
+      }
+    },
+    "dubletten": {
+      "name": "Dubletten",
+      "description": "Mögliche doppelte Produkte (Antwort).",
+      "fields": {
+        "schwelle": {
+          "name": "Schwelle",
+          "description": "Namensähnlichkeit 0,5–1"
+        }
+      }
+    },
+    "dubletten_ignorieren": {
+      "name": "Kein Duplikat",
+      "description": "Merkt ein Produktpaar als kein Duplikat.",
+      "fields": {
+        "behalten": {
+          "name": "Produkt A",
+          "description": "ID"
+        },
+        "entfernen": {
+          "name": "Produkt B",
+          "description": "ID"
+        }
+      }
+    },
+    "dubletten_mergen": {
+      "name": "Produkte zusammenführen",
+      "description": "Hängt Bestand, Rezepte und Aliase um und löscht das zweite Produkt in Grocy.",
+      "fields": {
+        "behalten": {
+          "name": "Behalten",
+          "description": "ID des Produkts, das bleibt"
+        },
+        "entfernen": {
+          "name": "Entfernen",
+          "description": "ID des Produkts, das gelöscht wird"
+        }
+      }
+    },
+    "reste": {
+      "name": "Reste",
+      "description": "Reste im Bestand (Antwort)."
+    },
+    "fuellstand": {
+      "name": "Füllstände",
+      "description": "Füllstand-Produkte mit Stand (Antwort)."
+    },
+    "fuellstand_setzen": {
+      "name": "Füllstand setzen",
+      "description": "Setzt voll, knapp oder leer.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "stand": {
+          "name": "Stand",
+          "description": "voll, knapp oder leer"
+        }
+      }
+    },
+    "abbuchen": {
+      "name": "Abbuchen",
+      "description": "Bucht eine Menge ab (FEFO), optional als verdorben.",
+      "fields": {
+        "produkt_id": {
+          "name": "Produkt",
+          "description": "ID des Produkts"
+        },
+        "menge": {
+          "name": "Menge",
+          "description": "In Bestandseinheit"
+        },
+        "verdorben": {
+          "name": "Verdorben",
+          "description": "Als verdorben ausbuchen"
+        }
+      }
+    },
+    "bon_aus_media": {
+      "name": "Kassenbon aus Medien",
+      "description": "Liest einen Kassenbon aus einem Bild unter /media.",
+      "fields": {
+        "pfad": {
+          "name": "Pfad",
+          "description": "Relativ zu /media, z. B. upload/bon.jpg"
+        }
+      }
+    },
+    "bons": {
+      "name": "Kassenbons",
+      "description": "Letzte Kassenbons mit Status (Antwort)."
+    },
+    "bon_details": {
+      "name": "Kassenbon-Details",
+      "description": "Zeilen mit Vorschlag (Antwort).",
+      "fields": {
+        "bon_id": {
+          "name": "Bon",
+          "description": "ID des Bons"
+        }
+      }
+    },
+    "bon_buchen": {
+      "name": "Kassenbon buchen",
+      "description": "Bucht bestätigte Zeilen ein.",
+      "fields": {
+        "bon_id": {
+          "name": "Bon",
+          "description": "ID des Bons"
+        },
+        "positionen": {
+          "name": "Positionen",
+          "description": "Liste aus index, menge, produkt_id oder neu_anlegen, preis"
+        }
+      }
+    },
+    "bon_verwerfen": {
+      "name": "Kassenbon verwerfen",
+      "description": "Verwirft einen nicht gebuchten Bon.",
+      "fields": {
+        "bon_id": {
+          "name": "Bon",
+          "description": "ID des Bons"
+        }
+      }
+    },
+    "kategorisieren": {
+      "name": "Kategorisieren",
+      "description": "KI schlägt Attribute für Produkte und Rezepte vor (Review nötig).",
+      "fields": {
+        "produkte": {
+          "name": "Produkte",
+          "description": "Produkte einbeziehen"
+        },
+        "rezepte": {
+          "name": "Rezepte",
+          "description": "Rezepte einbeziehen"
+        },
+        "nur_ohne_attribute": {
+          "name": "Nur ohne Attribute",
+          "description": "Nur noch nicht kategorisierte Objekte"
+        },
+        "nur_leere": {
+          "name": "Nur leere Felder",
+          "description": "Gesetzte Werte nicht überschreiben"
+        }
+      }
+    },
+    "vorschlaege": {
+      "name": "Vorschläge",
+      "description": "Offene Vorschläge der Kategorisierung (Antwort)."
+    },
+    "vorschlaege_entscheiden": {
+      "name": "Vorschläge entscheiden",
+      "description": "Übernimmt oder verwirft Vorschläge.",
+      "fields": {
+        "uebernehmen": {
+          "name": "Übernehmen",
+          "description": "Liste von Vorschlags-IDs"
+        },
+        "ablehnen": {
+          "name": "Ablehnen",
+          "description": "Liste von Vorschlags-IDs"
+        }
+      }
+    },
+    "plan_erzeugen": {
+      "name": "Plan erzeugen",
+      "description": "Startet den Wochenplaner (Code bewertet, KI wählt, Code simuliert Einkauf und Verderb).",
+      "fields": {
+        "start": {
+          "name": "Start",
+          "description": "Erster Tag, Standard heute"
+        },
+        "tage": {
+          "name": "Tage",
+          "description": "Anzahl Tage (Standard 7)"
+        },
+        "daten": {
+          "name": "Kochtage",
+          "description": "Liste von Daten (JJJJ-MM-TT), ersetzt start/tage"
+        },
+        "kochtage": {
+          "name": "Wochentage",
+          "description": "Wochentage 0 (Mo) bis 6 (So), an denen gekocht wird"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Portionen je Tag (Standard 2)"
+        },
+        "ki": {
+          "name": "KI",
+          "description": "KI wählt aus (Standard an)"
+        },
+        "ueberschreiben": {
+          "name": "Überschreiben",
+          "description": "Auch schon geplante Tage neu planen"
+        },
+        "uebernehmen": {
+          "name": "Übernehmen",
+          "description": "Vorschlag direkt in den Wochenplan schreiben"
+        },
+        "praeferenzen": {
+          "name": "Präferenzen",
+          "description": "fleisch, preis, extravagant, neu je -1 bis 1, ausschluss_tags"
+        },
+        "max_ungetestet": {
+          "name": "Max. ungetestet",
+          "description": "Höchstens so viele ungetestete Rezepte"
+        }
+      }
+    },
+    "plan_vorschlag": {
+      "name": "Planvorschlag",
+      "description": "Ergebnis eines Planer-Laufs mit Einkauf und Verderb.",
+      "fields": {
+        "lauf_id": {
+          "name": "Lauf",
+          "description": "ID aus plan_erzeugen"
+        }
+      }
+    },
+    "plan_laeufe": {
+      "name": "Planer-Läufe",
+      "description": "Die letzten Läufe des Wochenplaners."
+    },
+    "plan_uebernehmen": {
+      "name": "Plan übernehmen",
+      "description": "Schreibt einen Planvorschlag in den Wochenplan.",
+      "fields": {
+        "lauf_id": {
+          "name": "Lauf",
+          "description": "ID aus plan_erzeugen"
+        }
+      }
+    },
+    "plan_tauschen": {
+      "name": "Tag tauschen",
+      "description": "Ersetzt das Rezept eines Tages durch den nächstbesten Kandidaten, ohne KI.",
+      "fields": {
+        "datum": {
+          "name": "Datum",
+          "description": "Tag im Plan"
+        },
+        "portionen": {
+          "name": "Portionen",
+          "description": "Standard wie bisher"
+        }
+      }
+    },
+    "plan_simulation": {
+      "name": "Plan simulieren",
+      "description": "Simuliert den Wochenplan gegen den Bestand: Einkauf, Verderb.",
+      "fields": {
+        "tage": {
+          "name": "Tage",
+          "description": "Anzahl Tage ab heute"
         }
       }
     }

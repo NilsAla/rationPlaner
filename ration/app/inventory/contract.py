@@ -11,11 +11,22 @@ Ende auf 0 gebracht.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.inventory.base import InsufficientStockError, InventoryBackend, Location, Product
+from app.inventory.base import (
+    BatchPatch,
+    Ingredient,
+    InsufficientStockError,
+    InventoryBackend,
+    Location,
+    Product,
+    ProductPatch,
+    RecipePatch,
+    TrackingMode,
+)
 from app.inventory.fake import FakeBackend
 from app.inventory.grocy import GrocyBackend
 
@@ -106,6 +117,108 @@ async def case_insufficient(b: InventoryBackend, s: ContractSetup) -> str:
     return "zu viel abbuchen wirft Fehler und ändert nichts"
 
 
+async def case_update(b: InventoryBackend, s: ContractSetup) -> str:
+    patch = ProductPatch(
+        tracking_mode=TrackingMode.EXAKT, category="Gemüse", tolerance_pct=15, min_stock=200
+    )
+    p = await b.update_product(s.child_id, patch)
+    assert (p.tracking_mode, p.category, p.tolerance_pct, p.min_stock) == (
+        TrackingMode.EXAKT,
+        "Gemüse",
+        15,
+        200,
+    ), f"nach Update: {p}"
+    p = await b.get_product(s.child_id)
+    assert p.parent_id == s.parent_id and p.shelf_life_days == 5, f"Rest verändert: {p}"
+    return "Attribute (Modus, Kategorie, Toleranz, Mindestbestand) lassen sich setzen"
+
+
+async def _test_rezept(b: InventoryBackend, name: str):
+    for r in await b.list_recipes():
+        if r.name == name:
+            return r
+    return await b.create_recipe(name, 2, "", [])
+
+
+async def case_recipe_edit(b: InventoryBackend, s: ContractSetup) -> str:
+    r = await _test_rezept(b, f"{TEST_PREFIX} Rezept")
+    r = await b.update_recipe(
+        r.id,
+        RecipePatch(
+            servings=3,
+            ingredients=[Ingredient(s.child_id, 250, "250 g Brokkoli")],
+            tags=["schnell", "vegetarisch"],
+            status="ungetestet",
+        ),
+    )
+    r = await b.get_recipe(r.id)
+    assert r.servings == 3, f"Portionen {r.servings}"
+    assert [(z.product_id, z.amount) for z in r.ingredients] == [(s.child_id, 250)], r.ingredients
+    assert r.tags == ("schnell", "vegetarisch") and r.status == "ungetestet", (r.tags, r.status)
+    r = await b.update_recipe(r.id, RecipePatch(ingredients=[]))
+    assert r.ingredients == (), f"Zutaten nicht ersetzt: {r.ingredients}"
+    return "Rezept bearbeiten ersetzt Zutaten, setzt Portionen und Tags"
+
+
+async def case_merge(b: InventoryBackend, s: ContractSetup) -> str:
+    tag = uuid.uuid4().hex[:6]
+    keep = await b.create_product(f"{TEST_PREFIX} Möhre {tag}", "g")
+    remove = await b.create_product(f"{TEST_PREFIX} Möhren {tag}", "Stück")
+    await b.update_product(remove.id, ProductPatch(grams_per_unit=80))
+    variante = await b.create_product(f"{TEST_PREFIX} Möhre bio {tag}", "Stück")
+    await b.update_product(variante.id, ProductPatch(parent_id=remove.id, grams_per_unit=80))
+    await b.add_stock(remove.id, 2, _in(5), s.fridge_id)
+    r = await _test_rezept(b, f"{TEST_PREFIX} Rezept Merge")
+    await b.update_recipe(r.id, RecipePatch(ingredients=[Ingredient(remove.id, 3)]))
+    await b.merge_products(keep.id, remove.id)
+    ids = {p.id for p in await b.list_products()}
+    assert remove.id not in ids, "entferntes Produkt existiert noch"
+    menge = sum(x.amount for x in await b.get_batches(keep.id))
+    assert abs(menge - 160) < 1e-6, f"Bestand nach Merge {menge} g, erwartet 160"
+    zutaten = [(z.product_id, z.amount) for z in (await b.get_recipe(r.id)).ingredients]
+    assert zutaten == [(keep.id, 240)], f"Rezept nach Merge {zutaten}, erwartet 240 g"
+    v = await b.get_product(variante.id)
+    assert v.parent_id == keep.id, f"Variante hängt an {v.parent_id}"
+    await clear_stock(b, keep.id)
+    return "Merge rechnet Bestand und Rezeptmengen um und hängt Varianten um"
+
+
+async def case_inventur(b: InventoryBackend, s: ContractSetup) -> str:
+    await b.add_stock(s.child_id, 300, _in(3), s.fridge_id)
+    await b.add_stock(s.child_id, 100, _in(8), s.fridge_id)
+    erste = (await b.get_batches(s.child_id))[0]
+    await b.update_batch(erste.id, BatchPatch(amount=250, best_before=_in(4)))
+    chargen = await b.get_batches(s.child_id)
+    stand = sorted((c.amount, c.best_before) for c in chargen)
+    assert stand == [(100, _in(8)), (250, _in(4))], f"nach Bearbeiten: {stand}"
+    zweite = next(c for c in chargen if c.best_before == _in(8))
+    await b.consume_batch(zweite.id, 40, spoiled=True)
+    chargen = await b.get_batches(s.child_id)
+    stand = sorted((c.amount, c.best_before) for c in chargen)
+    assert stand == [(60, _in(8)), (250, _in(4))], f"nach Abbuchen der Charge: {stand}"
+    zweite = next(c for c in chargen if c.best_before == _in(8))
+    try:
+        await b.consume_batch(zweite.id, 1000, spoiled=False)
+        raise AssertionError("Überbuchung einer Charge wurde nicht abgelehnt")
+    except InsufficientStockError:
+        pass
+    await b.consume_batch(zweite.id, None, spoiled=False)
+    rest = [(c.amount, c.best_before) for c in await b.get_batches(s.child_id)]
+    assert rest == [(250, _in(4))], f"nach Abbuchen der ganzen Charge: {rest}"
+    return "Chargen lassen sich bearbeiten und einzeln (auch teilweise) abbuchen"
+
+
+async def case_loeschen(b: InventoryBackend, s: ContractSetup) -> str:
+    tag = uuid.uuid4().hex[:6]
+    p = await b.create_product(f"{TEST_PREFIX} Wegwerf {tag}", "g")
+    r = await b.create_recipe(f"{TEST_PREFIX} Wegwerf-Rezept {tag}", 2, "", [Ingredient(p.id, 50)])
+    await b.delete_recipe(r.id)
+    assert r.id not in {x.id for x in await b.list_recipes()}, "Rezept existiert noch"
+    await b.delete_product(p.id)
+    assert p.id not in {x.id for x in await b.list_products()}, "Produkt existiert noch"
+    return "Eigene Produkte und Rezepte lassen sich löschen"
+
+
 Case = Callable[[InventoryBackend, ContractSetup], Awaitable[str]]
 
 CASES: list[tuple[str, str, Case]] = [
@@ -114,6 +227,11 @@ CASES: list[tuple[str, str, Case]] = [
     ("einfrieren", "Setzt Umbuchen in den Gefrierort das neue Ablaufdatum?", case_freeze),
     ("auftauen", "Setzt Umbuchen aus dem Gefrierort das Auftau-Datum?", case_thaw),
     ("zu_wenig", "Wird Überbuchung abgelehnt, ohne Bestand zu ändern?", case_insufficient),
+    ("bearbeiten", "Lassen sich Produkt-Attribute setzen?", case_update),
+    ("rezept", "Lässt sich ein Rezept samt Zutaten bearbeiten?", case_recipe_edit),
+    ("merge", "Rechnet Zusammenführen Bestand und Rezepte richtig um?", case_merge),
+    ("inventur", "Lassen sich einzelne Chargen bearbeiten und abbuchen?", case_inventur),
+    ("loeschen", "Lassen sich Produkte und Rezepte löschen?", case_loeschen),
 ]
 
 

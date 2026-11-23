@@ -16,6 +16,11 @@ class Settings:
     todo_entity: str = ""
     toleranz_default_pct: int = 10
     bon_konfidenz_schwelle: float = 0.85
+    dubletten_schwelle: float = 0.9  # Namensähnlichkeit für den Dubletten-Check
+    notify_service: str = ""  # z. B. notify.mobile_app_handy, zusätzlich zur HA-Benachrichtigung
+    media_dir: Path = Path("/media")  # Bon-Fotos unter <media_dir>/ration/bons
+    api_token: str = ""  # Pflicht-Token für Zugriffe außerhalb von Ingress (Bridge)
+    timer_entities: tuple[str, ...] = ()  # timer.*-Entitäten für den Kochmodus; leer = automatisch
     data_dir: Path = Path("/data")
     supervisor_token: str = ""
 

@@ -23,6 +23,10 @@ class InsufficientStockError(Exception):
     """Mehr abbuchen oder umbuchen als vorhanden."""
 
 
+class NotFoundError(Exception):
+    """Produkt, Rezept o. Ä. existiert im Backend nicht."""
+
+
 class TrackingMode(StrEnum):
     EXAKT = "exakt"
     MENGE = "menge"
@@ -60,6 +64,28 @@ class Product:
     pack_unit: str | None = None  # Einkaufseinheit, z. B. "Dose"; None = in Bestandseinheit
     pack_size: float | None = None  # Bestandseinheit je Einkaufseinheit, z. B. 400 (g je Dose)
     min_stock: float = 0  # Mindestbestand in Bestandseinheit, Nachkauf darunter
+    category: str | None = None
+    fill_level: str | None = None  # nur Modus fuellstand: voll/knapp/leer
+
+
+@dataclass(frozen=True)
+class ProductPatch:
+    """Änderungen an einem Produkt. None = unverändert."""
+
+    name: str | None = None
+    tracking_mode: TrackingMode | None = None
+    category: str | None = None
+    tolerance_pct: int | None = None
+    min_stock: float | None = None
+    fill_level: str | None = None
+    grams_per_unit: float | None = None  # Umrechnung Bestandseinheit → g
+    due_type: DueType | None = None
+    shelf_life_days: int | None = None
+    shelf_life_opened_days: int | None = None
+    shelf_life_frozen_days: int | None = None
+    shelf_life_thawed_days: int | None = None
+    default_location_id: str | None = None
+    parent_id: str | None = None  # "" entfernt die Zuordnung
 
 
 @dataclass(frozen=True)
@@ -76,6 +102,24 @@ class Recipe:
     servings: int
     ingredients: tuple[Ingredient, ...]
     description: str = ""  # Zubereitung, in Grocy als HTML
+    tags: tuple[str, ...] = ()
+    status: str | None = None  # getestet/ungetestet
+    effort: str | None = None  # schnell/normal/aufwaendig
+    leftover_days: int | None = None  # Rest-Haltbarkeit in Tagen
+
+
+@dataclass(frozen=True)
+class RecipePatch:
+    """Änderungen an einem Rezept. None = unverändert; ingredients ersetzt alle Zutaten."""
+
+    name: str | None = None
+    servings: int | None = None
+    description: str | None = None
+    ingredients: list[Ingredient] | None = None
+    tags: list[str] | None = None
+    status: str | None = None
+    effort: str | None = None
+    leftover_days: int | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +130,17 @@ class Batch:
     best_before: date | None
     location_id: str
     opened: bool = False
+
+
+@dataclass(frozen=True)
+class BatchPatch:
+    """Änderung einer Charge. None = unverändert; ohne_ablauf entfernt das Ablaufdatum."""
+
+    amount: float | None = None
+    best_before: date | None = None
+    ohne_ablauf: bool = False
+    location_id: str | None = None
+    opened: bool | None = None
 
 
 def consume_order(batch: Batch) -> tuple:
@@ -129,8 +184,51 @@ class InventoryBackend(Protocol):
         """Bucht ab, Reihenfolge wie get_batches. Wirft InsufficientStockError."""
         ...
 
+    async def create_product(self, name: str, unit: str) -> Product:
+        """Legt ein Produkt ohne Attribute an (Import). Existiert der Name, wird es geliefert."""
+        ...
+
+    async def create_recipe(
+        self, name: str, servings: int, description: str, ingredients: list[Ingredient]
+    ) -> Recipe:
+        """Legt ein Rezept an, Zutatenmengen in der Bestandseinheit des Produkts."""
+        ...
+
+    async def set_pack(self, product_id: str, unit: str, size: float) -> None:
+        """Setzt die Standard-Packung: Einkaufseinheit `unit` mit `size` Bestandseinheiten."""
+        ...
+
     async def transfer(
         self, product_id: str, amount: float, from_location_id: str, to_location_id: str
     ) -> None:
         """Bucht um, inklusive Ablaufdatum-Regel für Gefrierorte."""
+        ...
+
+    async def update_product(self, product_id: str, patch: ProductPatch) -> Product: ...
+
+    async def update_recipe(self, recipe_id: str, patch: RecipePatch) -> Recipe: ...
+
+    async def update_batch(self, batch_id: str, patch: BatchPatch) -> None:
+        """Ändert Menge, Ablauf, Lagerort oder geöffnet einer Charge (Inventur)."""
+        ...
+
+    async def consume_batch(self, batch_id: str, amount: float | None, *, spoiled: bool) -> None:
+        """Bucht genau diese Charge ab (amount None = alles). Wirft InsufficientStockError."""
+        ...
+
+    async def delete_product(self, product_id: str) -> None:
+        """Löscht ein Produkt. Grocy löscht dabei Bestand und Rezeptzutaten mit, daher nur
+        nach Prüfung (kein Bestand, in keinem Rezept, keine Varianten) und Bestätigung."""
+        ...
+
+    async def delete_recipe(self, recipe_id: str) -> None:
+        """Löscht ein Rezept samt Zutatenliste. Nur nach Bestätigung."""
+        ...
+
+    async def merge_products(self, keep_id: str, remove_id: str) -> None:
+        """Hängt Bestand, Rezeptzutaten und Varianten von remove auf keep um, löscht remove.
+
+        Mengen werden über die Umrechnung remove-Bestandseinheit → keep-Bestandseinheit
+        umgerechnet. Nur nach ausdrücklicher Bestätigung durch den Nutzer aufrufen.
+        """
         ...

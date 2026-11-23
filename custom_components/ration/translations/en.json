@@ -4,16 +4,26 @@
       "user": {
         "title": "rationPlaner verbinden",
         "data": {
-          "url": "URL der rationPlaner-App"
+          "url": "URL der rationPlaner-App",
+          "token": "Token (app option api_token, empty if not set)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Renew token",
+        "description": "The app requires a token. Enter the value of the app option api_token.",
+        "data": {
+          "token": "Token"
         }
       }
     },
     "error": {
       "cannot_connect": "App nicht erreichbar",
-      "incompatible_version": "API-Version der App passt nicht zur Bridge"
+      "incompatible_version": "API-Version der App passt nicht zur Bridge",
+      "invalid_auth": "Invalid or missing token"
     },
     "abort": {
-      "already_configured": "Bereits eingerichtet"
+      "already_configured": "Bereits eingerichtet",
+      "reauth_successful": "Token updated"
     }
   },
   "services": {
@@ -34,14 +44,6 @@
           "description": "Gegessene Portionen, der Rest wird als Rest eingebucht"
         }
       }
-    },
-    "plan_erzeugen": {
-      "name": "Plan erzeugen",
-      "description": "Erzeugt den Wochenplan."
-    },
-    "kategorisieren": {
-      "name": "Kategorisieren",
-      "description": "Startet den Kategorisierungslauf (Ergebnis als Diff zur Review)."
     },
     "einkaufsliste_erzeugen": {
       "name": "Einkaufsliste erzeugen",
@@ -144,6 +146,508 @@
         "preis": {
           "name": "Price",
           "description": "Optional"
+        }
+      }
+    },
+    "packungen": {
+      "name": "Packages",
+      "description": "Package sizes per product (response)."
+    },
+    "packung_setzen": {
+      "name": "Set default package",
+      "description": "Most common size of a product.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "einheit": {
+          "name": "Unit",
+          "description": "Purchase unit, e.g. can"
+        },
+        "menge": {
+          "name": "Amount",
+          "description": "In the product's stock unit"
+        }
+      }
+    },
+    "packung_hinzufuegen": {
+      "name": "Add package size",
+      "description": "Additional size, e.g. offer.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "einheit": {
+          "name": "Unit",
+          "description": "Purchase unit, e.g. can"
+        },
+        "menge": {
+          "name": "Amount",
+          "description": "In the product's stock unit"
+        },
+        "quelle": {
+          "name": "Source",
+          "description": "manual, receipt, offer or llm"
+        },
+        "gueltig_bis": {
+          "name": "Valid until",
+          "description": "For offers"
+        }
+      }
+    },
+    "packung_loeschen": {
+      "name": "Remove package size",
+      "description": "Removes an additional size.",
+      "fields": {
+        "packung_id": {
+          "name": "Package",
+          "description": "ID from packages"
+        }
+      }
+    },
+    "rezept_import_vorschau": {
+      "name": "Recipe import: preview",
+      "description": "Reads a recipe from a link and proposes mappings (response).",
+      "fields": {
+        "url": {
+          "name": "Link",
+          "description": "Recipe URL"
+        },
+        "html": {
+          "name": "Source",
+          "description": "Optional, if the site blocks fetching"
+        },
+        "ki": {
+          "name": "AI mapping",
+          "description": "Map open ingredients via ai_task (default: on)"
+        }
+      }
+    },
+    "rezept_import_uebernehmen": {
+      "name": "Recipe import: apply",
+      "description": "Creates the reviewed preview in Grocy.",
+      "fields": {
+        "import_id": {
+          "name": "Import",
+          "description": "ID from the preview"
+        },
+        "zutaten": {
+          "name": "Ingredients",
+          "description": "List with index, amount and product_id or new name"
+        },
+        "name": {
+          "name": "Name",
+          "description": "Optional"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Optional"
+        },
+        "schritte": {
+          "name": "Steps",
+          "description": "Preparation steps, replace the ones from the source"
+        },
+        "trotz_dublette": {
+          "name": "Despite duplicate",
+          "description": "Create even if already imported"
+        }
+      }
+    },
+    "rezeptbuch": {
+      "name": "Recipe book",
+      "description": "All recipes with tags, status and missing ingredients (response)."
+    },
+    "rezept_details": {
+      "name": "Recipe details",
+      "description": "Recipe with scaled ingredients, stock status and steps (response).",
+      "fields": {
+        "rezept_id": {
+          "name": "Recipe",
+          "description": "Recipe ID"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Scale to these servings"
+        }
+      }
+    },
+    "rezept_aendern": {
+      "name": "Edit recipe",
+      "description": "Changes name, servings, ingredients, steps, tags, status or effort.",
+      "fields": {
+        "rezept_id": {
+          "name": "Recipe",
+          "description": "Recipe ID"
+        },
+        "name": {
+          "name": "Name",
+          "description": "New name"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Base servings"
+        },
+        "zutaten": {
+          "name": "Ingredients",
+          "description": "Replaces all ingredients: list of produkt_id, menge, notiz"
+        },
+        "schritte": {
+          "name": "Steps",
+          "description": "List of steps"
+        },
+        "tags": {
+          "name": "Tags",
+          "description": "List of tags"
+        },
+        "status": {
+          "name": "Status",
+          "description": "tested or untested"
+        },
+        "aufwand": {
+          "name": "Effort",
+          "description": "quick, normal, elaborate"
+        },
+        "rest_haltbarkeit_tage": {
+          "name": "Leftover shelf life",
+          "description": "Days leftovers keep"
+        }
+      }
+    },
+    "produkt_details": {
+      "name": "Product details",
+      "description": "Product with attributes, packs, aliases and recipes (response).",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        }
+      }
+    },
+    "produkt_aendern": {
+      "name": "Edit product",
+      "description": "Changes product attributes.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "name": {
+          "name": "Name",
+          "description": "New name"
+        },
+        "tracking_modus": {
+          "name": "Tracking mode",
+          "description": "How stock is tracked"
+        },
+        "kategorie": {
+          "name": "Category",
+          "description": "e.g. vegetables"
+        },
+        "fuellstand": {
+          "name": "Fill level",
+          "description": "Fill level mode only"
+        },
+        "toleranz_pct": {
+          "name": "Tolerance %",
+          "description": "Amount tolerance"
+        },
+        "g_je_einheit": {
+          "name": "g per unit",
+          "description": "Grams per stock unit"
+        },
+        "mindestbestand": {
+          "name": "Minimum stock",
+          "description": "In stock unit"
+        },
+        "ablauf_typ": {
+          "name": "Due type",
+          "description": "Best before or use by"
+        },
+        "haltbarkeit_tage": {
+          "name": "Shelf life",
+          "description": "Days"
+        },
+        "haltbarkeit_offen_tage": {
+          "name": "Shelf life opened",
+          "description": "Days"
+        },
+        "haltbarkeit_gefroren_tage": {
+          "name": "Shelf life frozen",
+          "description": "Days"
+        },
+        "haltbarkeit_aufgetaut_tage": {
+          "name": "Shelf life thawed",
+          "description": "Days"
+        },
+        "lagerort_id": {
+          "name": "Location",
+          "description": "Default location ID"
+        },
+        "parent_id": {
+          "name": "Variant of",
+          "description": "Parent product ID, empty = none"
+        }
+      }
+    },
+    "dubletten": {
+      "name": "Duplicates",
+      "description": "Possible duplicate products (response).",
+      "fields": {
+        "schwelle": {
+          "name": "Threshold",
+          "description": "Name similarity 0.5–1"
+        }
+      }
+    },
+    "dubletten_ignorieren": {
+      "name": "Not a duplicate",
+      "description": "Remembers a product pair as not duplicate.",
+      "fields": {
+        "behalten": {
+          "name": "Product A",
+          "description": "ID"
+        },
+        "entfernen": {
+          "name": "Product B",
+          "description": "ID"
+        }
+      }
+    },
+    "dubletten_mergen": {
+      "name": "Merge products",
+      "description": "Moves stock, recipes and aliases and deletes the second product in Grocy.",
+      "fields": {
+        "behalten": {
+          "name": "Keep",
+          "description": "ID of the product to keep"
+        },
+        "entfernen": {
+          "name": "Remove",
+          "description": "ID of the product to delete"
+        }
+      }
+    },
+    "reste": {
+      "name": "Leftovers",
+      "description": "Leftovers in stock (response)."
+    },
+    "fuellstand": {
+      "name": "Fill levels",
+      "description": "Fill level products with state (response)."
+    },
+    "fuellstand_setzen": {
+      "name": "Set fill level",
+      "description": "Sets full, low or empty.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "stand": {
+          "name": "Level",
+          "description": "full, low or empty"
+        }
+      }
+    },
+    "abbuchen": {
+      "name": "Consume",
+      "description": "Consumes an amount (FEFO), optionally as spoiled.",
+      "fields": {
+        "produkt_id": {
+          "name": "Product",
+          "description": "Product ID"
+        },
+        "menge": {
+          "name": "Amount",
+          "description": "In stock unit"
+        },
+        "verdorben": {
+          "name": "Spoiled",
+          "description": "Book as spoiled"
+        }
+      }
+    },
+    "bon_aus_media": {
+      "name": "Receipt from media",
+      "description": "Reads a receipt from an image under /media.",
+      "fields": {
+        "pfad": {
+          "name": "Path",
+          "description": "Relative to /media, e.g. upload/bon.jpg"
+        }
+      }
+    },
+    "bons": {
+      "name": "Receipts",
+      "description": "Recent receipts with status (response)."
+    },
+    "bon_details": {
+      "name": "Receipt details",
+      "description": "Lines with suggestion (response).",
+      "fields": {
+        "bon_id": {
+          "name": "Receipt",
+          "description": "Receipt ID"
+        }
+      }
+    },
+    "bon_buchen": {
+      "name": "Book receipt",
+      "description": "Books confirmed lines.",
+      "fields": {
+        "bon_id": {
+          "name": "Receipt",
+          "description": "Receipt ID"
+        },
+        "positionen": {
+          "name": "Lines",
+          "description": "List of index, menge, produkt_id or neu_anlegen, preis"
+        }
+      }
+    },
+    "bon_verwerfen": {
+      "name": "Discard receipt",
+      "description": "Discards an unbooked receipt.",
+      "fields": {
+        "bon_id": {
+          "name": "Receipt",
+          "description": "Receipt ID"
+        }
+      }
+    },
+    "kategorisieren": {
+      "name": "Categorize",
+      "description": "AI suggests attributes for products and recipes (review needed).",
+      "fields": {
+        "produkte": {
+          "name": "Products",
+          "description": "Include products"
+        },
+        "rezepte": {
+          "name": "Recipes",
+          "description": "Include recipes"
+        },
+        "nur_ohne_attribute": {
+          "name": "Only uncategorized",
+          "description": "Only objects without attributes"
+        },
+        "nur_leere": {
+          "name": "Only empty fields",
+          "description": "Do not override set values"
+        }
+      }
+    },
+    "vorschlaege": {
+      "name": "Suggestions",
+      "description": "Open categorization suggestions (response)."
+    },
+    "vorschlaege_entscheiden": {
+      "name": "Decide suggestions",
+      "description": "Accepts or rejects suggestions.",
+      "fields": {
+        "uebernehmen": {
+          "name": "Accept",
+          "description": "List of suggestion IDs"
+        },
+        "ablehnen": {
+          "name": "Reject",
+          "description": "List of suggestion IDs"
+        }
+      }
+    },
+    "plan_erzeugen": {
+      "name": "Generate plan",
+      "description": "Runs the weekly planner (code scores, AI picks, code simulates shopping and waste).",
+      "fields": {
+        "start": {
+          "name": "Start",
+          "description": "First day, default today"
+        },
+        "tage": {
+          "name": "Days",
+          "description": "Number of days (default 7)"
+        },
+        "daten": {
+          "name": "Cooking days",
+          "description": "List of dates (YYYY-MM-DD), replaces start/days"
+        },
+        "kochtage": {
+          "name": "Weekdays",
+          "description": "Weekdays 0 (Mon) to 6 (Sun) with cooking"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Servings per day (default 2)"
+        },
+        "ki": {
+          "name": "AI",
+          "description": "AI picks recipes (default on)"
+        },
+        "ueberschreiben": {
+          "name": "Overwrite",
+          "description": "Replan days that are already planned"
+        },
+        "uebernehmen": {
+          "name": "Apply",
+          "description": "Write the proposal to the meal plan directly"
+        },
+        "praeferenzen": {
+          "name": "Preferences",
+          "description": "fleisch, preis, extravagant, neu each -1 to 1, ausschluss_tags"
+        },
+        "max_ungetestet": {
+          "name": "Max untested",
+          "description": "At most this many untested recipes"
+        }
+      }
+    },
+    "plan_vorschlag": {
+      "name": "Plan proposal",
+      "description": "Result of a planner run with shopping and waste.",
+      "fields": {
+        "lauf_id": {
+          "name": "Run",
+          "description": "ID from plan_erzeugen"
+        }
+      }
+    },
+    "plan_laeufe": {
+      "name": "Planner runs",
+      "description": "Latest planner runs."
+    },
+    "plan_uebernehmen": {
+      "name": "Apply plan",
+      "description": "Writes a plan proposal to the meal plan.",
+      "fields": {
+        "lauf_id": {
+          "name": "Run",
+          "description": "ID from plan_erzeugen"
+        }
+      }
+    },
+    "plan_tauschen": {
+      "name": "Swap day",
+      "description": "Replaces a day's recipe with the next best candidate, without AI.",
+      "fields": {
+        "datum": {
+          "name": "Date",
+          "description": "Day in the plan"
+        },
+        "portionen": {
+          "name": "Servings",
+          "description": "Default unchanged"
+        }
+      }
+    },
+    "plan_simulation": {
+      "name": "Simulate plan",
+      "description": "Simulates the meal plan against stock: shopping, waste.",
+      "fields": {
+        "tage": {
+          "name": "Days",
+          "description": "Number of days from today"
         }
       }
     }

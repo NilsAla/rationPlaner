@@ -15,7 +15,9 @@ from homeassistant.helpers import config_validation as cv
 from .api import RationApi
 
 DATUM = vol.All(cv.string, vol.Match(r"^\d{4}-\d{2}-\d{2}$", msg="Datum als JJJJ-MM-TT"))
+MENGE = vol.All(vol.Coerce(float), vol.Range(min=0, min_included=False))
 PORTIONEN = vol.All(vol.Coerce(int), vol.Range(min=1, max=12))
+TAGE = vol.All(vol.Coerce(int), vol.Range(min=0, max=3650))
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,7 @@ class Aktion:
     pfad: str
     schema: vol.Schema = field(default_factory=lambda: vol.Schema({}))
     schreibend: bool = False
+    nur_service: bool = False  # nicht als LLM-Tool anbieten (z. B. löschend)
 
     async def ausfuehren(self, api: RationApi, daten: dict[str, Any]) -> dict[str, Any]:
         daten = dict(daten)
@@ -97,6 +100,75 @@ AKTIONEN: tuple[Aktion, ...] = (
         schreibend=True,
     ),
     Aktion(
+        "plan_erzeugen",
+        "Startet den Wochenplaner im Hintergrund: Code bewertet die Rezepte (läuft bald ab, "
+        "Bestand, Packungen, Abwechslung), die KI wählt aus, der Code simuliert Einkauf und "
+        "Verderb. Feste Tage bleiben. daten (Liste) oder start+tage mit kochtage (0=Mo). "
+        "praeferenzen: fleisch/preis/extravagant/neu je -1…1, ausschluss_tags. Fehlendes kommt "
+        "aus den Einstellungen. uebernehmen=true schreibt direkt in den Plan.",
+        "POST",
+        "/plan/erzeugen",
+        vol.Schema(
+            {
+                vol.Optional("start"): DATUM,
+                vol.Optional("tage"): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
+                vol.Optional("daten"): [DATUM],
+                vol.Optional("kochtage"): [vol.All(vol.Coerce(int), vol.Range(min=0, max=6))],
+                vol.Optional("portionen"): vol.All(vol.Coerce(int), vol.Range(min=1, max=6)),
+                vol.Optional("ki"): cv.boolean,
+                vol.Optional("praeferenzen"): dict,
+                vol.Optional("max_ungetestet"): vol.All(vol.Coerce(int), vol.Range(min=0, max=7)),
+                vol.Optional("ueberschreiben"): cv.boolean,
+                vol.Optional("uebernehmen"): cv.boolean,
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "plan_vorschlag",
+        "Ergebnis eines Planer-Laufs: Tage mit Rezept, Begründung und Toleranz-Skalierung, "
+        "Einkauf mit Kostenschätzung, was trotzdem verdirbt. lauf_id aus plan_erzeugen.",
+        "GET",
+        "/plan/laeufe/{lauf_id}",
+        vol.Schema({vol.Required("lauf_id"): vol.Coerce(int)}),
+    ),
+    Aktion(
+        "plan_laeufe",
+        "Die letzten Planer-Läufe mit Status (laeuft/fertig/uebernommen/fehler).",
+        "GET",
+        "/plan/laeufe",
+    ),
+    Aktion(
+        "plan_uebernehmen",
+        "Schreibt einen fertigen Planer-Vorschlag in den Wochenplan.",
+        "POST",
+        "/plan/laeufe/{lauf_id}/uebernehmen",
+        vol.Schema({vol.Required("lauf_id"): vol.Coerce(int)}),
+        schreibend=True,
+    ),
+    Aktion(
+        "plan_tauschen",
+        "Ersetzt das Rezept eines Tages durch den nächstbesten Kandidaten, ohne KI.",
+        "POST",
+        "/plan/{datum}/tauschen",
+        vol.Schema(
+            {
+                vol.Required("datum"): DATUM,
+                vol.Optional("portionen"): vol.All(vol.Coerce(int), vol.Range(min=1, max=6)),
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "plan_simulation",
+        "Simuliert den aktuellen Wochenplan gegen den Bestand: Einkauf mit Toleranz, Verderb.",
+        "GET",
+        "/plan/simulation",
+        vol.Schema(
+            {vol.Optional("tage", default=7): vol.All(vol.Coerce(int), vol.Range(min=1, max=14))}
+        ),
+    ),
+    Aktion(
         "einbuchen",
         "Bucht eine Menge eines Produkts (ID aus produkte, Menge in dessen Einheit) ein. "
         "Ohne MHD gilt die Standard-Haltbarkeit, ohne Lagerort der Standard des Produkts.",
@@ -111,6 +183,96 @@ AKTIONEN: tuple[Aktion, ...] = (
                 vol.Optional("mhd"): DATUM,
                 vol.Optional("lagerort_id"): cv.string,
                 vol.Optional("preis"): vol.All(vol.Coerce(float), vol.Range(min=0)),
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "packungen",
+        "Packungsgrößen je Produkt: Standard (meistverkaufte Größe) und weitere Größen.",
+        "GET",
+        "/packungen",
+    ),
+    Aktion(
+        "packung_setzen",
+        "Setzt die Standard-Packung eines Produkts, z. B. Dose mit 400 (Menge in Bestandseinheit).",
+        "PUT",
+        "/produkte/{produkt_id}/packung",
+        vol.Schema(
+            {
+                vol.Required("produkt_id"): cv.string,
+                vol.Required("einheit"): cv.string,
+                vol.Required("menge"): MENGE,
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "packung_hinzufuegen",
+        "Fügt eine weitere Packungsgröße hinzu (z. B. 800-g-Dose). Angebote mit gueltig_bis.",
+        "POST",
+        "/produkte/{produkt_id}/packungen",
+        vol.Schema(
+            {
+                vol.Required("produkt_id"): cv.string,
+                vol.Required("einheit"): cv.string,
+                vol.Required("menge"): MENGE,
+                vol.Optional("quelle", default="manuell"): vol.In(
+                    ["manuell", "bon", "angebot", "llm"]
+                ),
+                vol.Optional("gueltig_bis"): DATUM,
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "packung_loeschen",
+        "Entfernt eine weitere Packungsgröße (ID aus packungen).",
+        "DELETE",
+        "/packungen/{packung_id}",
+        vol.Schema({vol.Required("packung_id"): vol.Coerce(int)}),
+        schreibend=True,
+    ),
+    Aktion(
+        "rezept_import_vorschau",
+        "Liest ein Rezept per Link (z. B. HelloFresh) und schlägt je Zutat Produkt-ID und Menge "
+        "in Bestandseinheit vor (status ok/schaetzung/pruefen). Offene Zutaten ordnet die KI "
+        "(ai_task) zu, sofern konfiguriert; ki=false schaltet das ab. Legt nichts an.",
+        "POST",
+        "/import/vorschau",
+        vol.Schema(
+            {
+                vol.Required("url"): cv.string,
+                vol.Optional("html"): cv.string,
+                vol.Optional("ki"): cv.boolean,
+            }
+        ),
+    ),
+    Aktion(
+        "rezept_import_uebernehmen",
+        "Übernimmt eine geprüfte Import-Vorschau nach Grocy. zutaten: Liste aus index, menge und "
+        "entweder produkt_id oder neu_anlegen (Name). Nicht aufgeführte Zutaten entfallen. "
+        "schritte (optional) ersetzt die Zubereitungsschritte aus der Quelle.",
+        "POST",
+        "/import/{import_id}/uebernehmen",
+        vol.Schema(
+            {
+                vol.Required("import_id"): vol.Coerce(int),
+                vol.Required("zutaten"): [
+                    vol.Schema(
+                        {
+                            vol.Required("index"): vol.Coerce(int),
+                            vol.Required("menge"): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                            vol.Optional("produkt_id"): cv.string,
+                            vol.Optional("neu_anlegen"): cv.string,
+                            vol.Optional("einheit"): cv.string,
+                        }
+                    )
+                ],
+                vol.Optional("name"): cv.string,
+                vol.Optional("portionen"): PORTIONEN,
+                vol.Optional("schritte"): [cv.string],
+                vol.Optional("trotz_dublette"): bool,
             }
         ),
         schreibend=True,
@@ -138,6 +300,230 @@ AKTIONEN: tuple[Aktion, ...] = (
         "/einkaufsliste",
         vol.Schema(
             {vol.Optional("tage", default=7): vol.All(vol.Coerce(int), vol.Range(min=1, max=14))}
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "rezeptbuch",
+        "Alle Rezepte mit Tags, Status, Aufwand und welche Zutaten fehlen (kochbar ja/nein).",
+        "GET",
+        "/rezeptbuch",
+    ),
+    Aktion(
+        "rezept_details",
+        "Ein Rezept mit Zutaten (auf portionen skaliert, Bestandsampel) und Schritten.",
+        "GET",
+        "/rezepte/{rezept_id}",
+        vol.Schema({vol.Required("rezept_id"): cv.string, vol.Optional("portionen"): PORTIONEN}),
+    ),
+    Aktion(
+        "rezept_aendern",
+        "Ändert ein Rezept. zutaten ersetzt die ganze Zutatenliste (produkt_id, menge in "
+        "Bestandseinheit für die Basis-Portionen, notiz). schritte: Liste von Texten.",
+        "PATCH",
+        "/rezepte/{rezept_id}",
+        vol.Schema(
+            {
+                vol.Required("rezept_id"): cv.string,
+                vol.Optional("name"): cv.string,
+                vol.Optional("portionen"): PORTIONEN,
+                vol.Optional("schritte"): [cv.string],
+                vol.Optional("zutaten"): [
+                    vol.Schema(
+                        {
+                            vol.Required("produkt_id"): cv.string,
+                            vol.Required("menge"): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                            vol.Optional("notiz"): cv.string,
+                        }
+                    )
+                ],
+                vol.Optional("tags"): [cv.string],
+                vol.Optional("status"): vol.In(["getestet", "ungetestet"]),
+                vol.Optional("aufwand"): vol.In(["schnell", "normal", "aufwaendig"]),
+                vol.Optional("rest_haltbarkeit_tage"): vol.All(
+                    vol.Coerce(int), vol.Range(min=0, max=30)
+                ),
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "produkt_details",
+        "Ein Produkt mit allen Attributen, Bestand, Packungen, Aliasen und Rezepten.",
+        "GET",
+        "/produkte/{produkt_id}",
+        vol.Schema({vol.Required("produkt_id"): cv.string}),
+    ),
+    Aktion(
+        "produkt_aendern",
+        "Ändert Attribute eines Produkts (Name, Modus, Kategorie, Füllstand, Toleranz, g je "
+        "Einheit, Mindestbestand, Haltbarkeiten, Lagerort, Variante von).",
+        "PATCH",
+        "/produkte/{produkt_id}",
+        vol.Schema(
+            {
+                vol.Required("produkt_id"): cv.string,
+                vol.Optional("name"): cv.string,
+                vol.Optional("tracking_modus"): vol.In(
+                    ["exakt", "menge", "fuellstand", "immer_da"]
+                ),
+                vol.Optional("kategorie"): cv.string,
+                vol.Optional("fuellstand"): vol.In(["voll", "knapp", "leer"]),
+                vol.Optional("toleranz_pct"): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+                vol.Optional("g_je_einheit"): MENGE,
+                vol.Optional("mindestbestand"): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                vol.Optional("ablauf_typ"): vol.In(["mhd", "verbrauchsdatum"]),
+                vol.Optional("haltbarkeit_tage"): TAGE,
+                vol.Optional("haltbarkeit_offen_tage"): TAGE,
+                vol.Optional("haltbarkeit_gefroren_tage"): TAGE,
+                vol.Optional("haltbarkeit_aufgetaut_tage"): TAGE,
+                vol.Optional("lagerort_id"): cv.string,
+                vol.Optional("parent_id"): cv.string,
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "dubletten",
+        "Mögliche doppelte Produkte (Namensähnlichkeit ab schwelle, Standard aus den Optionen).",
+        "GET",
+        "/dubletten",
+        vol.Schema(
+            {vol.Optional("schwelle"): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=1))}
+        ),
+    ),
+    Aktion(
+        "dubletten_ignorieren",
+        "Markiert ein Produktpaar als „kein Duplikat“, es wird nie wieder vorgeschlagen.",
+        "POST",
+        "/dubletten/ignorieren",
+        vol.Schema({vol.Required("behalten"): cv.string, vol.Required("entfernen"): cv.string}),
+    ),
+    Aktion(
+        "dubletten_mergen",
+        "Führt Produkt entfernen in behalten zusammen und löscht entfernen in Grocy.",
+        "POST",
+        "/dubletten/mergen",
+        vol.Schema({vol.Required("behalten"): cv.string, vol.Required("entfernen"): cv.string}),
+        schreibend=True,
+        nur_service=True,
+    ),
+    Aktion("reste", "Reste im Bestand: Portionen und frühester Ablauf.", "GET", "/reste"),
+    Aktion(
+        "fuellstand", "Alle Füllstand-Produkte mit Stand voll/knapp/leer.", "GET", "/fuellstand"
+    ),
+    Aktion(
+        "fuellstand_setzen",
+        "Setzt den Füllstand eines Produkts. knapp und leer kommen auf die Einkaufsliste.",
+        "PUT",
+        "/fuellstand/{produkt_id}",
+        vol.Schema(
+            {
+                vol.Required("produkt_id"): cv.string,
+                vol.Required("stand"): vol.In(["voll", "knapp", "leer"]),
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "abbuchen",
+        "Bucht eine Menge eines Produkts ab (FEFO), z. B. Rest gegessen; "
+        "verdorben=true für Weggeworfenes.",
+        "POST",
+        "/bestand/abbuchen",
+        vol.Schema(
+            {
+                vol.Required("produkt_id"): cv.string,
+                vol.Required("menge"): MENGE,
+                vol.Optional("verdorben", default=False): cv.boolean,
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "bon_aus_media",
+        "Liest einen Kassenbon aus einem Bild unter /media (Pfad relativ, z. B. upload/bon.jpg). "
+        "Läuft im Hintergrund, danach Review mit bon_details und bon_buchen.",
+        "POST",
+        "/bon/media",
+        vol.Schema({vol.Required("pfad"): cv.string}),
+        schreibend=True,  # Automationen sollen ohne Antwort aufrufen können
+    ),
+    Aktion(
+        "bons", "Die letzten Kassenbons mit Status (verarbeitung/review/gebucht).", "GET", "/bon"
+    ),
+    Aktion(
+        "bon_details",
+        "Ein Kassenbon mit allen Zeilen, Vorschlag (produkt_id, menge) und ob vorausgewählt.",
+        "GET",
+        "/bon/{bon_id}",
+        vol.Schema({vol.Required("bon_id"): vol.Coerce(int)}),
+    ),
+    Aktion(
+        "bon_buchen",
+        "Bucht bestätigte Bon-Zeilen ein: Liste aus index, menge und produkt_id oder "
+        "neu_anlegen, optional preis, mhd, lagerort_id. Merkt Aliase und Preise.",
+        "POST",
+        "/bon/{bon_id}/buchen",
+        vol.Schema(
+            {
+                vol.Required("bon_id"): vol.Coerce(int),
+                vol.Required("positionen"): [
+                    vol.Schema(
+                        {
+                            vol.Required("index"): vol.Coerce(int),
+                            vol.Required("menge"): MENGE,
+                            vol.Optional("produkt_id"): cv.string,
+                            vol.Optional("neu_anlegen"): cv.string,
+                            vol.Optional("preis"): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                            vol.Optional("mhd"): DATUM,
+                            vol.Optional("lagerort_id"): cv.string,
+                        }
+                    )
+                ],
+            }
+        ),
+        schreibend=True,
+    ),
+    Aktion(
+        "bon_verwerfen",
+        "Verwirft einen noch nicht gebuchten Kassenbon.",
+        "POST",
+        "/bon/{bon_id}/verwerfen",
+        vol.Schema({vol.Required("bon_id"): vol.Coerce(int)}),
+    ),
+    Aktion(
+        "kategorisieren",
+        "Startet den Kategorisierungslauf im Hintergrund: KI schlägt Attribute für Produkte und "
+        "Rezepte vor, gesetzt wird nichts. Danach vorschlaege prüfen.",
+        "POST",
+        "/kategorisieren",
+        vol.Schema(
+            {
+                vol.Optional("produkte", default=True): cv.boolean,
+                vol.Optional("rezepte", default=True): cv.boolean,
+                vol.Optional("nur_ohne_attribute", default=True): cv.boolean,
+                vol.Optional("nur_leere", default=True): cv.boolean,
+            }
+        ),
+        schreibend=True,  # Automationen sollen ohne Antwort aufrufen können
+    ),
+    Aktion(
+        "vorschlaege",
+        "Offene Vorschläge des Kategorisierungslaufs: Objekt, Feld, alter und neuer Wert.",
+        "GET",
+        "/vorschlaege",
+    ),
+    Aktion(
+        "vorschlaege_entscheiden",
+        "Übernimmt bzw. verwirft Vorschläge (Listen von Vorschlags-IDs).",
+        "POST",
+        "/vorschlaege",
+        vol.Schema(
+            {
+                vol.Optional("uebernehmen", default=list): [vol.Coerce(int)],
+                vol.Optional("ablehnen", default=list): [vol.Coerce(int)],
+            }
         ),
         schreibend=True,
     ),
