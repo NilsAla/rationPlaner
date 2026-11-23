@@ -38,7 +38,8 @@ export default async function render(el) {
         {key: "schritte", titel: "Schritte", klasse: "nw right", wert: (r) => r.status === "keine"
           ? `<span class="muted">${r.original_schritte} im Original</span>` : `${r.schritte} <span class="muted tiny">(Original ${r.original_schritte})</span>`},
         {key: "koch", titel: "", klasse: "nw right", sort: () => 0,
-          wert: (r) => `<a class="btn klein" href="#/kochen/${esc(r.rezept_id)}" title="Kochmodus">👩‍🍳</a>`},
+          wert: (r) => `<a class="btn klein" href="#/kochen/${esc(r.rezept_id)}?test=1" title="Testlauf">🧪</a>
+            <a class="btn klein" href="#/kochen/${esc(r.rezept_id)}" title="Kochmodus">👩‍🍳</a>`},
       ],
     });
     $("#tab", el).onclick = (ev) => {

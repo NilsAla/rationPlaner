@@ -32,20 +32,29 @@ function klingeln() {
 
 export default async function render(el, {arg, params}) {
   if (!arg) return auswahl(el);
+  // Testlauf (?test=1): Sitzung nur im Browser, nur Browser-Timer, keine Buchung, nichts gespeichert
+  const test = params.test === "1";
+  let zeitraffer = test;
   const opts = {rezept_id: arg, neu: params.neu === "1"};
   if (params.portionen) opts.portionen = +params.portionen;
-  let sitz = await post("kochen/sitzung", opts);
-  if (params.neu || params.portionen) history.replaceState(null, "", `#/kochen/${encodeURIComponent(arg)}`);
+  let sitz;
+  if (test) {
+    const r = await api(`rezepte/${encodeURIComponent(arg)}${params.portionen ? `?portionen=${+params.portionen}` : ""}`);
+    sitz = {id: null, rezept_id: arg, portionen: r.portionen, schritt: 0, erledigt: [], abgehakt: [], timer: [], aktiv: true};
+  } else {
+    sitz = await post("kochen/sitzung", opts);
+    if (params.neu || params.portionen) history.replaceState(null, "", `#/kochen/${encodeURIComponent(arg)}`);
+  }
   let [anl, einst, timerInfo] = await Promise.all([api(`kochen/anleitung/${encodeURIComponent(arg)}?portionen=${sitz.portionen}`),
-    api("einstellungen"), api("kochen/timer").catch(() => ({timer: []}))]);
-  titel(`Kochen: ${anl.name}`);
+    api("einstellungen"), test ? {timer: []} : api("kochen/timer").catch(() => ({timer: []}))]);
+  titel(`${test ? "Testlauf" : "Kochen"}: ${anl.name}`);
   document.body.classList.add("kochmodus");
   const pflicht = einst.kochen?.zutaten_pflicht !== false;
   const geklingelt = new Set(), weg = new Set();
   let stand = "";
 
   const N = () => anl.schritte.length;
-  const speichern = async (felder) => { sitz = await patch(`kochen/sitzung/${sitz.id}`, felder); };
+  const speichern = async (felder) => { sitz = test ? {...sitz, ...felder} : await patch(`kochen/sitzung/${sitz.id}`, felder); };
 
   // --- Timer -------------------------------------------------------------------------------
   const timerZustand = (e) => {
@@ -80,15 +89,24 @@ export default async function render(el, {arg, params}) {
         : `<button class="btn klein" data-t="${art === "pausiert" ? "weiter" : "pause"}" data-id="${esc(e.entity_id)}">${art === "pausiert" ? "▶" : "⏸"}</button>
            <button class="btn klein" data-t="weg" data-id="${esc(e.entity_id)}" title="Abbrechen">✕</button>`}</div>`).join("");
   };
+  const browserTimer = async (sek, name) => {
+    const e = {entity_id: `browser:${Date.now()}`, name, ende: new Date(Date.now() + sek * 1000).toISOString(), schritt: sitz.schritt, dauer_s: sek};
+    await speichern({timer: [...sitz.timer, e]});
+  };
   const timerStarten = async (sek, name) => {
     audioEntsperren();
-    try {
-      const r = await post("kochen/timer", {sekunden: sek, name, sitzung_id: sitz.id, schritt: sitz.schritt});
-      toast(`⏱ ${name}: ${dauerText(sek)} auf ${r.timer_name}`);
-    } catch (err) {
-      const e = {entity_id: `browser:${Date.now()}`, name, ende: new Date(Date.now() + sek * 1000).toISOString(), schritt: sitz.schritt, dauer_s: sek};
-      await speichern({timer: [...sitz.timer, e]});
-      toast(`⏱ ${name} läuft hier im Browser (${err.message})`);
+    if (test) {
+      const echt = zeitraffer ? Math.max(3, Math.round(sek / 60)) : sek;
+      await browserTimer(echt, name);
+      toast(`🧪 ⏱ ${name}: ${dauerText(sek)}${zeitraffer ? ` im Zeitraffer (${echt} s)` : ""}, kein HA-Timer`);
+    } else {
+      try {
+        const r = await post("kochen/timer", {sekunden: sek, name, sitzung_id: sitz.id, schritt: sitz.schritt});
+        toast(`⏱ ${name}: ${dauerText(sek)} auf ${r.timer_name}`);
+      } catch (err) {
+        await browserTimer(sek, name);
+        toast(`⏱ ${name} läuft hier im Browser (${err.message})`);
+      }
     }
     await abgleichen(true);
   };
@@ -110,6 +128,7 @@ export default async function render(el, {arg, params}) {
   // --- Abgleich mit dem Server (anderes Gerät, HA-Timer) --------------------------------------
   const abgleichen = async (erzwingen = false) => {
     if (!el.isConnected) return;
+    if (test) { if (erzwingen) zeichnen(); else timerZeichnen(); return; }
     const [s, t] = await Promise.all([api(`kochen/sitzung/${sitz.id}`), api("kochen/timer").catch(() => timerInfo)]);
     timerInfo = t;
     const neu = JSON.stringify([s.schritt, s.abgehakt, s.erledigt, s.aktiv]);
@@ -123,12 +142,15 @@ export default async function render(el, {arg, params}) {
     const i = Math.min(sitz.schritt, N()), s = anl.schritte[i], drin = new Set(sitz.abgehakt);
     const pct = N() ? Math.round(100 * Math.min(i, N()) / N()) : 0;
     const zutatDrin = (idx) => anl.schritte.every((x, k) => !x.zutaten.some((z) => z.index === idx) || drin.has(`${k}:${idx}`));
-    const banner = anl.status === "keine" || anl.status === "entwurf" || anl.veraltet || anl.hinweise.length ? `<div class="card small">
+    const testBanner = test ? `<div class="card small testlauf"><span><b>🧪 Testlauf</b> · keine HA-Timer, keine Buchung, nichts wird gespeichert.</span>
+      <label class="inline" style="margin:0 0 0 8px"><input type="checkbox" id="raffer" ${zeitraffer ? "checked" : ""}> ⏩ Zeitraffer (1 Min = 1 s)</label>
+      <a class="btn klein" href="#/kochen/${esc(anl.rezept_id)}?portionen=${sitz.portionen}">Echt kochen</a></div>` : "";
+    const banner = testBanner + (anl.status === "keine" || anl.status === "entwurf" || anl.veraltet || anl.hinweise.length ? `<div class="card small">
       ${anl.status === "keine" ? `Diese Anleitung kommt automatisch aus den Originalschritten.
-        <button class="btn klein primary" id="ki">✨ Mit KI in Koch-Schritte umschreiben</button>`
+        ${test ? "" : `<button class="btn klein primary" id="ki">✨ Mit KI in Koch-Schritte umschreiben</button>`}`
         : anl.status === "entwurf" ? `<span class="tag warn">${anl.quelle === "ki" ? "KI-Entwurf" : "Entwurf"}</span> noch nicht geprüft · <a href="#/rezept/${esc(anl.rezept_id)}/anleitung">prüfen</a>` : ""}
       ${anl.veraltet ? `<div class="soon">Das Rezept wurde seitdem geändert, die Anleitung ist evtl. veraltet.</div>` : ""}
-      ${anl.hinweise.map((h) => `<div class="muted tiny">${esc(h)}</div>`).join("")}</div>` : "";
+      ${anl.hinweise.map((h) => `<div class="muted tiny">${esc(h)}</div>`).join("")}</div>` : "");
     el.innerHTML = `<div class="koch-kopf"><h2>${esc(anl.name)}</h2><span class="muted">${sitz.portionen} Portion(en)</span>
         <div class="fortschritt"><div style="width:${pct}%"></div></div><span class="muted small">${Math.min(i + 1, N())}/${N()}</span>
         <a class="btn klein" href="#/rezept/${esc(anl.rezept_id)}/anleitung" title="Anleitung bearbeiten">✎</a>
@@ -152,6 +174,12 @@ export default async function render(el, {arg, params}) {
           <div class="card"><h2>Alle Zutaten</h2><table>${anl.zutaten.map((z) => `<tr class="${zutatDrin(z.index) ? "muted" : ""}">
             <td>${zutatDrin(z.index) ? "✓" : ""}</td><td>${esc(z.name)}</td><td class="right nw">${fmt(z.menge)} ${esc(z.einheit)}</td></tr>`).join("")}</table>
             ${anl.fehlend.length ? `<p class="soon tiny">In keinem Schritt: ${anl.fehlend.map(esc).join(", ")}</p>` : ""}</div></div></div>`
+      : test ? `<div class="card schritt-gross" id="fertig"><h2>Testlauf fertig 🧪</h2>
+          <p class="muted small">Echt gekocht würde „Gekocht buchen“ das hier abbuchen (Rezept × ${sitz.portionen} Portion(en)). Gebucht wurde nichts.</p>
+          <div id="vorschau" class="muted small">Lade Bestand …</div>
+          <div class="row" style="margin-top:10px"><button class="btn" id="nochmal">↺ Nochmal testen</button>
+            <a class="btn primary gross" href="#/kochen/${esc(anl.rezept_id)}?portionen=${sitz.portionen}">👩‍🍳 Jetzt echt kochen</a>
+            <button class="btn" id="zurueck">◀ Zurück</button></div></div>`
       : `<div class="card schritt-gross" id="fertig"><h2>Fertig! 🎉</h2>
           <div class="row"><div><label>Gekocht (Portionen)</label><input id="pg" type="number" min="1" max="24" value="${sitz.portionen}"></div>
             <div><label>Gegessen (Portionen)</label><input id="pe" type="number" min="0" max="24" value="${Math.min(sitz.portionen, 1)}"></div></div>
@@ -165,7 +193,18 @@ export default async function render(el, {arg, params}) {
 
   const binden = () => {
     $("#tl", el).onclick = (ev) => { const b = ev.target.closest("[data-t]"); if (b) guarded(() => timerAktion(b.dataset.t, b.dataset.id)); };
+    const raffer = $("#raffer", el);
+    if (raffer) raffer.onchange = () => { zeitraffer = raffer.checked; };
+    const nochmal = $("#nochmal", el);
+    if (nochmal) nochmal.onclick = () => guarded(async () => { await speichern({schritt: 0, erledigt: [], abgehakt: [], timer: []}); zeichnen(); });
+    const vorschau = $("#vorschau", el);
+    if (vorschau) guarded(async () => {
+      const r = await api(`rezepte/${encodeURIComponent(anl.rezept_id)}?portionen=${sitz.portionen}`);
+      vorschau.innerHTML = `<table>${r.zutaten.map((z) => `<tr><td><span class="dot ${z.ampel}"></span>${esc(z.name)}</td>
+        <td class="right nw">${fmt(z.menge)} ${esc(z.einheit)}</td><td class="right nw muted tiny">da: ${fmt(z.bestand)}</td></tr>`).join("")}</table>`;
+    });
     $("#neustart", el).onclick = () => guarded(async () => {
+      if (test) { await speichern({schritt: 0, erledigt: [], abgehakt: [], timer: []}); zeichnen(); return; }
       if (!await bestaetigen("Von vorn anfangen? Abgehakte Zutaten und Schritte werden zurückgesetzt.", "Neu starten")) return;
       sitz = await post("kochen/sitzung", {rezept_id: anl.rezept_id, portionen: sitz.portionen, neu: true}); zeichnen();
     });
@@ -258,6 +297,7 @@ async function auswahl(el) {
         <a class="btn primary gross" href="#/kochen/${esc(h.rezept.id)}?portionen=${h.rezept.portionen}">👩‍🍳 Kochmodus starten</a>`
       : `<p class="muted">Heute ist nichts geplant (${esc(heute())}).</p>`}</div>
     <div class="card"><h2>Jetzt kochbar</h2>${kochbar.length ? `<table>${kochbar.slice(0, 12).map((r) => `<tr><td>${esc(r.name)}</td>
-      <td class="right"><a class="btn klein" href="#/kochen/${esc(r.id)}">Kochen</a></td></tr>`).join("")}</table>`
+      <td class="right nw"><a class="btn klein" href="#/kochen/${esc(r.id)}?test=1" title="Testlauf ohne Timer und Buchung">🧪</a>
+        <a class="btn klein" href="#/kochen/${esc(r.id)}">Kochen</a></td></tr>`).join("")}</table>`
       : `<p class="muted">Nichts komplett vorrätig. <a href="#/rezepte">Rezeptbuch</a></p>`}</div></div>`;
 }

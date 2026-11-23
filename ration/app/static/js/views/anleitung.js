@@ -57,6 +57,7 @@ export default async function render(el, {arg}) {
     el.innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(420px,100%),1fr))">
       <div class="card" style="grid-column:1/-1"><div class="kopf"><h2>${esc(a.name)}</h2><div class="aktionen">
           <a class="btn klein" href="#/rezept/${esc(a.rezept_id)}">← Rezept</a>
+          <a class="btn klein" href="#/kochen/${esc(a.rezept_id)}?test=1" title="Ohne HA-Timer und Buchung">🧪 Testlauf</a>
           <a class="btn klein primary" href="#/kochen/${esc(a.rezept_id)}">👩‍🍳 Kochmodus</a></div></div>
         <p class="muted small">Status: <b>${STATUS[a.status] ?? a.status}</b>${a.gespeichert ? ` · Quelle: ${QUELLE[a.quelle] ?? a.quelle}` : " · Vorschlag aus den Originalschritten, noch nicht gespeichert"}
           ${a.veraltet ? ` · <span class="tag warn">Rezept seitdem geändert</span>` : ""}
