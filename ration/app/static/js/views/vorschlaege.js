@@ -12,7 +12,7 @@ export default async function render(el) {
   const lauf = laeufe[0], laeuft = lauf?.status === "laeuft";
   const gruppen = {};
   vor.forEach((v) => (gruppen[`${v.typ}:${v.objekt_id}`] ??= {name: v.name, typ: v.typ, id: v.objekt_id, felder: []}).felder.push(v));
-  el.innerHTML = `<div class="grid" style="grid-template-columns:minmax(min(280px,100%),1fr) minmax(320px,2fr)">
+  el.innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr))">
     <div class="card"><h2>Lauf starten</h2>
       <p class="muted small">Die KI schlägt Modus, Kategorie, Haltbarkeiten, Packung und Toleranz vor (Rezepte: Tags, Aufwand).
         Gesetzt wird erst nach deiner Prüfung.</p>

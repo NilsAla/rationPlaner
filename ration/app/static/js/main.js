@@ -7,6 +7,7 @@ export const MENUE = [
   {route: "", titel: "Übersicht", ico: "🏠", view: "uebersicht"},
   {gruppe: "Küche", ico: "🍳", punkte: [
     {route: "heute", titel: "Heute kochen", ico: "🔥", view: "heute"},
+    {route: "kochen", titel: "Kochmodus", ico: "👩‍🍳", view: "kochen"},
     {route: "plan", titel: "Wochenplan", ico: "📅", view: "plan"},
     {route: "einkauf", titel: "Einkauf", ico: "🛒", view: "einkauf"},
   ]},
@@ -14,6 +15,7 @@ export const MENUE = [
     {route: "rezepte", titel: "Rezeptbuch", ico: "📚", view: "rezepte"},
     {route: "rezept-neu", titel: "Neues Rezept", ico: "✏️", view: "rezept_edit"},
     {route: "import", titel: "Import per Link", ico: "🔗", view: "import"},
+    {route: "anleitungen", titel: "Kochanleitungen", ico: "🪜", view: "anleitungen"},
   ]},
   {gruppe: "Vorrat", ico: "🥫", punkte: [
     {route: "inventar", titel: "Inventar", ico: "📦", view: "inventar"},
@@ -34,6 +36,8 @@ export const MENUE = [
 ];
 // Routen, die nicht im Menü stehen: Detailseiten. Muster → View, markierter Menüpunkt
 const DETAIL = [
+  [/^kochen\/([^/]+)$/, "kochen", "kochen"],
+  [/^rezept\/([^/]+)\/anleitung$/, "anleitung", "anleitungen"],
   [/^rezept\/([^/]+)\/bearbeiten$/, "rezept_edit", "rezepte"],
   [/^rezept\/([^/]+)$/, "rezept", "rezepte"],
   [/^produkt-neu$/, "produkt", "produkte"],
@@ -60,8 +64,11 @@ const link = (p, aktiv) => `<a href="#/${p.route}" class="${p.route === aktiv ? 
   ${badges[p.badge] ? `<span class="badge ${p.badge === "dubletten" ? "warn" : ""}">${badges[p.badge]}</span>` : ""}</a>`;
 
 
-let laufend = 0;
+let laufend = 0, aufraeumen = null;
 async function zeigen() {
+  // Views dürfen eine Aufräumfunktion zurückgeben (Intervalle, Wake Lock, Body-Klassen)
+  try { aufraeumen?.(); } catch (e) { console.error(e); }
+  aufraeumen = null;
   const pfad = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
   const [route, query] = pfad.split("?");
   const params = Object.fromEntries(new URLSearchParams(query ?? ""));
@@ -83,7 +90,8 @@ async function zeigen() {
     const mod = await import(`./views/${eintrag.view}.js${V}`);
     if (nr !== laufend) return;
     el.innerHTML = "";
-    await mod.default(el, {arg, params, neu: () => zeigen()});
+    const r = await mod.default(el, {arg, params, neu: () => zeigen()});
+    if (typeof r === "function") { if (nr === laufend) aufraeumen = r; else r(); }
   });
   window.scrollTo(0, 0);
 }

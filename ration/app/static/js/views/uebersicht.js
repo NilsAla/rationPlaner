@@ -20,7 +20,7 @@ export default async function (el) {
   ].filter(Boolean);
 
   el.innerHTML = `<div class="grid">
-    <div class="card"><div class="kopf"><h2>Heute</h2><div class="aktionen"><a class="btn klein" href="#/heute">Kochen →</a></div></div>
+    <div class="card"><div class="kopf"><h2>Heute</h2><div class="aktionen"><a class="btn klein" href="#/kochen">👩‍🍳 Kochmodus</a><a class="btn klein" href="#/heute">Kochen →</a></div></div>
       ${h.rezept ? `<div class="zahl" style="font-size:20px">${esc(h.rezept.name)}</div>
         <p class="muted">${h.rezept.portionen} Portionen${h.status === "gekocht" ? " · ✓ gekocht" : ""}</p>`
         : `<p class="muted">Nichts geplant.</p><a class="btn" href="#/rezepte?kochbar=1">Was kann ich jetzt kochen?</a>`}</div>

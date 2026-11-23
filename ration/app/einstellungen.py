@@ -37,6 +37,8 @@ STANDARD: dict[str, dict[str, Any]] = {
         "aufwand_je_tag": {str(i): "aufwaendig" for i in range(7)},  # höchster Aufwand je Wochentag
     },
     "anzeige": {"bald_tage": 3},
+    # Timer-Entitäten stehen in der App-Option timer_entities (Konfiguration in HA)
+    "kochen": {"zutaten_pflicht": True},  # Weiter erst, wenn alle Zutaten abgehakt sind
 }
 
 
@@ -91,6 +93,9 @@ def pruefen(gruppe: str, werte: dict) -> dict:
             }
     elif gruppe == "anzeige" and "bald_tage" in out:
         out["bald_tage"] = int(_bereich(out["bald_tage"], 1, 14, "bald_tage"))
+    elif gruppe == "kochen":
+        if "zutaten_pflicht" in out:
+            out["zutaten_pflicht"] = bool(out["zutaten_pflicht"])
     return out
 
 
@@ -112,6 +117,7 @@ def optionen(st: Settings) -> dict:
         "bon_konfidenz_schwelle": st.bon_konfidenz_schwelle,
         "dubletten_schwelle": st.dubletten_schwelle,
         "notify_service": st.notify_service,
+        "timer_entities": list(st.timer_entities),
         "api_token": bool(st.api_token),
     }
 

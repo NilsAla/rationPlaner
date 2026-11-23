@@ -34,6 +34,14 @@ class HomeAssistant(Protocol):
         """Hinweis an den Nutzer: persistent_notification, zusätzlich notify.<service>."""
         ...
 
+    async def states(self, domain: str) -> list[dict]:
+        """Zustände aller Entitäten einer Domain (entity_id, state, attributes)."""
+        ...
+
+    async def call_service(self, domain: str, service: str, data: dict[str, Any]) -> None:
+        """Beliebiger Service-Aufruf ohne Antwort, z. B. timer.start."""
+        ...
+
 
 class SupervisorHomeAssistant:
     def __init__(self, token: str, base_url: str = SUPERVISOR_CORE_API):
@@ -88,3 +96,11 @@ class SupervisorHomeAssistant:
         if service:
             domain, _, name = service.partition(".")
             await self._service(domain, name, {"title": title, "message": message})
+
+    async def states(self, domain: str) -> list[dict]:
+        resp = await self._client.get("/states")
+        resp.raise_for_status()
+        return [x for x in resp.json() if x.get("entity_id", "").startswith(domain + ".")]
+
+    async def call_service(self, domain: str, service: str, data: dict[str, Any]) -> None:
+        await self._service(domain, service, data)

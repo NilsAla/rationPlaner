@@ -18,7 +18,8 @@ export default async function render(el) {
   const r = h.rezept;
   el.innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr))">
     <div class="card"><div class="kopf"><h2>${esc(r.name)}</h2><div class="aktionen">
-      <a class="btn klein" href="#/rezept/${esc(r.id)}">Rezept</a></div></div>
+      <a class="btn klein" href="#/rezept/${esc(r.id)}">Rezept</a>
+      <a class="btn klein primary" href="#/kochen/${esc(r.id)}?portionen=${r.portionen}">👩‍🍳 Kochmodus</a></div></div>
       <p class="muted">${r.portionen} Portion(en)${h.status === "gekocht" ? " · ✓ gekocht" : ""}</p>
       <h3>Zutaten</h3><ul>${r.zutaten.map((z) => `<li>${fmt(z.menge)} ${esc(z.einheit)} ${esc(z.name)}</li>`).join("")}</ul></div>
     <div class="card"><h2>Zubereitung</h2>${r.schritte.length ? `<ol class="schritte">${r.schritte.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`
@@ -38,7 +39,7 @@ export default async function render(el) {
   });
 }
 
-function nachDemKochen(box, e) {
+export function nachDemKochen(box, e) {
   box.innerHTML = `<h3>Wie war's?</h3><div class="chips">
       <button class="chip" data-b="1">👍 gern wieder</button><button class="chip" data-b="0">😐 ok</button>
       <button class="chip" data-b="-1">👎 eher nicht</button></div>

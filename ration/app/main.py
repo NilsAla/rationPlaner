@@ -26,6 +26,7 @@ from app import (
     inventar,
     katalog,
     kategorisierung,
+    kochen,
     kueche,
     llm_import,
     planer,
@@ -618,6 +619,7 @@ def create_app(
     app.include_router(protokoll.router)
     app.include_router(einstellungen.router)
     app.include_router(inventar.router)
+    app.include_router(kochen.router)
 
     @app.middleware("http")
     async def aenderungen_protokollieren(request: Request, call_next):

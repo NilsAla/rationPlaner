@@ -2,8 +2,9 @@ import {$, $$, AUFWAND, REGLER, WOCHENTAGE, api, bestaetigen, del, esc, guarded,
 
 // Einstellungen: Wochenrhythmus, Planer-Vorgaben, Präferenzen, Anzeige; HA-Optionen nur lesend
 export default async function render(el) {
-  const [e, buch] = await Promise.all([api("einstellungen"), api("rezeptbuch")]);
-  const {planer, praeferenzen: pr, anzeige, optionen: o} = e;
+  const [e, buch, kt] = await Promise.all([api("einstellungen"), api("rezeptbuch"),
+    api("kochen/timer").catch((err) => ({timer: [], automatisch: true, fehler: err.message}))]);
+  const {planer, praeferenzen: pr, anzeige, kochen: ko, optionen: o} = e;
   const tags = [...new Set([...buch.flatMap((r) => r.tags), ...pr.ausschluss_tags])].sort((a, b) => a.localeCompare(b, "de"));
   const theme = lokal("theme", "auto");
   const ja = (x) => x ? `<span class="ok">gesetzt</span>` : `<span class="muted">nicht gesetzt</span>`;
@@ -33,6 +34,13 @@ export default async function render(el) {
       <button class="btn voll" id="anz">Speichern</button>
       <h3>Lokal</h3><p class="muted tiny">Filter, Sortierung und eingeklappte Menügruppen merkt sich der Browser.</p>
       <button class="btn klein" id="lokal">Gemerkte Ansicht zurücksetzen</button></div>
+    <div class="card"><h2>Kochmodus</h2>
+      <label class="inline"><input type="checkbox" id="zp" ${ko.zutaten_pflicht ? "checked" : ""}> Vor „Weiter“ nachfragen, wenn Zutaten des Schritts nicht abgehakt sind</label>
+      <h3>Timer</h3>${kt.timer.length ? `<table>${kt.timer.map((t) => `<tr><td>${esc(t.name)}</td><td class="muted tiny">${esc(t.entity_id)}</td>
+        <td class="right">${t.state === "idle" ? `<span class="muted">frei</span>` : esc(t.state)}</td></tr>`).join("")}</table>`
+        : `<p class="muted small">${kt.fehler ? `HA nicht erreichbar (${esc(kt.fehler)}).` : "Keine Timer gefunden."} Der Kochmodus nimmt dann Browser-Timer.</p>`}
+      <p class="muted tiny">${kt.automatisch ? "Automatisch erkannt (Küche/kitchen/koch im Namen). " : ""}Festlegen über die App-Option <code>timer_entities</code>
+        in Home Assistant. Der Kochmodus startet jeweils den ersten freien Timer.</p></div>
     <div class="card"><h2>App-Optionen <span class="muted tiny">(nur lesen)</span></h2>
       <p class="muted tiny">Änderbar in Home Assistant unter Einstellungen → Apps → ration → Konfiguration.</p>
       <table>
@@ -40,6 +48,7 @@ export default async function render(el) {
         <tr><td class="muted">Grocy</td><td>${esc(o.grocy_url ?? "–")} · Key ${ja(o.grocy_api_key)}</td></tr>
         <tr><td class="muted">KI-Entität</td><td>${esc(o.ai_task_entity ?? "–")}</td></tr>
         <tr><td class="muted">Einkaufsliste</td><td>${esc(o.todo_entity ?? "–")}</td></tr>
+        <tr><td class="muted">Timer-Entitäten</td><td>${o.timer_entities?.length ? o.timer_entities.map(esc).join(", ") : `<span class="muted">automatisch</span>`}</td></tr>
         <tr><td class="muted">Benachrichtigung</td><td>${esc(o.notify_service ?? "–")}</td></tr>
         <tr><td class="muted">Toleranz-Standard</td><td>${esc(o.toleranz_default_pct)} %</td></tr>
         <tr><td class="muted">Bon-Konfidenz</td><td>${esc(o.bon_konfidenz_schwelle)}</td></tr>
@@ -69,6 +78,7 @@ export default async function render(el) {
     if (t === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = t;
     $$("[data-theme]", el).forEach((x) => x.classList.toggle("on", x === b));
   });
+  $("#zp", el).onchange = (ev) => guarded(async () => { await put("einstellungen/kochen", {zutaten_pflicht: ev.target.checked}); toast("Gespeichert"); });
   $("#anz", el).onclick = () => guarded(async () => { await put("einstellungen/anzeige", {bald_tage: +$("#bald", el).value}); toast("Gespeichert"); });
   $("#lokal", el).onclick = () => {
     try { Object.keys(localStorage).filter((k) => k.startsWith("ration.") && k !== "ration.theme").forEach((k) => localStorage.removeItem(k)); } catch { /* egal */ }
