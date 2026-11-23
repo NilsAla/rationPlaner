@@ -30,10 +30,10 @@ ZEILEN = [
     ("gewicht", "PAPRIKA ROT LOSE", 0.486, 3.99, None, "A", "Paprika rot 486 g"),
     ("artikel", "SPAGHETTI NR.5 500G", 3, 0.99, None, "A", "Nudeln 3 × 500 g = 1500 g"),
     ("artikel", "KIDNEYBOHN.ROT 400G", 1, 0.79, None, "A", "Kidneybohnen 400 g"),
-    ("artikel", "KIDNEYBOHN.ROT 800G", 1, 1.39, None, "A", "Kidneybohnen 800 g, abweichende Packung"),
+    ("artikel", "KIDNEYBOHN.ROT 800G", 1, 1.39, None, "A", "Kidneybohnen 800 g, abweichend"),
     ("artikel", "TOMATEN PASS. 500G", 2, 0.69, None, "A", "Tomaten passiert 2 × 500 g"),
     ("coupon", "COUPON TOMATEN", 1, None, -0.30, "A", "Rabatt auf Tomaten, Preis 1,08"),
-    ("artikel", "ZWIEBELN GELB 2KG NETZ", 1, 1.99, None, "A", "Zwiebel 2000 g, abweichend (1 kg Netz)"),
+    ("artikel", "ZWIEBELN GELB 2KG NETZ", 1, 1.99, None, "A", "Zwiebel 2000 g, abweichend"),
     ("artikel", "OLIVENOEL NAT.EXTRA 0,75L", 1, 6.49, None, "A", "Olivenöl (Füllstand voll)"),
     ("rabatt", "  RABATT 20%", 1, None, -1.30, "A", "Rabatt auf Olivenöl, Preis 5,19"),
     ("non_food", "SPUELMITTEL ZITRONE 500ML", 1, 1.19, None, "B", "Non-Food, nicht vorausgewählt"),
@@ -81,7 +81,8 @@ def text_zeilen() -> tuple[list[str], float]:
         mwst[satz] += b
         if typ == "gewicht":
             out.append(text)
-            out.append(zeile(f"  {anzahl:.3f} kg x {eur(einzel)} EUR/kg".replace(".", ",", 1), f"{eur(b)} {satz}"))
+            links = f"  {anzahl:.3f} kg x {eur(einzel)} EUR/kg".replace(".", ",", 1)
+            out.append(zeile(links, f"{eur(b)} {satz}"))
         elif typ in ("artikel", "non_food") and anzahl > 1:
             out.append(f"  {anzahl} x {eur(einzel)}")
             out.append(zeile(text, f"{eur(b)} {satz}"))
@@ -99,7 +100,8 @@ def text_zeilen() -> tuple[list[str], float]:
     for satz, pct in (("A", 7), ("B", 19)):
         brutto = round(mwst[satz], 2)
         netto = round(brutto / (1 + pct / 100), 2)
-        out.append(zeile(f"{satz}=  {pct:>2},0%   {eur(netto):>8}   {eur(brutto - netto):>6}", eur(brutto)))
+        links = f"{satz}=  {pct:>2},0%   {eur(netto):>8}   {eur(brutto - netto):>6}"
+        out.append(zeile(links, eur(brutto)))
     out += [
         "",
         zeile("21.11.2026", "17:42"),
@@ -151,7 +153,8 @@ def main() -> None:
         "datum": "2026-11-21",
         "summe": summe,
         "zeilen": [
-            {"typ": z[0], "text": z[1].strip(), "betrag": betrag(z), "erwartung": z[6]} for z in ZEILEN
+            {"typ": z[0], "text": z[1].strip(), "betrag": betrag(z), "erwartung": z[6]}
+            for z in ZEILEN
         ],
     }
     (ziel / "testbon-loesung.json").write_text(json.dumps(loesung, ensure_ascii=False, indent=1))
