@@ -1,4 +1,4 @@
-import {$, $$, AUFWAND, api, quelleBadge, quelleInfo, bestaetigen, dmy, esc, formDialog, guarded, lokal, meldeMassen, merken, post, sterne, tabelle, gehe} from "../lib.js";
+import {$, $$, AUFWAND, nutriBadge, api, quelleBadge, quelleInfo, bestaetigen, dmy, esc, formDialog, guarded, lokal, meldeMassen, merken, post, sterne, tabelle, gehe} from "../lib.js";
 
 // Rezeptbuch: Suche, Filter, Sortierung, Massenaktionen. ?kochbar=1, ?produkt=<id>
 export default async function render(el, {params}) {
@@ -47,6 +47,9 @@ export default async function render(el, {params}) {
         {key: "quelle", titel: "Quelle", klasse: "nw", sort: (r) => quelleInfo(r.quelle).label, wert: (r) => quelleBadge(r.quelle)},
         {key: "kochbar", titel: "Vorrat", klasse: "nw", sort: (r) => r.fehlend.length,
           wert: (r) => r.kochbar ? `<span class="dot"></span>alles da` : `<span class="dot ${r.fehlend.length > 2 ? "fehlt" : "knapp"}"></span><span title="${esc(r.fehlend.join(", "))}">${r.fehlend.length} fehlen</span>`},
+        {key: "kcal", titel: "kcal", klasse: "nw right", sort: (r) => r.kcal ?? 1e9,
+          wert: (r) => r.kcal ? `${r.naehrwert_abdeckung < 0.95 ? `<span class="muted" title="${Math.round(100 * r.naehrwert_abdeckung)} % der Zutaten mit Nährwerten">≥</span>` : ""}${Math.round(r.kcal)}` : `<span class="muted">–</span>`},
+        {key: "nutri", titel: "Nutri", klasse: "nw", sort: (r) => r.nutri ?? "Z", wert: (r) => nutriBadge(r.nutri)},
         {key: "aufwand", titel: "Aufwand", klasse: "nw", wert: (r) => esc(AUFWAND[r.aufwand] ?? "–")},
         {key: "gekocht", titel: "Gekocht", klasse: "nw right", wert: (r) => r.gekocht ? `${r.gekocht}×` : `<span class="muted">nie</span>`},
         {key: "zuletzt", titel: "Zuletzt", klasse: "nw", sort: (r) => r.zuletzt ?? "", wert: (r) => r.zuletzt ? dmy(r.zuletzt) : "–"},
@@ -73,7 +76,7 @@ function karten(el, zeilen) {
   el.innerHTML = zeilen.length ? `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr))">${zeilen.map((r) => `
     <a class="kachel" href="#/rezept/${esc(r.id)}" style="text-align:left">
       <div><b>${esc(r.name)}</b> ${sterne(r)} ${quelleBadge(r.quelle)}</div>
-      <div class="muted tiny">${r.portionen} P.${r.aufwand ? " · " + esc(AUFWAND[r.aufwand]) : ""}${r.gekocht ? ` · ${r.gekocht}× gekocht` : " · noch nie gekocht"}</div>
+      <div class="muted tiny">${r.portionen} P.${r.kcal ? ` · ${Math.round(r.kcal)} kcal` : ""} ${nutriBadge(r.nutri)}${r.aufwand ? " · " + esc(AUFWAND[r.aufwand]) : ""}${r.gekocht ? ` · ${r.gekocht}× gekocht` : " · noch nie gekocht"}</div>
       <div class="tiny" style="margin-top:4px">${r.kochbar ? `<span class="dot"></span>alles da` : `<span class="dot ${r.fehlend.length > 2 ? "fehlt" : "knapp"}"></span>${r.fehlend.length} fehlen`}</div>
       ${r.tags.length ? `<div style="margin-top:6px">${r.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join(" ")}</div>` : ""}</a>`).join("")}</div>`
     : `<div class="leer">Keine Rezepte gefunden.</div>`;

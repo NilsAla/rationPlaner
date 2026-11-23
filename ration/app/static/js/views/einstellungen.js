@@ -4,7 +4,7 @@ import {$, $$, AUFWAND, REGLER, WOCHENTAGE, api, bestaetigen, del, esc, guarded,
 export default async function render(el) {
   const [e, buch, kt] = await Promise.all([api("einstellungen"), api("rezeptbuch"),
     api("kochen/timer").catch((err) => ({timer: [], automatisch: true, fehler: err.message}))]);
-  const {planer, praeferenzen: pr, anzeige, kochen: ko, optionen: o} = e;
+  const {planer, praeferenzen: pr, anzeige, kochen: ko, ernaehrung: er, optionen: o} = e;
   const tags = [...new Set([...buch.flatMap((r) => r.tags), ...pr.ausschluss_tags])].sort((a, b) => a.localeCompare(b, "de"));
   const theme = lokal("theme", "auto");
   const ja = (x) => x ? `<span class="ok">gesetzt</span>` : `<span class="muted">nicht gesetzt</span>`;
@@ -27,6 +27,13 @@ export default async function render(el) {
       ${tags.length ? `<label>Nie planen (Tags)</label><div class="chips">${tags.map((t) =>
         `<button class="chip ${pr.ausschluss_tags.includes(t) ? "on" : ""}" data-aus="${esc(t)}">${esc(t)}</button>`).join("")}</div>` : ""}
       <button class="btn primary voll" id="speichern">Speichern</button></div>
+    <div class="card"><h2>Ernährung</h2>
+      <p class="muted small">Ziel für <b>eine</b> Mahlzeit (das geplante Gericht des Tages). Rezepte zeigen, wie gut eine Portion passt.</p>
+      <div class="row"><div><label>kcal je Mahlzeit</label><input id="ekcal" type="number" min="100" max="3000" step="50" value="${er.kcal_mahlzeit}"></div>
+        <div><label>Protein mind. (g)</label><input id="eprot" type="number" min="0" max="200" value="${er.protein_mahlzeit}"></div></div>
+      <label class="inline"><input type="checkbox" id="eplan" ${er.im_planer ? "checked" : ""}> Ziel im Wochenplaner berücksichtigen</label>
+      <p class="muted tiny">Nährwerte je 100 g pflegst du am Produkt oder lässt sie unter KI-Vorschläge schätzen. Rezepte, bei denen weniger als 80 % des Gewichts Werte haben, bleiben im Planer neutral.</p>
+      <button class="btn voll" id="ern">Speichern</button></div>
     <div class="card"><h2>Anzeige</h2>
       <label>„Läuft bald ab“ in den nächsten … Tagen</label><input id="bald" type="number" min="1" max="14" value="${anzeige.bald_tage}">
       <label>Farbschema</label><div class="chips">${[["auto", "🖥️ System"], ["light", "☀️ Hell"], ["dark", "🌙 Dunkel"]].map(([k, t]) =>
@@ -79,6 +86,10 @@ export default async function render(el) {
     $$("[data-theme]", el).forEach((x) => x.classList.toggle("on", x === b));
   });
   $("#zp", el).onchange = (ev) => guarded(async () => { await put("einstellungen/kochen", {zutaten_pflicht: ev.target.checked}); toast("Gespeichert"); });
+  $("#ern", el).onclick = () => guarded(async () => {
+    await put("einstellungen/ernaehrung", {kcal_mahlzeit: +$("#ekcal", el).value, protein_mahlzeit: +$("#eprot", el).value, im_planer: $("#eplan", el).checked});
+    toast("Gespeichert");
+  });
   $("#anz", el).onclick = () => guarded(async () => { await put("einstellungen/anzeige", {bald_tage: +$("#bald", el).value}); toast("Gespeichert"); });
   $("#lokal", el).onclick = () => {
     try { Object.keys(localStorage).filter((k) => k.startsWith("ration.") && k !== "ration.theme").forEach((k) => localStorage.removeItem(k)); } catch { /* egal */ }

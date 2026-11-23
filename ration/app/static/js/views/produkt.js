@@ -1,8 +1,9 @@
-import {$, $$, KATEGORIEN, MODI, api, bestaetigen, del, dmy, esc, fmt, gehe, guarded, patch, post, put, titel, toast} from "../lib.js";
+import {$, $$, KATEGORIEN, MODI, NAEHRFELDER, api, bestaetigen, del, dmy, esc, fmt, gehe, guarded, patch, post, put, titel, toast} from "../lib.js";
 
 // Produkt-Editor: neu (ohne arg) oder bearbeiten, mit Packungen, Aliasen, Verwendung
 export default async function render(el, {arg}) {
-  const [p, liste, orte] = await Promise.all([arg ? api(`produkte/${arg}`) : null, api("produkte"), api("lagerorte")]);
+  const [p, liste, orte, nw] = await Promise.all([arg ? api(`produkte/${arg}`) : null, api("produkte"), api("lagerorte"),
+    arg ? api(`produkte/${arg}/naehrwerte`) : null]);
   titel(p ? p.name : "Neues Produkt");
   const sel = (name, werte, wert, leer = "–") => `<select name="${name}"><option value="">${leer}</option>${werte.map(([k, t]) =>
     `<option value="${esc(k)}" ${k === wert ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
@@ -41,6 +42,13 @@ export default async function render(el, {arg}) {
         <td class="right"><button class="icon" data-pdel="${w.id}">✕</button></td></tr>`).join("")}</table>` : `<p class="muted">Keine.</p>`}
       <div class="row"><input id="we" placeholder="Einheit"><input id="wm" type="number" min="0" step="any" placeholder="Menge in ${esc(e)}">
         <button class="btn" id="wadd" style="flex:0 0 auto">+ Größe</button></div></div>
+    <form class="card" id="nwform"><div class="kopf"><h2>Nährwerte <span class="muted tiny">je 100 g</span></h2>
+        ${nw ? `<span class="tag ${nw.quelle === "ki" ? "warn" : ""}">${nw.quelle === "ki" ? "KI-Schätzung" : esc(nw.quelle)}</span>` : ""}</div>
+      <div class="naehrgrid">${NAEHRFELDER.map(([k, t]) => `<label>${t}<input name="${k}" type="number" min="0" step="any" value="${nw?.[k] ?? ""}"></label>`).join("")}</div>
+      <label class="inline"><input type="checkbox" name="obst_gemuese" ${nw?.obst_gemuese ? "checked" : ""}> Obst/Gemüse/Hülsenfrüchte/Nüsse (Nutri-Score)</label>
+      <label class="inline"><input type="checkbox" name="roh" ${nw?.roh ? "checked" : ""}> wird roh gegessen</label>
+      ${p.g_je_einheit || ["g", "kg", "ml", "l"].includes(e.toLowerCase()) ? "" : `<p class="tiny warn">Ohne „g je Einheit“ kann der Code die Nährwerte nicht auf Rezepte umrechnen.</p>`}
+      <div class="row"><button class="btn" type="submit">Speichern</button>${nw ? `<button class="btn klein danger" type="button" id="nwdel">Entfernen</button>` : ""}</div></form>
     <div class="card"><h2>Aliase</h2><p class="muted tiny">Zutatentexte aus Rezepten, die immer auf dieses Produkt zeigen.</p>
       ${p.aliase.length ? `<div class="chips">${p.aliase.map((a) => `<span class="chip">${esc(a)} <button class="icon" data-adel="${esc(a)}">✕</button></span>`).join("")}</div>` : `<p class="muted">Keine.</p>`}
       <div class="row" style="margin-top:8px"><input id="anew" placeholder="z. B. Spaghetti"><button class="btn" id="aadd" style="flex:0 0 auto">+ Alias</button></div></div>
@@ -49,6 +57,18 @@ export default async function render(el, {arg}) {
       ${p.varianten.length ? `<h3>Varianten</h3><p>${p.varianten.map((v) => `<a href="#/produkt/${esc(v.id)}">${esc(v.name)}</a>`).join(", ")}</p>` : ""}
       ${p.bestand ? `<p><a href="#/inventar">Chargen im Inventar ansehen →</a></p>` : ""}</div>` : ""}</div>`;
 
+  if ($("#nwform", el)) {
+    $("#nwform", el).onsubmit = (ev) => {
+      ev.preventDefault();
+      guarded(async () => {
+        const fd = new FormData(ev.target), body = {obst_gemuese: fd.has("obst_gemuese"), roh: fd.has("roh")};
+        for (const [k] of NAEHRFELDER) if (fd.get(k) !== "") body[k] = +fd.get(k);
+        await put(`produkte/${p.id}/naehrwerte`, body); toast("Nährwerte gespeichert"); render(el, {arg});
+      });
+    };
+    const nd = $("#nwdel", el);
+    if (nd) nd.onclick = () => guarded(async () => { await del(`produkte/${p.id}/naehrwerte`); toast("Entfernt"); render(el, {arg}); });
+  }
   $("#form", el).onsubmit = (ev) => {
     ev.preventDefault();
     guarded(async () => {

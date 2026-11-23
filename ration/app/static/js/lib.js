@@ -179,4 +179,12 @@ export const REGLER = [
   ["preis", "Preis", "günstiger", "darf teurer sein"],
   ["extravagant", "Stil", "Vorrat abbauen", "extravagant"],
   ["neu", "Rezepte", "Lieblinge, oft gekocht", "lieber was Neues"],
+  ["gesund", "Gesundheit", "Genuss zuerst", "gesund (Nutri-Score)"],
+  ["protein", "Protein", "egal", "viel Protein"],
+  ["rohkost", "Rohkost", "lieber gekocht", "viel Rohkost"],
 ];
+// Nährwerte je 100 g (Reihenfolge wie naehrwerte.FELDER)
+export const NAEHRFELDER = [["kcal", "kcal"], ["protein", "Protein g"], ["fett", "Fett g"], ["fett_gesaettigt", "davon gesättigt g"],
+  ["kohlenhydrate", "Kohlenhydrate g"], ["zucker", "davon Zucker g"], ["ballaststoffe", "Ballaststoffe g"], ["salz", "Salz g"]];
+export const nutriBadge = (k, titel = "Nutri-Score (2023), aus den Zutaten gerechnet") =>
+  k ? `<span class="nutri n-${esc(k)}" title="${esc(titel)}">${esc(k)}</span>` : "";

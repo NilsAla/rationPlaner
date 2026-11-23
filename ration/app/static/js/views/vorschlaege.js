@@ -3,8 +3,10 @@ import {$, $$, api, dmy, esc, fmt, guarded, post, toast} from "../lib.js";
 const FELD = {tracking_modus: "Modus", kategorie: "Kategorie", ablauf_typ: "Ablauf", haltbarkeit_tage: "Haltbar (Tage)",
   haltbarkeit_offen_tage: "geöffnet", haltbarkeit_gefroren_tage: "gefroren", haltbarkeit_aufgetaut_tage: "aufgetaut",
   g_je_einheit: "g je Einheit", toleranz_pct: "Toleranz %", packung: "Packung", tags: "Tags", aufwand: "Aufwand",
-  rest_haltbarkeit_tage: "Rest-Haltbarkeit"};
-const wert = (v) => v == null ? "–" : Array.isArray(v) ? v.join(", ") : typeof v === "object" ? `${v.einheit} ${fmt(v.menge)}` : String(v);
+  rest_haltbarkeit_tage: "Rest-Haltbarkeit", naehrwerte: "Nährwerte /100 g"};
+const wert = (v) => v == null ? "–" : Array.isArray(v) ? v.join(", ") : typeof v === "object" ? ("kcal" in v
+  ? `${fmt(v.kcal)} kcal · P ${fmt(v.protein)} · F ${fmt(v.fett)} · KH ${fmt(v.kohlenhydrate)} · Z ${fmt(v.zucker)} · Salz ${fmt(v.salz)}${v.obst_gemuese ? " · OGH" : ""}${v.roh ? " · roh" : ""}`
+  : `${v.einheit} ${fmt(v.menge)}`) : String(v);
 
 // KI-Kategorisierung: Läufe starten, Vorschläge als Diff prüfen und übernehmen
 export default async function render(el) {
@@ -18,6 +20,7 @@ export default async function render(el) {
         Gesetzt wird erst nach deiner Prüfung.</p>
       <label class="inline"><input type="checkbox" id="kp" checked> Produkte</label>
       <label class="inline"><input type="checkbox" id="kr" checked> Rezepte</label>
+      <label class="inline"><input type="checkbox" id="kn"> Nährwerte je 100 g schätzen (Produkte ohne Werte)</label>
       <label class="inline"><input type="checkbox" id="kalle"> Auch schon kategorisierte prüfen</label>
       <button class="btn primary voll" id="start" ${laeuft ? "disabled" : ""}>${laeuft ? "Läuft …" : "Kategorisierung starten"}</button>
       <p class="muted tiny">Einzelne Produkte gezielt: in der <a href="#/produkte">Produktliste</a> auswählen → „KI kategorisieren“.</p>
@@ -41,7 +44,7 @@ export default async function render(el) {
   if (laeuft) setTimeout(() => { if (el.isConnected) guarded(() => render(el)); }, 4000);
   $("#start", el).onclick = () => guarded(async () => {
     const alle = $("#kalle", el).checked;
-    await post("kategorisieren", {produkte: $("#kp", el).checked, rezepte: $("#kr", el).checked, nur_ohne_attribute: !alle, nur_leere: !alle});
+    await post("kategorisieren", {produkte: $("#kp", el).checked, rezepte: $("#kr", el).checked, naehrwerte: $("#kn", el).checked, nur_ohne_attribute: !alle, nur_leere: !alle});
     toast("Kategorisierung läuft"); render(el);
   });
   if (!vor.length) return;
