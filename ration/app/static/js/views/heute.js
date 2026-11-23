@@ -1,4 +1,4 @@
-import {$, $$, api, esc, fmt, guarded, heute, post, put, toast} from "../lib.js";
+import {$, $$, api, bestaetigen, del, esc, fmt, guarded, heute, post, put, toast} from "../lib.js";
 
 export default async function render(el) {
   const h = await api("heute");
@@ -19,7 +19,8 @@ export default async function render(el) {
   el.innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr))">
     <div class="card"><div class="kopf"><h2>${esc(r.name)}</h2><div class="aktionen">
       <a class="btn klein" href="#/rezept/${esc(r.id)}">Rezept</a>
-      <a class="btn klein primary" href="#/kochen/${esc(r.id)}?portionen=${r.portionen}">👩‍🍳 Kochmodus</a></div></div>
+      <a class="btn klein primary" href="#/kochen/${esc(r.id)}?portionen=${r.portionen}">👩‍🍳 Kochmodus</a>
+      <button class="btn klein danger" id="weg" title="Aus dem Plan entfernen">✕ Entfernen</button></div></div>
       <p class="muted">${r.portionen} Portion(en)${h.status === "gekocht" ? " · ✓ gekocht" : ""}</p>
       <h3>Zutaten</h3><ul>${r.zutaten.map((z) => `<li>${fmt(z.menge)} ${esc(z.einheit)} ${esc(z.name)}</li>`).join("")}</ul></div>
     <div class="card"><h2>Zubereitung</h2>${r.schritte.length ? `<ol class="schritte">${r.schritte.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`
@@ -30,6 +31,10 @@ export default async function render(el) {
       <p class="muted small">Was übrig bleibt, wird als Rest eingebucht.</p>
       <button class="btn primary voll" id="kochen" ${h.status === "gekocht" ? "disabled" : ""}>Gekocht buchen</button>
       <div id="nach"></div></div></div>`;
+  $("#weg", el).onclick = () => guarded(async () => {
+    if (!await bestaetigen(`„${esc(r.name)}“ für heute aus dem Plan nehmen? Bestand bleibt unverändert.`, "Entfernen", true)) return;
+    await del(`plan/${heute()}`); toast("Aus dem Plan entfernt"); render(el);
+  });
   $("#kochen", el).onclick = () => guarded(async () => {
     const e = await post("gekocht", {rezept_id: r.id, portionen_gekocht: +$("#pg", el).value, portionen_gegessen: +$("#pe", el).value});
     const fehl = e.fehlend.map((p) => `${p.name} ${fmt(p.menge)} ${p.einheit}`).join(", ");

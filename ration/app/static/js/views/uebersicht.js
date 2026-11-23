@@ -1,4 +1,4 @@
-import {$, $$, api, esc, fmt, fotoUrl, guarded, heute, nichtDa, nutriBadge, plusTage, post, put, toast, wt, ablaufText, REGLER} from "../lib.js";
+import {$, $$, api, bestaetigen, del, esc, fmt, fotoUrl, guarded, heute, nichtDa, nutriBadge, plusTage, post, put, toast, wt, ablaufText, REGLER} from "../lib.js";
 
 // Planer-Chips: neutral → rechts (+1) → links (−1) → neutral. Werte dazwischen bleiben, bis man klickt.
 const state = {regler: null, tage: null};
@@ -43,6 +43,7 @@ export default async function render(el) {
           ${h.status !== "gekocht" ? `<a class="btn primary" href="#/kochen">👩‍🍳 Kochen</a>` : ""}
           <button class="btn" data-schieben="${u.datum}" data-ziel="${plusTage(u.datum, 1)}">→ morgen</button>
           <button class="btn" data-waehlen="${u.datum}" title="Anderer Tag">⇄</button>
+          <button class="btn danger" data-loeschen="${u.datum}" title="Aus dem Plan entfernen">✕</button>
         </div>
         <div class="ziel-chips" data-fuer="${u.datum}"></div>
       </div>` : `<div class="heute-text">
@@ -110,6 +111,11 @@ export default async function render(el) {
     render(el);
   });
   $$("[data-schieben]", el).forEach((b) => b.onclick = () => schieben(b.dataset.schieben, b.dataset.ziel));
+  $$("[data-loeschen]", el).forEach((b) => b.onclick = () => guarded(async () => {
+    const d = b.dataset.loeschen, g = u.tage.find((x) => x.datum === d)?.gericht;
+    if (!await bestaetigen(`„${esc(g?.name ?? "Gericht")}“ am ${esc(kurzTag(d))} aus dem Plan nehmen? Bestand bleibt unverändert.`, "Entfernen", true)) return;
+    await del(`plan/${d}`); toast("Aus dem Plan entfernt"); render(el);
+  }));
   $$("[data-waehlen]", el).forEach((b) => b.onclick = () => {
     const box = $(`.ziel-chips[data-fuer="${b.dataset.waehlen}"]`, el);
     if (box.innerHTML) { box.innerHTML = ""; return; }
@@ -181,7 +187,8 @@ function tagKarte(t, alle) {
     <div class="muted tiny">${g.kcal ? `${fmt(g.kcal, 0)} kcal · ` : ""}${g.portionen} P.${g.fehlend.length ? ` · <span class="soon">${g.fehlend.length} fehlt</span>` : ""}</div>
     <div class="tag-aktionen">
       ${imPlan ? `<button class="btn klein" data-schieben="${t.datum}" data-ziel="${morgen}" title="Einen Tag später">→ ${kurzTag(morgen)}</button>` : ""}
-      <button class="btn klein" data-waehlen="${t.datum}" title="Anderer Tag">⇄</button></div>
+      <button class="btn klein" data-waehlen="${t.datum}" title="Anderer Tag">⇄</button>
+      <button class="btn klein danger" data-loeschen="${t.datum}" title="Aus dem Plan entfernen">✕</button></div>
     <div class="ziel-chips" data-fuer="${t.datum}"></div>
   </div>`;
 }
