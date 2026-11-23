@@ -153,3 +153,19 @@ def test_bon_aus_media(bon_client, fake_ha, tmp_path):
     assert bon_client.get(f"/api/v1/bon/{r.json()['id']}").json()["status"] == "review"
     raus = bon_client.post("/api/v1/bon/media", json={"pfad": "../b.db"})
     assert raus.status_code == 404
+
+
+def test_bon_als_base64(bon_client, fake_ha):
+    import base64
+
+    fake_ha.ki_antwort = {"markt": "X", "datum": "2026-11-21", "summe": 0, "positionen": []}
+    daten = base64.b64encode(PNG).decode()
+    r = bon_client.post("/api/v1/bon/bild", json={"daten": daten, "typ": "image/png"})
+    assert r.status_code == 202, r.text
+    assert bon_client.get(f"/api/v1/bon/{r.json()['id']}").json()["status"] == "review"
+    kaputt = {"daten": "!" * 200, "typ": "image/png"}
+    assert bon_client.post("/api/v1/bon/bild", json=kaputt).status_code == 422
+    assert (
+        bon_client.post("/api/v1/bon/bild", json={"daten": daten, "typ": "image/gif"}).status_code
+        == 415
+    )

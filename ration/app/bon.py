@@ -8,6 +8,8 @@ gehen vor. Gebucht wird erst nach Review; Alias-Treffer sind vorausgewählt.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 import re
@@ -331,6 +333,37 @@ async def bon_hochladen(
     if endung is None:
         raise HTTPException(415, "Nur JPEG, PNG oder WebP")
     inhalt = await datei.read(MAX_BYTES + 1)
+    if len(inhalt) > MAX_BYTES:
+        raise HTTPException(413, "Bild größer als 15 MB")
+    return await _anlegen(inhalt, endung, request, hintergrund, s, st)
+
+
+class BildIn(BaseModel):
+    daten: str = Field(
+        min_length=100, max_length=MAX_BYTES * 4 // 3 + 8
+    )  # Base64, ohne data:-Präfix
+    typ: str = "image/jpeg"
+
+
+@router.post("/bon/bild", status_code=202)
+async def bon_aus_base64(
+    data: BildIn,
+    request: Request,
+    hintergrund: BackgroundTasks,
+    s: Session = Depends(session),
+    st: Settings = Depends(settings),
+) -> dict:
+    """Bild als Base64 im JSON (Skripte, Automationen, Tests über den Ingress-Proxy)."""
+    if not st.ai_task_entity or request.app.state.ha is None:
+        raise HTTPException(503, "Option ai_task_entity fehlt oder kein Zugriff auf HA")
+    endung = BILDTYPEN.get(data.typ)
+    if endung is None:
+        raise HTTPException(415, "Nur JPEG, PNG oder WebP")
+    roh = data.daten.split(",", 1)[1] if data.daten.startswith("data:") else data.daten
+    try:
+        inhalt = base64.b64decode(roh, validate=True)
+    except (binascii.Error, ValueError) as err:
+        raise HTTPException(422, "daten ist kein gültiges Base64") from err
     if len(inhalt) > MAX_BYTES:
         raise HTTPException(413, "Bild größer als 15 MB")
     return await _anlegen(inhalt, endung, request, hintergrund, s, st)
