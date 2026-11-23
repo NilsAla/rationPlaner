@@ -67,6 +67,12 @@ RATION_DATA_DIR=./data uvicorn app.main:app --reload --port 8099
 ruff check . && ruff format --check . && pytest -q
 ```
 
+## Übergabe
+
+Offene Aufträge, ungetestete Stellen und Akzeptanzkriterien stehen in `docs/ROADMAP.md`.
+Dort weitermachen. Geplant ist ein zweites KI-Backend (OpenAI direkt mit Key als
+password-Option, Entscheidung Nils 2026-11-23); bis es umgesetzt ist, gilt die KI-Regel oben.
+
 ## Reihenfolge
 
 Gerüst → Phase 0 (Grocy-Technik, Setup-Skript, Probe/Contract-Tests, CSV, BLS) → dünner
