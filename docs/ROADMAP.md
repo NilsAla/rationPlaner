@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.28.0 / API 1.23)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.28.1 / API 1.23)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -220,6 +220,13 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
 - Grocy setzte bei Standard-Haltbarkeit 0 das MHD auf heute. `app/haltbarkeit.py` schätzt die
   Tage aus Kategorie, Name (Nudeln 540, Konserven 730, Milch 10 …) oder OFF-Kategorie und legt
   `haltbarkeit_tage` als Vorschlag fürs Produkt an. Gilt für Scan, Bon und Einbuchen von Hand.
+
+### 12. KI-Stammdaten plausibel – erledigt (0.28.1)
+- Live: Haltbarkeit 0 (Reis, Pfeffer), 12 statt 365/540 (Monate statt Tage: Brühe, Pesto),
+  Joghurt-Packung 150 g. Jetzt: Prompt mit Richtwerten „in Tagen, nie 0“; Code-Guard
+  `haltbarkeit_pruefen` (0 raus, Abweichung > Faktor 4 vom Richtwert raus, „unbegrenzt“ nur bei
+  Lagerware, geöffnet > ungeöffnet raus, < 30 % Abweichung = Rauschen), KI-Standardpackung nur
+  ohne gepflegte Packung und ohne Bon-Käufe. Neue Vorschläge ersetzen ältere offene desselben Felds.
 
 ## Getroffene Entscheidungen (nicht stillschweigend ändern)
 

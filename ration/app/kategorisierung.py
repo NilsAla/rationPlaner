@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -15,8 +16,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import JSON, DateTime, Integer, String, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app import kueche, naehrwerte, packungen
-from app.db import Base, Packung, Preis
+from app import haltbarkeit, kueche, naehrwerte, packungen
+from app.db import Base, Packung, PackungKauf, Preis
 from app.deps import backend, session, settings
 from app.inventory.base import (
     DueType,
@@ -85,14 +86,19 @@ Felder je Produkt:
   "immer_da" (Kleinkram, nie tracken: Salz, Pfeffer, getrocknete Gewürze, Wasser).
 - kategorie: eine aus {kategorien}.
 - ablauf_typ: "verbrauchsdatum" nur bei leicht verderblichem Fleisch/Fisch/Hack, sonst "mhd".
-- haltbarkeit_tage: typische Haltbarkeit ungeöffnet ab Kauf (-1 = unbegrenzt).
-- haltbarkeit_offen_tage: nach dem Öffnen (0 = egal).
+- haltbarkeit_tage: typische Haltbarkeit ungeöffnet ab Kauf in TAGEN (nicht Monaten!),
+  -1 = läuft praktisch nie ab (Salz, Zucker). Nie 0. Richtwerte: Nudeln/Reis 540, Konserven 730,
+  getrocknete Gewürze/Pfeffer 730, Brühe (Würfel, Pulver, Glas) 540, Pesto im Glas 365,
+  Öl 365, Mehl 270, Joghurt 21, Frischmilch 10, H-Milch 90, Käse 21, Hackfleisch 1,
+  Hähnchen 3, Salat 5, Paprika 10, Kartoffeln 60, Zwiebeln 60.
+- haltbarkeit_offen_tage: nach dem Öffnen in Tagen (0 = egal), kleiner als ungeöffnet.
 - haltbarkeit_gefroren_tage: eingefroren (0 = nicht einfrieren).
 - haltbarkeit_aufgetaut_tage: nach dem Auftauen (0 = egal).
 - g_je_einheit: Gramm je Bestandseinheit (bei Bestandseinheit g: 1).
 - toleranz_pct: wie viel Prozent ein Rezept mehr oder weniger nehmen darf (5 bis 50).
-- packung_einheit/packung_menge: übliche Packung im deutschen Supermarkt in Bestandseinheit
-  (z. B. Packung 500 für Nudeln in g, Dose 400 für Kidneybohnen in g, Stück 160 für Paprika).
+- packung_einheit/packung_menge: die meistverkaufte Packung im deutschen Supermarkt in
+  Bestandseinheit (z. B. Packung 500 für Nudeln in g, Dose 400 für Kidneybohnen in g, Becher
+  500 für Joghurt in g, Stück 160 für Paprika). Unsicher → leer lassen.
 Gib für jedes Produkt genau einen Eintrag mit seiner id zurück."""
 
 ANWEISUNG_NAEHRWERTE = """Schätze typische Nährwerte je 100 g für Lebensmittel aus dem deutschen
@@ -198,8 +204,33 @@ def _float(wert: object, lo: float, hi: float) -> float | None:
     return round(f, 3) if lo < f <= hi else None
 
 
-def produkt_werte(e: dict, p: Product) -> dict[str, object]:
-    """Gültige Vorschläge eines Produkts, je Feld. Ungültiges fällt weg."""
+PLAUSI_FAKTOR = 4  # KI-Haltbarkeit darf höchstens um diesen Faktor vom Richtwert abweichen
+RAUSCHEN = 0.3  # gepflegte Haltbarkeit erst ab 30 % Abweichung neu vorschlagen
+
+
+def haltbarkeit_pruefen(tage: int, p: Product, kategorie: str | None) -> tuple[int | None, str]:
+    """Code-Guard für die KI-Haltbarkeit: 0 ist „läuft heute ab“, Monate statt Tage, Ausreißer.
+    Gibt (Wert oder None, Grund) zurück."""
+    if tage == 0:
+        return None, "0 Tage hieße „läuft heute ab“"
+    richt = haltbarkeit.tage_schaetzen(replace(p, category=kategorie or p.category))
+    if richt is None:
+        return tage, ""
+    if tage == -1:
+        return (tage, "") if richt >= 180 else (None, f"„unbegrenzt“, Richtwert {richt} Tage")
+    if tage * PLAUSI_FAKTOR < richt or tage > richt * PLAUSI_FAKTOR:
+        monate = " (Monate statt Tage?)" if tage <= 36 and richt >= 180 else ""
+        return None, f"{tage} Tage weit weg vom Richtwert {richt}{monate}"
+    return tage, ""
+
+
+def produkt_werte(
+    e: dict, p: Product, gekauft: bool = False, verworfen: list[str] | None = None
+) -> dict[str, object]:
+    """Gültige Vorschläge eines Produkts, je Feld. Ungültiges fällt weg (Grund in verworfen).
+
+    gekauft: Packungsgrößen sind aus Bons bekannt → keine KI-Standardpackung (Daten gehen vor)."""
+    verworfen = verworfen if verworfen is not None else []
     w: dict[str, object] = {}
     if e.get("tracking_modus") in list(TrackingMode):
         w["tracking_modus"] = e["tracking_modus"]
@@ -215,6 +246,21 @@ def produkt_werte(e: dict, p: Product) -> dict[str, object]:
     ):
         if (v := _int(e.get(feld), lo, hi)) is not None:
             w[feld] = v
+    if "haltbarkeit_tage" in w:
+        v, grund = haltbarkeit_pruefen(int(w["haltbarkeit_tage"]), p, w.get("kategorie"))  # type: ignore[arg-type]
+        alt = p.shelf_life_days
+        if v is None:
+            del w["haltbarkeit_tage"]
+            verworfen.append(f"{p.name}: Haltbarkeit {grund}")
+        elif alt > 0 and v > 0 and abs(v - alt) / alt < RAUSCHEN:
+            del w["haltbarkeit_tage"]  # nur Rauschen, gepflegter Wert bleibt
+        else:
+            w["haltbarkeit_tage"] = v
+    ungeoeffnet = w.get("haltbarkeit_tage", p.shelf_life_days)
+    offen = w.get("haltbarkeit_offen_tage")
+    if offen and isinstance(ungeoeffnet, int) and ungeoeffnet > 0 and offen > ungeoeffnet:  # type: ignore[operator]
+        del w["haltbarkeit_offen_tage"]
+        verworfen.append(f"{p.name}: geöffnet länger haltbar als ungeöffnet")
     unit = p.unit.strip().lower()
     g = _float(e.get("g_je_einheit"), 0, 100000)
     # Plausibilität: ml ≈ Dichte 0,5–2; Stück u. Ä. mindestens 2 g (live kam für Ei „1“).
@@ -226,7 +272,9 @@ def produkt_werte(e: dict, p: Product) -> dict[str, object]:
     menge = _float(e.get("packung_menge"), 0, 100000)
     if einheit.lower() == unit:  # live: "g 500" bzw. "Stück 10" statt "Packung 500"
         einheit = "Packung"
-    if einheit and menge and menge > 1:
+    # Standardpackung nur, wenn noch keine gepflegt ist und keine Käufe laut Bon vorliegen;
+    # sonst entscheidet die Analyse „Packungsgrößen“ aus echten Daten.
+    if einheit and menge and menge > 1 and not p.pack_size and not gekauft:
         w["packung"] = {"einheit": einheit, "menge": menge}
     return w
 
@@ -320,14 +368,24 @@ async def ausfuehren(app, lauf_id: int) -> None:
                         json.dumps(daten, ensure_ascii=False),
                     )
                     by_id = {p.id: p for p in teil}
+                    gekauft = set(s.scalars(select(PackungKauf.produkt_id)))
+                    verworfen: list[str] = []
                     for e in daten.get("produkte") or []:
                         p = by_id.pop(str(e.get("id")), None) if isinstance(e, dict) else None
                         if p is None:
                             continue
-                        aenderung = diff(
-                            produkt_ist(p), produkt_werte(e, p), umfang.get("nur_leere", True)
-                        )
+                        werte = produkt_werte(e, p, p.id in gekauft, verworfen)
+                        aenderung = diff(produkt_ist(p), werte, umfang.get("nur_leere", True))
                         for feld, (alt, neu) in aenderung.items():
+                            # ältere offene Vorschläge desselben Felds ersetzt der neue
+                            for v in s.scalars(
+                                select(Vorschlag).where(
+                                    Vorschlag.objekt_id == p.id,
+                                    Vorschlag.feld == feld,
+                                    Vorschlag.status == "offen",
+                                )
+                            ):
+                                v.status = "ersetzt"
                             s.add(
                                 Vorschlag(
                                     lauf_id=lauf_id,
@@ -340,6 +398,8 @@ async def ausfuehren(app, lauf_id: int) -> None:
                                 )
                             )
                             anzahl += 1
+                    if verworfen:
+                        log.info("Lauf %s verworfen (Code-Guard): %s", lauf_id, verworfen)
             if umfang.get("naehrwerte", False):
                 anzahl += await _naehrwerte_lauf(s, ki, b, lauf_id, umfang)
             if umfang.get("packungen", False):
