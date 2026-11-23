@@ -330,6 +330,44 @@ mit „Übernehmen“ (oder `uebernehmen: true`, für die Wochen-Automation).
 und `immer_da` nie. Reste als Rest-Produkt. Kurzbewertung. Füllstand-Pop-up höchstens
 einmal pro Kochvorgang, je Produkt höchstens alle 14 Tage. „Verdorben“-Button als Kennzahl.
 
+## Kochmodus und Kochanleitungen
+
+**Ziel:** Rezepte Schritt für Schritt kochen, so wie ein Koch arbeitet: Wasser aufsetzen und Herd
+an, während es heiß wird Gemüse schneiden, dann Nudeln ins Wasser, dann anbraten. Jeder Schritt
+zeigt seine Zutaten mit gerechneter Menge zum Abhaken und, wo nötig, einen Timer.
+
+**Datenmodell (App-DB, nicht Grocy):**
+- `KochAnleitung` je Rezept: Schritte `{titel, text, zutaten:[{zutat: Index, anteil 0–1}],
+  timer_s, timer_name, parallel, timer_geschaetzt}`, `quelle` ki|code|manuell, `status`
+  entwurf|geprueft, `basis` (Hash über Zubereitung und Zutaten, für „veraltet“), `hinweise`.
+- `KochSitzung`: aktueller Schritt, erledigte Schritte, abgehakte Zutaten, laufende Timer.
+  Liegt auf dem Server, damit Handy und Küchen-Tablet denselben Stand sehen (Poll alle 4 s).
+- `AnleitungLauf`: Massenumschreibung im Hintergrund mit Fortschritt und Fehlern je Rezept.
+
+**KI-Migrator (LLM wählt aus, Code rechnet):**
+- Ein `ai_task.generate_data`-Aufruf je Rezept, Structured Output. Zutaten nur als Index ins
+  Rezept, nie als Name oder Menge. Mengen rechnet der Code: Rezeptmenge × Portionen × Anteil.
+- Validierung: unbekannte Indizes fallen weg, Timer 10 s bis 6 h. Fehlen Zutaten, gibt es eine
+  Reparaturrunde; was dann noch fehlt, ordnet der Code dem ersten Schritt zu, der sie nennt.
+  Steht eine Zutat in mehreren Schritten, wird sie gleichmäßig aufgeteilt.
+- Timer, deren Dauer nicht im Original steht, werden als geschätzt (≈) markiert.
+- Einzeln: scheitert die KI, speichert die App den Code-Vorschlag mit Hinweis. Massenlauf: kein
+  Fallback, die bisherige Anleitung bleibt stehen und der nächste Lauf versucht das Rezept erneut.
+  Scheitern die ersten 3 Aufrufe, bricht der Lauf ab (keine Aufrufe verbrennen).
+- Ohne gespeicherte Anleitung liefert der Code einen Vorschlag aus den Originalschritten
+  (ein Schritt je Satz, Zutaten per Namensabgleich, Timer per Regex auf „x Minuten“).
+
+**Annahme zu Regel 4 (nichts automatisch übernehmen):** Umgeschriebene Anleitungen sind keine
+Stammdaten. Sie landen nur in der App-DB als Entwurf, das Rezept in Grocy bleibt unverändert.
+Der Kochmodus nutzt auch Entwürfe und markiert sie. Freigabe einzeln im Editor oder gesammelt in
+der Übersicht.
+
+**Timer:** HA-`timer.*`-Entitäten aus der App-Option `timer_entities` (Liste, wie die anderen
+Entitäts-Optionen). Leer = automatisch alle Timer mit Küche/kitchen/koch in ID oder Namen.
+Gestartet wird der erste freie Timer (`timer.start` mit `duration`), Pause/Fortsetzen/Abbrechen
+gehen über dieselben Services, Dashboard-Karten zeigen ihn also mit. Sind alle belegt oder ist HA
+nicht erreichbar, nimmt die UI einen Browser-Timer (in der Sitzung gespeichert).
+
 ## Nährwerte und Makros
 
 - **Quellen:** BLS 4.0 (Bundeslebensmittelschlüssel, Max Rubner-Institut, >7.000 generische

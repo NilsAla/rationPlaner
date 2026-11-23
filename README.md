@@ -21,7 +21,8 @@ und eine To-do-Entität für die Einkaufsliste.
 
 1. **App:** Einstellungen → Add-ons → Add-on Store → ⋮ → Repositories →
    `https://github.com/NilsAla/rationPlaner` hinzufügen, „rationPlaner“ installieren.
-2. **Konfigurieren:** `grocy_url`, `grocy_api_key`, `ai_task_entity`, `todo_entity` setzen und starten.
+2. **Konfigurieren:** `grocy_url`, `grocy_api_key`, `ai_task_entity`, `todo_entity` setzen, optional
+   `timer_entities` für den Kochmodus, und starten.
    Die App erscheint in der Seitenleiste.
 3. **Bridge:** In HACS das Repo als benutzerdefiniertes Repository (Typ Integration)
    hinzufügen, installieren, HA neu starten, Integration „rationPlaner Bridge“ hinzufügen und
@@ -114,6 +115,20 @@ z. B. `notify.mobile_app_handy`). In der Review sind bekannte Bon-Texte und sich
 vorausgewählt; Menge, Produkt und „neues Produkt“ lassen sich ändern, dann „Ausgewählte buchen“.
 Jede gebuchte Zeile wird als Alias (Markt + Bon-Text) und mit Preis gemerkt. Per Service:
 `ration.bon_aus_media` (Bild unter `/media`), `ration.bon_details`, `ration.bon_buchen`.
+
+## Kochmodus
+
+Küche → *Kochmodus* oder im Rezept „👩‍🍳 Kochmodus“: ein Schritt pro Seite mit den Zutaten
+dieses Schritts zum Abhaken, Timer-Knopf, „Als Nächstes“, Pfeiltasten und Wake Lock. Am Ende
+direkt „Gekocht“ buchen. Der Stand liegt auf dem Server, Handy und Tablet laufen synchron.
+
+Timer: App-Option `timer_entities` (z. B. `timer.kuechenuhr1`, `timer.kuechenuhr2`). Leer =
+automatisch alle Timer mit Küche/kitchen/koch im Namen. Ohne freien HA-Timer läuft ein
+Browser-Timer.
+
+Rezepte → *Kochanleitungen*: per KI in Koch-Schritte umschreiben, einzeln oder „Alle fehlenden
+umschreiben“ (ein KI-Aufruf je Rezept, im Hintergrund). Ergebnisse sind Entwürfe in der App,
+Grocy bleibt unverändert. Editor unter Rezept → „🪜 Anleitung“.
 
 ## Testrezepte
 
