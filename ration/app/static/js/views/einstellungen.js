@@ -38,6 +38,7 @@ export default async function render(el) {
       <button class="btn voll" id="ern">Speichern</button></div>
     <div class="card"><h2>Anzeige</h2>
       <label>„Läuft bald ab“ in den nächsten … Tagen</label><input id="bald" type="number" min="1" max="14" value="${anzeige.bald_tage}">
+      <label>„Spontan kochbar“ ab … % vorrätig</label><input id="spontan" type="number" min="50" max="100" value="${anzeige.spontan_pct}">
       <label>Farbschema</label><div class="chips">${[["auto", "🖥️ System"], ["light", "☀️ Hell"], ["dark", "🌙 Dunkel"]].map(([k, t]) =>
         `<button class="chip ${theme === k ? "on" : ""}" data-theme="${k}">${t}</button>`).join("")}</div>
       <button class="btn voll" id="anz">Speichern</button>
@@ -114,7 +115,7 @@ export default async function render(el) {
     await put("einstellungen/ernaehrung", {kcal_mahlzeit: +$("#ekcal", el).value, protein_mahlzeit: +$("#eprot", el).value, im_planer: $("#eplan", el).checked});
     toast("Gespeichert");
   });
-  $("#anz", el).onclick = () => guarded(async () => { await put("einstellungen/anzeige", {bald_tage: +$("#bald", el).value}); toast("Gespeichert"); });
+  $("#anz", el).onclick = () => guarded(async () => { await put("einstellungen/anzeige", {bald_tage: +$("#bald", el).value, spontan_pct: +$("#spontan", el).value}); toast("Gespeichert"); });
   $("#lokal", el).onclick = () => {
     try { Object.keys(localStorage).filter((k) => k.startsWith("ration.") && k !== "ration.theme").forEach((k) => localStorage.removeItem(k)); } catch { /* egal */ }
     toast("Ansicht zurückgesetzt");

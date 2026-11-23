@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.21.0 / API 1.16)
+# Roadmap und Übergabe (Stand 2026-11-23, Version 0.22.0 / API 1.17)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -78,7 +78,9 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
 - Lokal mit Playwright geprüft (1400 px und 390 px, kein horizontales Scrollen, keine Konsolenfehler).
   Auf Touch gibt es kein Drag&Drop, dafür die Knöpfe.
 
-**Neu (offen): Bereich „Spontan kochbar“**
+**Bereich „Spontan kochbar“ – erledigt (0.22.0):** `GET /spontan`, `POST /plan/spontan`, Einstellung
+`anzeige.spontan_pct`. „Zusätzlich“ öffnet den Kochmodus für das Rezept (der Plan hat einen
+Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht“).
 - 3–6 Rezeptkarten mit Foto, deren Zutaten zu ≥ 95 % vorrätig sind, gewichtet nach Menge (Gramm).
   Basics wie Salz und Öl zählen nicht (Modus `immer_da`/`fuellstand` bzw. Basics-Liste).
 - Fehlende Kleinigkeiten stehen auf der Karte („fehlt: 1 Zwiebel“).
@@ -150,6 +152,24 @@ automatisch ausgerollt.** Version immer an vier Stellen gleich halten: `ration/c
   Verlauf über Monate. Desktop und 390 px.
 - Akzeptanz: Tests für Kategorisierung per gemerktem Bon-Text, Recap-Rechnung, Zuordnung
   geplant/spontan; Bon-Zeilen ohne Buchung landen trotzdem in den Ausgaben.
+
+### 8. Barcode-Scan zum Einbuchen (offen, Nils 2026-11-23)
+- Ziel: Vorhandenes per Handy erfassen („2 Packungen Nudeln im Schrank“): Barcode scannen →
+  Produkt und Packungsgröße erkennen → Anzahl wählen → einbuchen.
+- **Scannen im Browser:** `BarcodeDetector` (Chrome/Android) mit Fallback auf eine
+  JS-Bibliothek (ZXing, lokal ausgeliefert, kein CDN, da Ingress). iOS-Safari kann
+  `BarcodeDetector` nicht → Fallback nötig. Manuelle EAN-Eingabe als letzte Option.
+- **Abgleich:** zuerst bekannte EAN (Grocy `product_barcodes` über `InventoryBackend`, neue
+  Methoden `find_by_barcode`/`add_barcode`; Varianten aus Punkt 6 mit EAN). Unbekannt →
+  **Open Food Facts** (`https://world.openfoodfacts.org/api/v2/product/<ean>.json`, kostenlos,
+  ohne Key, User-Agent setzen): Name, Marke, `quantity`/`product_quantity` (+ Einheit),
+  Kategorien, Nährwerte je 100 g. Größe parst der Code (gleicher Parser wie beim Bon).
+- Vorschlag: vorhandenes Produkt (Name/Kategorie-Ähnlichkeit) oder neues Produkt anlegen,
+  EAN merken, Packungsgröße als Variante, Nährwerte als Vorschlag (Review, nichts automatisch).
+- Mehrfach-Scan-Modus: mehrere Artikel nacheinander, am Ende eine Liste zum Einbuchen
+  (MHD je Zeile optional, sonst Standard-Haltbarkeit).
+- Akzeptanz: Tests mit gemockter OFF-Antwort (Größe, Marke, Nährwerte), Barcode-Abgleich im
+  FakeBackend und Contract-Test gegen Grocy; UI am Handy (390 px) mit Kamera, ohne Kamera per Eingabe.
 
 ## Getroffene Entscheidungen (nicht stillschweigend ändern)
 

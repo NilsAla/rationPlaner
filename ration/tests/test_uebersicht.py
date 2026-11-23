@@ -57,3 +57,25 @@ def test_verschieben_ohne_eintrag(client):
     assert (
         client.post(f"/api/v1/plan/{_in(0)}/verschieben", json={"ziel": _in(1)}).status_code == 404
     )
+
+
+def test_spontan_schwelle_und_fehlt(client):
+    # Paprika-Pasta (2 P.): 250 g Paprika, 200 g Nudeln, Öl (Füllstand, zählt nicht)
+    client.post("/api/v1/bestand", json={"produkt_id": "nudeln", "menge": 1000})
+    client.post("/api/v1/bestand", json={"produkt_id": "paprika", "menge": 230})
+    r = client.get("/api/v1/spontan").json()
+    assert r["schwelle_pct"] == 95
+    (t,) = r["rezepte"]
+    assert t["abdeckung"] == round(430 / 450, 3)  # 95,6 %
+    assert [f["text"] for f in t["fehlt"]] == ["20 g Paprika rot"]
+    client.put("/api/v1/einstellungen/anzeige", json={"spontan_pct": 98})
+    assert client.get("/api/v1/spontan").json()["rezepte"] == []
+
+
+def test_statt_heute_verschiebt_geplantes(client):
+    client.put(f"/api/v1/plan/{_in(0)}", json={"rezept_id": "paprika-pasta", "portionen": 3})
+    client.put(f"/api/v1/plan/{_in(1)}", json={"rezept_id": "paprika-pasta", "portionen": 4})
+    r = client.post("/api/v1/plan/spontan", json={"rezept_id": "paprika-pasta", "portionen": 1})
+    assert r.json()["verschoben"]["datum"] == _in(2)  # nächster freier Tag
+    plan = {p["datum"]: p["portionen"] for p in client.get("/api/v1/plan").json()}
+    assert plan == {_in(0): 1, _in(1): 4, _in(2): 3}

@@ -39,7 +39,7 @@ STANDARD: dict[str, dict[str, Any]] = {
         "ausschluss_tags": [],  # Rezepte mit diesen Tags nie planen
         "aufwand_je_tag": {str(i): "aufwaendig" for i in range(7)},  # höchster Aufwand je Wochentag
     },
-    "anzeige": {"bald_tage": 3},
+    "anzeige": {"bald_tage": 3, "spontan_pct": 95},  # spontan_pct: „Spontan kochbar“ ab … %
     # Timer-Entitäten stehen in der App-Option timer_entities (Konfiguration in HA)
     "kochen": {"zutaten_pflicht": True},  # Weiter erst, wenn alle Zutaten abgehakt sind
     # Ziel für EINE Mahlzeit (Abendessen), je Portion. Planer nutzt es nur, wenn im_planer an ist.
@@ -101,8 +101,11 @@ def pruefen(gruppe: str, werte: dict) -> dict:
                 **STANDARD["praeferenzen"]["aufwand_je_tag"],
                 **{str(k): v for k, v in a.items()},
             }
-    elif gruppe == "anzeige" and "bald_tage" in out:
-        out["bald_tage"] = int(_bereich(out["bald_tage"], 1, 14, "bald_tage"))
+    elif gruppe == "anzeige":
+        if "bald_tage" in out:
+            out["bald_tage"] = int(_bereich(out["bald_tage"], 1, 14, "bald_tage"))
+        if "spontan_pct" in out:
+            out["spontan_pct"] = int(_bereich(out["spontan_pct"], 50, 100, "spontan_pct"))
     elif gruppe == "kochen" and "zutaten_pflicht" in out:
         out["zutaten_pflicht"] = bool(out["zutaten_pflicht"])
     elif gruppe == "ki":

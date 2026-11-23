@@ -6,10 +6,10 @@ const kurzTag = (d) => d === heute() ? "heute" : d === plusTage(heute(), 1) ? "m
   : new Date(d + "T12:00:00").toLocaleDateString("de-DE", {weekday: "short"});
 
 export default async function render(el) {
-  const [u, buch, einst, fuell, vor, dub, katalog, laeufe] = await Promise.all([
+  const [u, buch, einst, fuell, vor, dub, katalog, laeufe, sp] = await Promise.all([
     api("uebersicht"), api("rezeptbuch"), api("einstellungen"), api("fuellstand"),
     api("vorschlaege").catch(() => []), api("dubletten").catch(() => []), api("katalog/produkte"),
-    api("plan/laeufe").catch(() => [])]);
+    api("plan/laeufe").catch(() => []), api("spontan").catch(() => ({rezepte: [], schwelle_pct: 95}))]);
   const rezept = Object.fromEntries(buch.map((r) => [r.id, r]));
   const tage = u.tage.slice(1);
   const frei = new Set(u.tage.filter((t) => !t.gericht).map((t) => t.datum));
@@ -86,10 +86,20 @@ export default async function render(el) {
       </section>
     </div>
 
-    ${kochbar.length ? `<section class="card"><div class="kopf"><h2>Jetzt kochbar</h2><div class="aktionen"><a class="btn klein" href="#/rezepte?kochbar=1">Alle ${kochbar.length} →</a></div></div>
-      <div class="karten-raster">${kochbar.slice(0, 6).map((r) => `<a class="rezeptkarte card" href="#/rezept/${esc(r.id)}">
-        <div class="bild">${r.foto ? `<img src="${fotoUrl(r.foto)}" alt="" loading="lazy">` : `<span>🍽️</span>`}<span class="ecke">${nutriBadge(r.nutri)}</span></div>
-        <div class="inhalt"><b>${esc(r.name)}</b><div class="muted tiny">${r.kcal ? `${fmt(r.kcal, 0)} kcal · ` : ""}${r.portionen} P.</div></div></a>`).join("")}</div>
+    ${sp.rezepte.length ? `<section class="card"><div class="kopf"><h2>Spontan kochbar</h2><div class="aktionen">
+        <a class="btn klein" href="#/rezepte?kochbar=1">Alle kochbaren →</a></div></div>
+      <p class="muted tiny">Mindestens ${sp.schwelle_pct} % der Zutaten (nach Menge) vorrätig, Basics wie Salz und Öl zählen nicht.
+        Zuerst, was am vollständigsten ist und bald Ablaufendes verbraucht.</p>
+      <div class="karten-raster">${sp.rezepte.map((r) => `<div class="rezeptkarte card">
+        <a class="bild" href="#/rezept/${esc(r.rezept_id)}">${r.foto ? `<img src="${fotoUrl(r.foto)}" alt="" loading="lazy">` : `<span>🍽️</span>`}
+          <span class="ecke">${nutriBadge(r.nutri)}</span></a>
+        <div class="inhalt"><a href="#/rezept/${esc(r.rezept_id)}" class="karten-titel"><b>${esc(r.name)}</b></a>
+          <div class="muted tiny">${Math.floor(r.abdeckung * 100)} % da${r.kcal ? ` · ${fmt(r.kcal, 0)} kcal` : ""}${r.dringend ? ` · <span class="soon">verbraucht Ablaufendes</span>` : ""}</div>
+          ${r.fehlt.length ? `<div class="soon tiny">fehlt: ${esc(r.fehlt.map((f) => f.text).join(", "))}</div>` : ""}
+          <div class="tag-aktionen"><button class="btn klein primary" data-statt="${esc(r.rezept_id)}"
+            title="${h ? "Heute kochen, das geplante Gericht rückt auf den nächsten freien Tag" : "Für heute einplanen"}">Statt heute</button>
+            <a class="btn klein" href="#/kochen/${esc(r.rezept_id)}" title="Zusätzlich kochen, Plan bleibt unverändert">Zusätzlich</a></div>
+        </div></div>`).join("")}</div>
     </section>` : ""}
   </div>`;
 
@@ -119,6 +129,11 @@ export default async function render(el) {
       if (von && von !== z.dataset.drop) schieben(von, z.dataset.drop);
     };
   });
+  $$("[data-statt]", el).forEach((b) => b.onclick = () => guarded(async () => {
+    const r = await post("plan/spontan", {rezept_id: b.dataset.statt});
+    toast(r.verschoben ? `Heute gekocht, bisheriges Gericht auf ${kurzTag(r.verschoben.datum)} ${Number(r.verschoben.datum.slice(8))}.` : "Für heute geplant");
+    render(el);
+  }));
   $$("[data-heute]", el).forEach((b) => b.onclick = () => guarded(async () => {
     await put(`plan/${u.datum}`, {rezept_id: b.dataset.heute, portionen: einst.planer.portionen || +b.dataset.p});
     toast("Für heute geplant"); render(el);
