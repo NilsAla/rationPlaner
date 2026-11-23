@@ -169,3 +169,106 @@ def test_bon_als_base64(bon_client, fake_ha):
         bon_client.post("/api/v1/bon/bild", json={"daten": daten, "typ": "image/gif"}).status_code
         == 415
     )
+
+
+HUERDEN = {
+    "markt": "Frische Ecke",
+    "datum": "2026-11-21",
+    "summe": 13.35,
+    "positionen": [
+        # 0: Gewichtsware
+        {
+            "text": "PAPRIKA ROT LOSE",
+            "typ": "artikel",
+            "anzahl": 1,
+            "einzelpreis": 3.99,
+            "preis": 1.94,
+            "packung_menge": 0.486,
+            "packung_einheit": "kg",
+            "produkt_id": "paprika",
+            "konfidenz": 0.9,
+        },
+        # 1: KI liest Anzahl 1, Code rechnet 2,97 ÷ 0,99 = 3
+        {
+            "text": "SPAGHETTI NR.5 500G",
+            "typ": "artikel",
+            "anzahl": 1,
+            "einzelpreis": 0.99,
+            "preis": 2.97,
+            "packung_menge": 500,
+            "packung_einheit": "g",
+            "produkt_id": "nudeln",
+            "konfidenz": 0.95,
+        },
+        {
+            "text": "OLIVENOEL NAT.EXTRA 0,75L",
+            "typ": "artikel",
+            "anzahl": 1,
+            "preis": 6.49,
+            "packung_menge": 0.75,
+            "packung_einheit": "l",
+            "produkt_id": "oel",
+            "konfidenz": 0.9,
+        },
+        {"text": "RABATT 20%", "typ": "rabatt", "bezug": 2, "anzahl": 1, "preis": -1.30},
+        {"text": "PFAND 12 x 0,25", "typ": "pfand", "anzahl": 1, "preis": 3.00},
+        {
+            "text": "SPAGHETTI NR.5 500G",
+            "typ": "artikel",
+            "anzahl": 1,
+            "preis": 0.99,
+            "packung_menge": 500,
+            "packung_einheit": "g",
+            "produkt_id": "nudeln",
+            "konfidenz": 0.9,
+        },
+        # Storno ohne bezug: Code findet die gleichnamige Zeile davor
+        {"text": "STORNO SPAGHETTI NR.5 500G", "typ": "artikel", "anzahl": 1, "preis": -0.99},
+        {
+            "text": "TUETENSUPPE TOMATE",
+            "typ": "artikel",
+            "anzahl": 1,
+            "preis": 0.89,
+            "neu_name": "Tütensuppe Tomate",
+            "konfidenz": 0.7,
+        },
+        {"text": "LEERGUT", "typ": "leergut", "anzahl": 1, "preis": -2.25},
+        {
+            "text": "EINWEGHANDSCHUHE 100ST",
+            "typ": "non_food",
+            "anzahl": 1,
+            "preis": 2.49,
+            "neu_name": "Einweghandschuhe",
+            "konfidenz": 0.8,
+        },
+        {"text": "SUMME", "typ": "artikel", "anzahl": 1, "preis": 13.35},
+    ],
+}
+
+
+def test_bon_huerden(bon_client, fake_ha):
+    fake_ha.ki_antwort = HUERDEN
+    bon = _hochladen(bon_client)
+    p = {(x["text"], x["index"]): x for x in bon["positionen"]}
+    by = {}
+    for x in bon["positionen"]:
+        by.setdefault(x["text"], []).append(x)
+    assert "SUMME" not in by  # Summenzeile fliegt raus
+    assert by["PAPRIKA ROT LOSE"][0]["menge"] == 486
+    nudeln, storniert = by["SPAGHETTI NR.5 500G"]
+    assert (nudeln["anzahl"], nudeln["menge"], nudeln["aktion"]) == (3, 1500, "buchen")
+    assert "Preis ÷ Einzelpreis" in nudeln["hinweis"]
+    assert (storniert["aktion"], storniert["hinweis"]) == ("weglassen", "storniert")
+    assert by["STORNO SPAGHETTI NR.5 500G"][0]["typ"] == "storno"  # Code-Guard schlägt KI-Typ
+    oel = by["OLIVENOEL NAT.EXTRA 0,75L"][0]
+    assert (oel["preis"], oel["rabatt"]) == (5.19, 1.3) and "Rabatt" in oel["hinweis"]
+    assert by["RABATT 20%"][0]["bezug"] == oel["index"]
+    assert by["PFAND 12 x 0,25"][0]["aktion"] == by["LEERGUT"][0]["aktion"] == "weglassen"
+    suppe = by["TUETENSUPPE TOMATE"][0]
+    assert (suppe["aktion"], suppe["neu_name"]) == ("neu", "Tütensuppe Tomate")
+    hand = by["EINWEGHANDSCHUHE 100ST"][0]
+    assert (hand["quelle"], hand["vorausgewaehlt"]) == ("non_food", False)
+    # Summenprüfung: 1,94 + 2,97 + 5,19 + 3,00 + 0,89 − 2,25 + 2,49 = 14,23
+    assert bon["pruefung"] == {"berechnet": 14.23, "abweichung": -0.88}
+    assert p  # Indizes durchgehend
+    assert [x["index"] for x in bon["positionen"]] == list(range(len(bon["positionen"])))

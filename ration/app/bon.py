@@ -38,11 +38,13 @@ MAX_BYTES = 15 * 1024 * 1024
 UNTERORDNER = Path("ration") / "bons"
 MEDIA_SOURCE = "media-source://media_source/local"
 
-# Regel-Vorverarbeitung: Zeilen, die nie Ware sind (vor jeder Zuordnung).
-WEG = re.compile(
-    r"(?i)\b(pfand|leergut|einweg|mehrweg|tüte|tuete|tragetasche|beutel\s*\d|rabatt|preisvorteil|"
-    r"coupon|gutschein|summe|zwischensumme|gesamt|zu zahlen|bar\b|ec[- ]?karte|kartenzahlung|"
-    r"mwst|ust|rückgeld|rueckgeld|payback|punkte)"
+# Zeilentypen. Die KI typisiert, eindeutige Bon-Wörter am Zeilenanfang gehen vor (_typ).
+TYPEN = ("artikel", "non_food", "pfand", "leergut", "rabatt", "storno")
+# Zeilen, die keine Bon-Position sind (falls die KI sie trotzdem liefert). Bewusst am
+# Zeilenanfang verankert: "Tütensuppe" oder "Einweghandschuhe" sind Ware.
+SONST = re.compile(
+    r"(?i)^\s*(summe|zwischensumme|gesamt|zu zahlen|bar\b|geg(eben)?\.?\s|ec[- ]?karte|"
+    r"kartenzahlung|mwst|ust\b|steuer|netto|brutto|rückgeld|rueckgeld|punkte|treuepunkte)"
 )
 STUECK = {"stück", "stk", "st", "portion"}
 MASSE_G = {"g": 1.0, "kg": 1000.0, "ml": 1.0, "l": 1000.0, "cl": 10.0}
@@ -53,10 +55,18 @@ Katalog (id|name|einheit):
 {katalog}
 
 Regeln:
-- Eine Zeile je Ware, in Bon-Reihenfolge. Pfand, Tüten, Rabatte, Summen und Zahlungsarten weglassen.
+- Jede Zeile mit Betrag in Bon-Reihenfolge, auch Pfand, Leergut, Rabatte, Coupons und Stornos.
+  Nicht aufnehmen: Summe, Zahlungsart, MwSt-Tabelle, Kopf- und Fußtexte.
+- Steht "2 x 0,69" oder "0,486 kg x 3,99 EUR/kg" in einer eigenen Zeile über oder unter der
+  Ware, gehört das zu dieser Ware (keine eigene Zeile).
+- typ: artikel (Lebensmittel, Getränke), non_food (Drogerie, Haushalt), pfand, leergut,
+  rabatt (auch Coupon, Preisvorteil), storno.
+- bezug: bei rabatt und storno die Nummer (ab 0) der Zeile in deiner Liste, auf die sie sich
+  beziehen; sonst leer.
 - text: der Bon-Text der Zeile, unverändert.
 - anzahl: gekaufte Stückzahl (bei "2 x 1,29" → 2; bei Gewichtsware 1).
-- preis: Gesamtpreis der Zeile in Euro.
+- einzelpreis: Preis je Stück bzw. je kg, wenn er auf dem Bon steht, sonst 0.
+- preis: Betrag der Zeile in Euro wie gedruckt (Rabatt, Storno, Leergut negativ).
 - packung_menge/packung_einheit: nur wenn die Größe auf dem Bon steht ("500G", "1KG", "1,5L",
   Gewichtsware "0,734 kg"), sonst 0 und "".
 - produkt_id: nur wenn ein Katalogprodukt genau diese Ware ist, sonst leer.
@@ -75,7 +85,13 @@ STRUKTUR = {
                 "multiple": True,
                 "fields": {
                     "text": {"required": True, "selector": {"text": {}}},
+                    "typ": {
+                        "required": True,
+                        "selector": {"select": {"options": list(TYPEN)}},
+                    },
+                    "bezug": {"selector": {"number": {}}},
                     "anzahl": {"required": True, "selector": {"number": {}}},
+                    "einzelpreis": {"selector": {"number": {}}},
                     "preis": {"required": True, "selector": {"number": {}}},
                     "packung_menge": {"required": True, "selector": {"number": {}}},
                     "packung_einheit": {"required": True, "selector": {"text": {}}},
@@ -94,7 +110,14 @@ class Position:
     index: int
     text: str
     anzahl: float
-    preis: float | None
+    preis: float | None  # Zeilenpreis nach Rabatt/Storno, ohne Vorzeichen
+    typ: str = "artikel"  # artikel / non_food / pfand / leergut / rabatt / storno
+    ki_index: int | None = None  # Position in der KI-Antwort (für bezug)
+    bezug: int | None = None  # Rabatt/Storno: index der betroffenen Zeile
+    einzelpreis: float | None = None
+    rabatt: float = 0.0  # verrechnete Rabatte
+    storniert: bool = False
+    betrag: float | None = None  # Beitrag zur Bon-Summe (Pfand +, Leergut −)
     packung_menge: float | None = None  # laut Bon, in packung_einheit
     packung_einheit: str | None = None
     aktion: str = "buchen"  # buchen / neu / weglassen
@@ -154,6 +177,39 @@ def menge_berechnen(
     return None, f"Menge in {p.unit} unbekannt", False
 
 
+def _typ(e: dict, text: str) -> str:
+    """Zeilentyp: KI-Angabe, aber eindeutige Bon-Wörter gehen vor (Code-Guard)."""
+    t = text.lower()
+    if re.match(r"\s*storno\b", t):
+        return "storno"
+    if re.match(r"\s*(leergut|pfandrückgabe|pfandrueckgabe)\b", t):
+        return "leergut"
+    if re.match(r"\s*(pfand|einwegpfand|mehrwegpfand)\b", t):
+        return "pfand"
+    if re.match(r"\s*(rabatt|coupon|gutschein|preisvorteil|aktionsrabatt|nachlass)\b", t):
+        return "rabatt"
+    if SONST.search(text):
+        return "sonstiges"
+    ki = str(e.get("typ") or "").strip().lower()
+    return ki if ki in TYPEN else "artikel"
+
+
+def _ziel(liste: list[Position], k: int, bezug: int | None, text: str = "") -> Position | None:
+    """Zeile, auf die sich Rabatt/Storno an Stelle k bezieht: KI-Bezug, sonst gleicher Text,
+    sonst die Ware direkt davor."""
+    waren = [p for p in liste[:k] if p.typ in ("artikel", "non_food") and not p.storniert]
+    if bezug is not None:
+        treffer = next((p for p in waren if p.ki_index == bezug), None)
+        if treffer:
+            return treffer
+    if text:
+        rest = norm_text(re.sub(r"(?i)^\s*storno\s*", "", text))
+        treffer = next((p for p in reversed(waren) if norm_text(p.text) == rest), None)
+        if treffer:
+            return treffer
+    return waren[-1] if waren else None
+
+
 def auswerten(
     daten: dict,
     produkte: list[Product],
@@ -161,7 +217,13 @@ def auswerten(
     weitere: dict[str, list[kueche.Groesse]],
     schwelle: float,
 ) -> tuple[str | None, date | None, float | None, list[Position]]:
-    """LLM-Antwort validieren und in Positionen übersetzen. Nichts wird geraten."""
+    """LLM-Antwort validieren und in Positionen übersetzen. Nichts wird geraten.
+
+    1. Zeilen lesen und typisieren (Ware, Non-Food, Pfand, Leergut, Rabatt, Storno).
+    2. Anzahl gegen Einzelpreis prüfen (Code rechnet), Rabatte und Stornos verrechnen.
+    3. Waren zuordnen (Alias vor KI) und Mengen in Bestandseinheit rechnen.
+    `betrag` je Zeile ergibt in Summe den Bon-Betrag (Summenprüfung in _bon_dict).
+    """
     by_id = {p.id: p for p in produkte}
     markt = str(daten.get("markt") or "").strip() or None
     try:
@@ -170,40 +232,94 @@ def auswerten(
         datum = None
     summe = _zahl(daten.get("summe"))
     roh = daten.get("positionen") if isinstance(daten.get("positionen"), list) else []
-    result = []
-    for e in roh:
+
+    # 1. lesen
+    liste: list[tuple[Position, dict]] = []
+    for ki_index, e in enumerate(roh):
         if not isinstance(e, dict) or not str(e.get("text") or "").strip():
             continue
         text = str(e["text"]).strip()
+        typ = _typ(e, text)
+        if typ == "sonstiges":
+            continue  # Summe, Zahlung, MwSt: keine Bon-Zeile
+        bezug = _zahl(e.get("bezug"))
         pos = Position(
-            index=len(result),
+            index=len(liste),
             text=text,
+            typ=typ,
+            ki_index=ki_index,
+            bezug=int(bezug) if bezug is not None else None,
             anzahl=_zahl(e.get("anzahl")) or 1,
-            preis=_zahl(e.get("preis")),
+            preis=_betrag(e.get("preis")),
+            einzelpreis=_betrag(e.get("einzelpreis")),
             packung_menge=_zahl(e.get("packung_menge")) or None,
             packung_einheit=str(e.get("packung_einheit") or "").strip() or None,
             konfidenz=min(max(_zahl(e.get("konfidenz")) or 0.0, 0.0), 1.0),
         )
-        if WEG.search(text):
-            pos.aktion, pos.quelle, pos.status, pos.hinweis = (
-                "weglassen",
-                "regel",
-                "sicher",
-                "kein Artikel",
-            )
-            result.append(pos)
+        liste.append((pos, e))
+    positionen = [p for p, _ in liste]
+
+    # 2. Anzahl × Einzelpreis, Rabatte, Stornos
+    for pos in positionen:
+        if pos.typ in ("artikel", "non_food"):
+            _anzahl_pruefen(pos)
+    for k, pos in enumerate(positionen):
+        if pos.typ not in ("rabatt", "storno"):
             continue
-        pid = aliase.get((norm_markt(markt), norm_text(text))) or aliase.get(("", norm_text(text)))
+        ziel = _ziel(positionen, k, pos.bezug, pos.text if pos.typ == "storno" else "")
+        wert = pos.preis or 0.0
+        pos.aktion, pos.quelle, pos.status = "weglassen", "regel", "sicher"
+        if ziel is None:
+            pos.betrag = -wert
+            pos.hinweis = f"{pos.typ.title()} ohne passende Zeile, bitte prüfen"
+            continue
+        pos.bezug = ziel.index
+        if pos.typ == "rabatt":
+            ziel.preis = round(max((ziel.preis or 0.0) - wert, 0.0), 2)
+            ziel.rabatt = round(ziel.rabatt + wert, 2)
+            pos.hinweis = f"verrechnet mit „{ziel.text}“"
+        else:
+            stueck = pos.anzahl if pos.anzahl and pos.anzahl < ziel.anzahl else None
+            if stueck and float(ziel.anzahl).is_integer():
+                anteil = stueck / ziel.anzahl
+                ziel.anzahl -= stueck
+                ziel.preis = round((ziel.preis or 0.0) * (1 - anteil), 2)
+                pos.hinweis = f"{stueck:g} Stück von „{ziel.text}“ storniert"
+            else:
+                ziel.storniert = True
+                pos.hinweis = f"storniert „{ziel.text}“"
+        pos.betrag = 0.0
+
+    # 3. zuordnen und Mengen rechnen
+    for pos, e in liste:
+        if pos.typ in ("rabatt", "storno"):
+            continue
+        if pos.typ in ("pfand", "leergut"):
+            pos.aktion, pos.quelle, pos.status = "weglassen", "regel", "sicher"
+            pos.hinweis = "Pfand" if pos.typ == "pfand" else "Leergut-Rückgabe"
+            wert = pos.preis or 0.0
+            pos.betrag = wert if pos.typ == "pfand" else -wert
+            continue
+        if pos.storniert:
+            pos.aktion, pos.quelle, pos.status, pos.betrag = "weglassen", "regel", "sicher", 0.0
+            pos.hinweis = "storniert"
+            continue
+        pos.betrag = pos.preis
+        if pos.rabatt:
+            pos.hinweis = f"Rabatt −{pos.rabatt:.2f} € verrechnet".replace(".", ",")
+        pid = aliase.get((norm_markt(markt), norm_text(pos.text))) or aliase.get(
+            ("", norm_text(pos.text))
+        )
         if pid in by_id:
             pos.quelle, pos.produkt_id = "alias", pid
-        elif (llm_id := str(e.get("produkt_id") or "").strip()) in by_id:
+        elif pos.typ == "artikel" and (llm_id := str(e.get("produkt_id") or "").strip()) in by_id:
             pos.produkt_id = llm_id
         if pos.produkt_id:
             p = by_id[pos.produkt_id]
             pos.produkt, pos.einheit = p.name, p.unit
-            pos.menge, pos.hinweis, pos.packung_abweichend = menge_berechnen(
-                pos, p, weitere.get(p.id)
-            )
+            menge, hinweis, pos.packung_abweichend = menge_berechnen(pos, p, weitere.get(p.id))
+            pos.menge = menge
+            pos.hinweis = "; ".join(x for x in (pos.hinweis, hinweis) if x)
             if pos.menge is None:
                 pos.status = "pruefen"
             elif pos.quelle == "alias":
@@ -213,17 +329,51 @@ def auswerten(
             pos.vorausgewaehlt = pos.status == "sicher" or (
                 pos.status == "vorschlag" and pos.konfidenz >= schwelle
             )
-        else:
-            name = str(e.get("neu_name") or "").strip()[:60]
-            pos.aktion, pos.quelle, pos.neu_name = "neu", "neu", name or text.title()
-            pos.einheit = "g"
-            if pos.packung_menge and (pos.packung_einheit or "").lower() in MASSE_G:
-                pos.menge = pos.anzahl * pos.packung_menge * MASSE_G[pos.packung_einheit.lower()]
-                pos.status = "vorschlag"
-            else:
-                pos.hinweis = "Menge in g eintragen"
-        result.append(pos)
-    return markt, datum, summe, result
+            continue
+        name = str(e.get("neu_name") or "").strip()[:60]
+        pos.aktion, pos.quelle, pos.neu_name = "neu", "neu", name or pos.text.title()
+        pos.einheit = "g"
+        if pos.typ == "non_food":
+            pos.quelle = "non_food"
+            pos.hinweis = "; ".join(
+                x for x in (pos.hinweis, "Non-Food, nur buchen, wenn du es in Grocy führst") if x
+            )
+        if pos.packung_menge and (pos.packung_einheit or "").lower() in MASSE_G:
+            pos.menge = pos.anzahl * pos.packung_menge * MASSE_G[pos.packung_einheit.lower()]
+            pos.status = "vorschlag"
+        elif pos.typ == "artikel":
+            pos.hinweis = "; ".join(x for x in (pos.hinweis, "Menge in g eintragen") if x)
+    return markt, datum, summe, positionen
+
+
+def _betrag(wert: object) -> float | None:
+    """Preis als Betrag ohne Vorzeichen (Rabatt/Storno/Leergut stehen auf dem Bon negativ)."""
+    try:
+        f = abs(float(wert))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return round(f, 2) if f == f else None
+
+
+def _anzahl_pruefen(pos: Position) -> None:
+    """Code rechnet: Passt Anzahl × Einzelpreis nicht zum Preis, gilt Preis ÷ Einzelpreis,
+    wenn das eine ganze Zahl ist. Gewichtsware (kg-Preis) bleibt bei Anzahl 1."""
+    if not pos.einzelpreis or not pos.preis:
+        return
+    gewicht = (pos.packung_einheit or "").lower() in ("kg", "g") and pos.packung_menge
+    if gewicht and not float(pos.packung_menge).is_integer():
+        kg = pos.packung_menge * MASSE_G[pos.packung_einheit.lower()] / 1000
+        if abs(kg * pos.einzelpreis - pos.preis) > 0.02:
+            pos.hinweis = "Gewicht × kg-Preis passt nicht zum Preis, bitte prüfen"
+        return
+    if abs(pos.anzahl * pos.einzelpreis - pos.preis) <= 0.02:
+        return
+    n = pos.preis / pos.einzelpreis
+    if round(n) >= 1 and abs(n - round(n)) < 0.03:
+        pos.hinweis = f"Anzahl {pos.anzahl:g} → {round(n)} (Preis ÷ Einzelpreis)"
+        pos.anzahl = round(n)
+    else:
+        pos.hinweis = "Anzahl × Einzelpreis passt nicht zum Preis, bitte prüfen"
 
 
 def anweisung(produkte: list[Product]) -> str:
@@ -305,8 +455,17 @@ def _weitere(s: Session) -> dict[str, list[kueche.Groesse]]:
     return result
 
 
+def summen_pruefung(summe: float | None, positionen: list[dict]) -> dict | None:
+    """Code rechnet nach: Summe der Zeilenbeträge (nach Rabatt/Storno, Pfand +, Leergut −)."""
+    if summe is None or not positionen or any(p.get("betrag") is None for p in positionen):
+        return None
+    berechnet = round(sum(p["betrag"] for p in positionen), 2)
+    return {"berechnet": berechnet, "abweichung": round(summe - berechnet, 2)}
+
+
 def _bon_dict(bon: BonImport) -> dict:
     return {
+        "pruefung": summen_pruefung(bon.summe, bon.positionen or []),
         "id": bon.id,
         "status": bon.status,
         "markt": bon.markt,

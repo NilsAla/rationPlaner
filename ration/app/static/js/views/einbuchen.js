@@ -113,18 +113,28 @@ async function bonZeigen(box, id, produkte, fertig) {
   const opts = (z) => `<option value="+neu" ${z.aktion === "neu" ? "selected" : ""}>+ neues Produkt</option>` +
     produkte.map((p) => `<option value="${esc(p.id)}" ${p.id === z.produkt_id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
   const zeilen = bon.positionen.filter((z) => z.aktion !== "weglassen");
+  const ignoriert = bon.positionen.filter((z) => z.aktion === "weglassen");
+  const TYP = {pfand: "Pfand", leergut: "Leergut", rabatt: "Rabatt", storno: "Storno", artikel: "storniert", non_food: "storniert"};
+  const pr = bon.pruefung;
+  const summenHinweis = !pr ? "" : Math.abs(pr.abweichung) <= 0.05
+    ? `<p class="small"><span class="tag good">Summe stimmt</span> ${eur(pr.berechnet)} nachgerechnet aus allen Zeilen.</p>`
+    : `<p class="small"><span class="tag bad">Summe weicht ab</span> Bon ${eur(bon.summe)}, nachgerechnet ${eur(pr.berechnet)}
+        (Differenz ${eur(pr.abweichung)}). Vermutlich fehlt eine Zeile oder ein Betrag ist falsch gelesen, bitte mit dem Bon vergleichen.</p>`;
   box.innerHTML = `<div class="card"><div class="kopf"><h2>${esc(bon.markt ?? "Bon")} <span class="muted">· ${dmy(bon.datum)} · ${eur(bon.summe ?? 0)}</span></h2></div>
-    <p class="muted small">Haken = wird gebucht. Vorausgewählt sind bekannte Bon-Texte und sichere KI-Treffer.
-      ${bon.positionen.length - zeilen.length} Zeilen (Pfand, Rabatt …) ignoriert.</p>
+    <p class="muted small">Haken = wird gebucht. Vorausgewählt sind bekannte Bon-Texte und sichere KI-Treffer. Rabatte und Stornos sind schon verrechnet.</p>
+    ${summenHinweis}
+    ${ignoriert.length ? `<details class="small"><summary>${ignoriert.length} Zeilen ohne Buchung (Pfand, Leergut, Rabatt, Storno)</summary>
+      <table>${ignoriert.map((z) => `<tr><td><span class="tag">${esc(TYP[z.typ] ?? z.typ)}</span></td><td>${esc(z.text)}</td>
+        <td class="muted tiny">${esc(z.hinweis)}</td><td class="right nw">${z.betrag != null ? eur(z.betrag) : ""}</td></tr>`).join("")}</table></details>` : ""}
     <div class="tabelle"><table><thead><tr><th class="check"><input type="checkbox" id="balle" checked></th><th>Bon-Text</th><th>Produkt</th><th>Menge</th><th>Preis</th></tr></thead>
     <tbody>${zeilen.map((z) => `<tr><td class="check"><input type="checkbox" data-bc="${z.index}" ${z.vorausgewaehlt ? "checked" : ""}></td>
-      <td>${esc(z.text)} <span class="tag ${z.status === "sicher" ? "good" : z.status === "vorschlag" ? "warn" : "bad"}">${esc(z.quelle)}</span>
+      <td>${esc(z.text)} <span class="tag ${z.quelle === "non_food" ? "" : z.status === "sicher" ? "good" : z.status === "vorschlag" ? "warn" : "bad"}">${esc(z.quelle === "non_food" ? "Non-Food" : z.quelle)}</span>
         ${z.hinweis ? `<div class="muted tiny">${esc(z.hinweis)}</div>` : ""}</td>
       <td><select data-bp="${z.index}">${opts(z)}</select>
         <input data-bn="${z.index}" value="${esc(z.neu_name ?? "")}" style="display:${z.aktion === "neu" ? "block" : "none"};margin-top:4px"></td>
       <td class="nw"><input data-bm="${z.index}" type="number" min="0" step="any" value="${z.menge ?? ""}" style="width:90px">
         <span class="muted tiny" data-be="${z.index}">${esc(z.einheit ?? "g")}</span></td>
-      <td class="nw right">${z.preis != null ? eur(z.preis) : ""}</td></tr>`).join("")}</tbody></table></div>
+      <td class="nw right">${z.preis != null ? eur(z.preis) : ""}${z.rabatt ? `<div class="muted tiny">−${eur(z.rabatt)} Rabatt</div>` : ""}</td></tr>`).join("")}</tbody></table></div>
     <div class="row" style="margin-top:10px"><button class="btn primary" id="bbuchen">Ausgewählte buchen</button>
       <button class="btn danger" id="bweg">Bon verwerfen</button></div></div>`;
   $("#balle", box).onchange = (e) => $$("[data-bc]", box).forEach((c) => { c.checked = e.target.checked; });
