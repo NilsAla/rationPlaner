@@ -35,7 +35,13 @@ def _vorschau(client, **extra):
 
 
 def _index(z, name):
-    return z[name]["index"]
+    """nr im Prompt: Position unter den Zutaten, die an die KI gehen (1…n)."""
+    offen = [
+        x["name"]
+        for x in sorted(z.values(), key=lambda x: x["index"])
+        if x["aktion"] != "weglassen" and (not x["sicher"] or x["status"] == "pruefen")
+    ]
+    return offen.index(name) + 1 if name in offen else 99
 
 
 def test_ki_fuellt_luecken(ki_client, fake_ha):
@@ -164,12 +170,12 @@ def test_kategorie_prueft_ki_treffer(ki_client, fake_ha, fake_backend):
     fake_ha.ki_antwort = {
         "zutaten": [
             # Synonym mit gleicher Kategorie: wird übernommen (früher am Namen gescheitert)
-            {"index": 0, "aktion": "zuordnen", "produkt_id": fz, "kategorie": "Gemüse"},
+            {"index": 1, "aktion": "zuordnen", "produkt_id": fz, "kategorie": "Gemüse"},
             # Gewürz ≠ Gemüse: KI lehnt den Kern-Treffer ab, neues Produkt mit vollem Namen
-            {"index": 1, "aktion": "neu", "kategorie": "Gewürze", "tracking_modus": "immer_da",
+            {"index": 2, "aktion": "neu", "kategorie": "Gewürze", "tracking_modus": "immer_da",
              "haltbarkeit_tage": 730},
             # sicherer Treffer: KI darf nichts ändern
-            {"index": 2, "aktion": "neu", "kategorie": "Gemüse"},
+            {"index": 3, "aktion": "neu", "kategorie": "Gemüse"},
         ]
     }  # fmt: skip
     v, z = _vorschau2(ki_client, zutaten)
@@ -185,7 +191,7 @@ def test_kategorie_prueft_ki_treffer(ki_client, fake_ha, fake_backend):
     # Fehlgriff über Kategoriegrenze: nur Alternative
     fake_ha.ki_antwort = {
         "zutaten": [
-            {"index": 0, "aktion": "zuordnen", "produkt_id": paprika, "kategorie": "Kräuter"}
+            {"index": 1, "aktion": "zuordnen", "produkt_id": paprika, "kategorie": "Kräuter"}
         ]
     }
     _, z = _vorschau2(ki_client, ["4 Lauchzwiebeln"])
@@ -197,7 +203,7 @@ def test_neues_produkt_mit_attributen_und_variante(ki_client, fake_ha, fake_back
     penne = _produkt(fake_backend, "Penne", "Nudeln & Reis")
     fake_ha.ki_antwort = {
         "zutaten": [
-            {"index": 0, "aktion": "neu", "kategorie": "Nudeln & Reis", "tracking_modus": "menge",
+            {"index": 1, "aktion": "neu", "kategorie": "Nudeln & Reis", "tracking_modus": "menge",
              "ablauf_typ": "mhd", "haltbarkeit_tage": 540, "haltbarkeit_offen_tage": 0,
              "variante_von": penne, "g_je_einheit": 0, "stueck_g": 0},
         ]
@@ -225,7 +231,7 @@ def test_neues_produkt_mit_attributen_und_variante(ki_client, fake_ha, fake_back
 def test_ki_alias_gilt_nicht_als_sicher(ki_client, fake_ha, fake_backend):
     fz = _produkt(fake_backend, "Frühlingszwiebel", "Gemüse")
     fake_ha.ki_antwort = {
-        "zutaten": [{"index": 0, "aktion": "zuordnen", "produkt_id": fz, "kategorie": "Gemüse"}]
+        "zutaten": [{"index": 1, "aktion": "zuordnen", "produkt_id": fz, "kategorie": "Gemüse"}]
     }
     v, z = _vorschau2(ki_client, ["4 Lauchzwiebeln"])
     ki_client.post(
@@ -235,3 +241,31 @@ def test_ki_alias_gilt_nicht_als_sicher(ki_client, fake_ha, fake_backend):
     _, z = _vorschau2(ki_client, ["4 Lauchzwiebeln"], ki=False)
     assert z["4 Lauchzwiebeln"]["produkt_id"] == fz  # Alias greift …
     assert z["4 Lauchzwiebeln"]["sicher"] is False  # … geht aber wieder an die KI
+
+
+def test_ki_nummern_statt_rezept_index(ki_client, fake_ha, fake_backend):
+    # Live: Zutaten 3 und 7 offen, die KI antwortete mit 1 und 2 → jetzt so gewollt
+    zitrone = _produkt(fake_backend, "Zitrone", "Obst")
+    for name in ("Paprika", "Salz", "Pfeffer", "Zucker"):
+        _produkt(fake_backend, name)
+    zutaten = [
+        "Salz",
+        "Pfeffer",
+        "40 g Zucker",
+        "½ Stück Zitrone, gewachst",
+        "1 g Paprika, edelsüß",
+    ]
+    fake_ha.ki_antwort = {
+        "zutaten": [
+            {"index": 1, "kategorie": "Obst", "aktion": "zuordnen", "produkt_id": zitrone,
+             "stueck_g": 100},
+            {"index": 2, "kategorie": "Gewürze", "aktion": "neu"},
+        ]
+    }  # fmt: skip
+    _, z = _vorschau2(ki_client, zutaten)
+    zeilen = fake_ha.ki_anfragen[-1].split("\n")
+    assert any(x.startswith("1: ½ Stück Zitrone") for x in zeilen)
+    assert any(x.startswith("2: 1 g Paprika, edelsüß") for x in zeilen)
+    assert z["½ Stück Zitrone, gewachst"]["produkt_id"] == zitrone
+    assert z["1 g Paprika, edelsüß"]["aktion"] == "neu"
+    assert z["1 g Paprika, edelsüß"]["kategorie"] == "Gewürze"

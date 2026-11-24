@@ -36,10 +36,10 @@ ANWEISUNG = """Du ordnest die Zutaten eines Rezepts den Produkten eines Haushalt
 Katalog (id|name|einheit|kategorie|oberprodukt):
 {katalog}
 
-Zutaten (index: Originaltext | Einheit der Mengenangabe | Vorschlag des Codes):
+Zutaten (nr: Originaltext | Einheit der Mengenangabe | Vorschlag des Codes):
 {zutaten}
 
-Je Zutat genau ein Eintrag:
+Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
 1. kategorie: Kategorie des Lebensmittels in der Zutat, eine aus: {kategorien}.
 2. aktion "zuordnen" mit produkt_id, wenn ein Katalogprodukt dasselbe Lebensmittel ist, auch
    unter anderem Namen oder in anderer Schreibweise (Möhre = Karotte, Lauchzwiebel =
@@ -79,10 +79,11 @@ STRUKTUR = {
             "object": {
                 "multiple": True,
                 "fields": {
+                    # Kategorie vor der Entscheidung: erst „Gewürz“, dann zuordnen
                     "index": _feld({"number": {}}, True),
+                    "kategorie": _feld({"select": {"options": KATEGORIEN}}, True),
                     "aktion": _feld({"select": {"options": ["zuordnen", "neu"]}}, True),
                     "produkt_id": _feld({"text": {}}),
-                    "kategorie": _feld({"select": {"options": KATEGORIEN}}, True),
                     "g_je_einheit": _feld({"number": {}}, True),
                     "stueck_g": _feld({"number": {}}, True),
                     "tracking_modus": _feld(
@@ -121,6 +122,11 @@ def offen(z: Zuordnung) -> bool:
     return not z.sicher or z.status == "pruefen"
 
 
+def offene(zuordnung: list[Zuordnung]) -> list[Zuordnung]:
+    """Die Zutaten, die an die KI gehen, in fester Reihenfolge (nr = Position + 1)."""
+    return [z for z in zuordnung if offen(z)]
+
+
 def anweisung(zuordnung: list[Zuordnung], produkte: list[Product]) -> str:
     namen = {p.id: p.name for p in produkte}
     katalog = (
@@ -136,11 +142,11 @@ def anweisung(zuordnung: list[Zuordnung], produkte: list[Product]) -> str:
             return f"{z.produkt_id} {z.produkt}" + (" (fest)" if z.sicher else "")
         return "neu"
 
+    # eigene Nummern 1…n statt Rezept-Index: live zählte die KI sonst selbst (3, 7 → 1, 2)
     zutaten = "\n".join(
-        f"{z.index}: {z.text} | {z.einheit or ('ohne Menge' if z.menge is None else 'Stück')}"
+        f"{nr}: {z.text} | {z.einheit or ('ohne Menge' if z.menge is None else 'Stück')}"
         f" | {vorschlag(z)}"
-        for z in zuordnung
-        if offen(z)
+        for nr, z in enumerate(offene(zuordnung), 1)
     )
     return ANWEISUNG.format(katalog=katalog, zutaten=zutaten, kategorien=", ".join(KATEGORIEN))
 
@@ -190,18 +196,16 @@ def anwenden(zuordnung: list[Zuordnung], produkte: list[Product], daten: dict) -
     Gibt die Anzahl geänderter Zutaten zurück. Ungültiges wird verworfen, nie geraten.
     """
     by_id = {p.id: p for p in produkte}
-    by_index = {z.index: z for z in zuordnung}
+    by_nr = dict(enumerate(offene(zuordnung), 1))
     geaendert: set[int] = set()
     eintraege = daten.get("zutaten") if isinstance(daten, dict) else None
     for e in eintraege if isinstance(eintraege, list) else []:
         if not isinstance(e, dict):
             continue
         try:
-            z = by_index[int(e.get("index"))]
+            z = by_nr[int(e.get("index"))]
         except (KeyError, TypeError, ValueError):
             continue
-        if not offen(z):
-            continue  # sichere Treffer und "weglassen" entscheidet der Code
         vorher = (z.aktion, z.produkt_id, z.menge_bestand, z.stueck_g, z.hinweis)
         kategorie = e.get("kategorie") if e.get("kategorie") in KATEGORIEN else None
         z.kategorie = kategorie or z.kategorie
