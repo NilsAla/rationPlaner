@@ -281,7 +281,12 @@ Katalogprodukts passt (Lauchzwiebel → Frühlingszwiebel ja, Paprika edelsüß 
 ohne Kategorie am Produkt gilt wie früher die Namensähnlichkeit (live: Salz → Olivenöl). Werte
 neuer Produkte laufen durch dieselben Regeln wie der Kategorisierungslauf (`produkt_werte`),
 Varianten nur auf Produkte ohne eigenes Oberprodukt und mit gleicher Einheit. Den Namen neuer
-Produkte bildet der Code (bei Namensgleichheit der volle Name: „Paprika edelsüß“). Die Vorschau
+Produkte darf die KI vorschlagen, der Code nimmt ihn nur, wenn jedes Wort im Zutatentext steht
+(„Stückige Tomaten“ ja, erfundenes „Schmand“ für „saure Sahne“ nein); sonst Kern-Name, bei
+Namensgleichheit der volle Name („Paprika edelsüß“). Je Zutat listet der Code bis zu fünf
+namensähnliche Katalogprodukte als Kandidaten (live übersah gpt-4.1 sonst „Paprikapulver“).
+Modell: der Import-Job läuft wie die Kategorisierung über gpt-4.1 (Temperatur 0,2);
+gpt-4o-mini mit Temperatur 1 war live inkonsistent. Die Vorschau
 zeigt alles, der Klick auf „Übernehmen“ ist das Review; neue Produkte entstehen dann mit
 Attributen und Oberprodukt. Aliase merken die Quelle: unverändert übernommene KI-Vorschläge
 (`quelle = ki`) gelten beim nächsten Import nicht als sicher und gehen wieder an die KI, damit sich

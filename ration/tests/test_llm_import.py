@@ -283,3 +283,15 @@ def test_aehnliche_kandidaten():
     assert "1 Paprikapulver" in edel and "Salz" not in edel
     lauch = aehnliche(Zuordnung(0, "4 Lauchzwiebeln", "Lauchzwiebeln", 4, None), ps)
     assert "3 Frühlingszwiebel" in lauch
+
+
+def test_ki_name_nur_aus_zutatentext(ki_client, fake_ha):
+    fake_ha.ki_antwort = {
+        "zutaten": [
+            {"index": 1, "kategorie": "Konserven", "aktion": "neu", "name": "Stückige Tomaten"},
+            {"index": 2, "kategorie": "Milchprodukte", "aktion": "neu", "name": "Schmand"},
+        ]
+    }
+    _, z = _vorschau2(ki_client, ["1 Packung stückige Tomaten", "2 EL saure Sahne"])
+    assert z["1 Packung stückige Tomaten"]["neu_name"] == "Stückige Tomaten"
+    assert z["2 EL saure Sahne"]["neu_name"] == "Sahne"  # erfundener Name verworfen → Code

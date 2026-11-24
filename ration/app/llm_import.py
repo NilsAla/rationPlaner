@@ -65,6 +65,9 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
    Prüfe die ähnlichen Katalogprodukte zuerst; "neu" nur, wenn keins davon und auch sonst
    kein Katalogprodukt dasselbe Lebensmittel ist.
 3. Sonst aktion "neu" (das Produkt wird angelegt, produkt_id leer). Dann zusätzlich:
+   - name: Produktname wie im Supermarktregal, nur mit Wörtern aus dem Zutatentext, ohne
+     Menge, Farbe und Zubereitung, Adjektive nur, wenn sie ein anderes Produkt machen
+     ("Stückige Tomaten", "Saure Sahne", "Paprika", "Zwiebel", "Paprika edelsüß").
    - tracking_modus: "exakt" (verderblich: Frischgemüse, Fleisch, Milchprodukte),
      "menge" (lange haltbar, Menge zählt: Nudeln, Reis, Dosen, Zwiebeln, Kartoffeln),
      "fuellstand" (angebrochen: Mehl, Zucker, Öl, Essig, Senf, Saucen),
@@ -109,6 +112,7 @@ STRUKTUR = {
                     "haltbarkeit_tage": _feld({"number": {}}),
                     "haltbarkeit_offen_tage": _feld({"number": {}}),
                     "variante_von": _feld({"text": {}}),
+                    "name": _feld({"text": {}}),
                 },
             }
         },
@@ -210,6 +214,18 @@ def passt(z: Zuordnung, p: Product, kategorie: str | None) -> bool:
     return aehnlichkeit(kern_name(z.name), p.name) >= 0.5
 
 
+def ki_name(z: Zuordnung, wert: object) -> str | None:
+    """Name eines neuen Produkts von der KI, nur wenn jedes Wort im Zutatentext steht (keine
+    erfundenen Namen) und er kurz ist. Live: Code-Name „Tomaten“ für „stückige Tomaten“."""
+    name = " ".join(str(wert or "").split())[:60]
+    if not name or len(name.split()) > 4:
+        return None
+    text = set(_staemme(z.text))
+    if not set(_staemme(name)) <= text:
+        return None
+    return name[:1].upper() + name[1:]
+
+
 def _neuer_name(z: Zuordnung, produkte: list[Product]) -> str:
     """Name eines neuen Produkts (Code): Kern-Name, bei Namensgleichheit mit einem bestehenden
     Produkt der volle Name („Paprika, edelsüß“ → „Paprika edelsüß“, nicht „Paprika“)."""
@@ -270,6 +286,9 @@ def anwenden(zuordnung: list[Zuordnung], produkte: list[Product], daten: dict) -
                 if alt:
                     _als_alternative(z, alt)
             z.ki = True
+            vergeben = {p.name.strip().lower(): p for p in produkte}
+            if (name := ki_name(z, e.get("name"))) and name.lower() not in vergeben:
+                z.neu_name = name
             _attribute(z, e, kategorie, by_id)
         sg = _zahl(e.get("stueck_g"))
         if (
