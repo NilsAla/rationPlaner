@@ -79,6 +79,8 @@ EINHEIT_ALIAS = {
     "pck": "packung",
     "pkg": "packung",
     "päckchen": "packung",
+    "kopf": "stück",  # "1 Kopf Brokkoli"
+    "köpfe": "stück",
 }
 
 
@@ -310,9 +312,16 @@ def zutat_parsen(text: str) -> RohZutat:
     clean = _ohne_zusatz(original) or original
     clean = re.sub(r"(?<=[\wäöüß.)])\*", "", clean)  # HelloFresh-Vorrat: "Essig*"
     clean = re.sub(r"(?i)^(?:ca\.?|circa|etwa|ungefähr|rund)\s+(?=[\d½¼¾⅓⅔⅛])", "", clean)
-    # "1 kl. Glas Kapern": Größe vor der Einheit fällt weg
+    # "1 TL, gehäuft Speisestärke" (Chefkoch): Zusatz hinter der Einheit fällt weg
     clean = re.sub(
-        r"(?i)^([\d.,/½¼¾⅓⅔⅛\s]+)(?:kl\.|gr\.|kleine[snr]?|große[snr]?)\s+(?=([^\d\s]+)\s)",
+        r"(?i)^([\d.,/½¼¾⅓⅔⅛\s]+[^\d\s,]+?)\s*,?\s*(?:gehäuft|gestrichen|gestr\.|knapp|voll)\s+",
+        lambda m: m.group(1) + " " if _ist_einheit(m.group(1).split()[-1]) else m.group(0),
+        clean,
+    )
+    # "1 kl. Glas Kapern", "1 gehäufter TL Zucker": Größe vor der Einheit fällt weg
+    clean = re.sub(
+        r"(?i)^([\d.,/½¼¾⅓⅔⅛\s]+)(?:kl\.|gr\.|kleine[snr]?|große[snr]?|gehäufte[rn]?|"
+        r"gestrichene[rn]?|knappe[rn]?)\s+(?=([^\d\s]+)\s)",
         lambda m: m.group(1) if _ist_einheit(m.group(2)) else m.group(0),
         clean,
     )
