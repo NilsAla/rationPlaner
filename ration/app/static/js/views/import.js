@@ -62,6 +62,8 @@ function attributText(z) {
   if (a.kategorie) teile.push(a.kategorie);
   if (a.tracking_modus) teile.push(MODUS[a.tracking_modus] ?? a.tracking_modus);
   if (a.haltbarkeit_tage) teile.push(a.haltbarkeit_tage === -1 ? "unbegrenzt" : `${a.haltbarkeit_tage} Tage`);
+  // geöffnet: 0/leer = Öffnen ändert das MHD nicht (trockene Vorräte)
+  teile.push(a.haltbarkeit_offen_tage ? `geöffnet ${a.haltbarkeit_offen_tage} Tage` : "geöffnet: MHD bleibt");
   if (z.variante_von) teile.push(`Variante von ${z.variante_von.name}`);
   return teile.join(" · ");
 }
