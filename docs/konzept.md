@@ -318,7 +318,14 @@ Sonnenblumenöl als eigene Varianten). Gewollt ist ein pragmatischer Haushaltsvo
 austauschbare Sorten sind ein Treffer, Varianten nur für bewusst getrennt gekaufte Sorten, die das
 Gericht verändern (Vollkorn-Penne, Kirschtomaten, Olivenöl). Die Beispiele im Prompt stammen
 bewusst nicht aus dem Benchmark. Typisches Rezept (8–15 offene Zutaten): ≈ 1,5–2,5 ct.
-Offen: Vorschau dauert mit Sol ~1 min, in der UI im Hintergrund laufen lassen. Die Vorschau
+**Hintergrund-Import (0.30.0, `app/importlauf.py`):** `POST /import/start` legt den Vorgang an
+und rechnet im Hintergrund (Schritte: Seite lesen → Zuordnen → KI prüft n Zutaten);
+`GET /import/{id}` liefert Fortschritt 0–100 und Restzeit, am Ende die Vorschau. Den Fortschritt
+der KI kennt niemand: Schätzung aus dem Median der letzten fünf echten Import-Laufzeiten im
+KI-Protokoll, der Balken bleibt bei 95 % stehen, bis die Antwort da ist. Hängt ein Vorgang länger
+als 15 min (App neu gestartet), gilt er als abgebrochen. UI: Balken auf der Import-Seite, auf allen
+Seiten oben rechts ein Kreis mit Prozent, nach Abschluss ein Haken, Klick öffnet die Vorschau
+(`#/import?id=…`, gemerkt je Gerät). `POST /import/vorschau` bleibt synchron (Tests, Bridge). Die Vorschau
 zeigt alles, der Klick auf „Übernehmen“ ist das Review; neue Produkte entstehen dann mit
 Attributen und Oberprodukt. Aliase merken die Quelle: unverändert übernommene KI-Vorschläge
 (`quelle = ki`) gelten beim nächsten Import nicht als sicher und gehen wieder an die KI, damit sich

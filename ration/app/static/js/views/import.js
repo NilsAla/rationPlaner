@@ -1,6 +1,7 @@
-import {$, $$, api, esc, guarded, post, toast, gehe} from "../lib.js";
+import {$, $$, api, esc, guarded, post, toast, gehe, importMerken, importText, importVergessen} from "../lib.js";
 
-// Rezept per Link: Vorschau mit Zuordnung der Zutaten, dann Übernahme nach Grocy
+// Rezept per Link: Vorschau läuft im Hintergrund (KI braucht bis ~1 min), Balken mit Fortschritt,
+// dann Zuordnung der Zutaten prüfen und nach Grocy übernehmen. ?id=… öffnet einen laufenden Import.
 export default async function render(el, {params}) {
   el.innerHTML = `<div class="card"><h2>Rezept per Link importieren</h2>
     <label>Link (z. B. HelloFresh, Chefkoch oder jede Seite mit Rezept-Schema)</label>
@@ -9,16 +10,49 @@ export default async function render(el, {params}) {
       <textarea id="html" rows="4" placeholder="Seitenquelltext (Strg+U, alles kopieren)"></textarea></details>
     <label class="inline"><input id="ki" type="checkbox" checked> KI prüft Zuordnung und beschreibt neue Produkte</label>
     <button class="btn primary voll" id="laden">Vorschau laden</button>
-    <p class="muted tiny">Übernommen werden Zutaten, Mengen, Zubereitungsschritte und, wo vorhanden, Titel- und Schrittbilder (lokal gespeichert). Der Link zur Quelle bleibt dabei.</p></div>
+    <p class="muted tiny">Übernommen werden Zutaten, Mengen, Zubereitungsschritte und, wo vorhanden, Titel- und Schrittbilder (lokal gespeichert). Der Link zur Quelle bleibt dabei.
+      Die KI-Prüfung läuft im Hintergrund weiter, wenn du die Seite verlässt (Kreis oben rechts).</p></div>
     <div id="vor"></div>`;
-  $("#laden", el).onclick = () => guarded(async () => {
-    const b = $("#laden", el); b.disabled = true; b.textContent = $("#ki", el).checked ? "Lädt, KI ordnet zu …" : "Lädt …";
+  let aktiv = true;
+  const box = $("#vor", el), knopf = $("#laden", el);
+
+  // Stand abfragen, bis die Vorschau fertig ist; Balken zeigt Schritt und geschätzte Restzeit
+  async function verfolgen(id) {
+    knopf.disabled = true;
     try {
-      const [v, produkte] = await Promise.all([post("import/vorschau", {url: $("#url", el).value, html: $("#html", el).value || null,
-        ki: $("#ki", el).checked}), api("produkte")]);
-      vorschau($("#vor", el), v, produkte);
-    } finally { b.disabled = false; b.textContent = "Vorschau laden"; }
+      while (aktiv) {
+        const s = await api(`import/${id}`);
+        if (!aktiv) return;
+        if (s.status === "fertig") {
+          importVergessen(id);
+          vorschau(box, s, await api("produkte"));
+          return;
+        }
+        if (s.status === "fehler") {
+          importVergessen(id);
+          box.innerHTML = `<div class="card"><p class="over">Import fehlgeschlagen: ${esc(s.fehler)}</p></div>`;
+          return;
+        }
+        if (s.url && !$("#url", el).value) $("#url", el).value = s.url;
+        const rest = s.rest_s > 0 ? `noch ca. ${s.rest_s} s` : s.schritt === "KI" ? "gleich fertig …" : "";
+        box.innerHTML = `<div class="card"><h2>Vorschau wird erstellt</h2>
+          <div class="fortschritt" role="progressbar" aria-valuenow="${s.fortschritt}" aria-valuemin="0" aria-valuemax="100">
+            <div style="width:${s.fortschritt}%"></div></div>
+          <p class="muted small">${esc(importText(s))}${rest ? ` · ${rest}` : ""}</p></div>`;
+        await new Promise((ok) => setTimeout(ok, 1000));
+      }
+    } finally { knopf.disabled = false; }
+  }
+
+  knopf.onclick = () => guarded(async () => {
+    knopf.disabled = true;
+    const s = await post("import/start", {url: $("#url", el).value, html: $("#html", el).value || null,
+      ki: $("#ki", el).checked}).finally(() => { knopf.disabled = false; });
+    importMerken(s.import_id);
+    await verfolgen(s.import_id);
   });
+  if (params.id) guarded(() => verfolgen(+params.id));
+  return () => { aktiv = false; };
 }
 
 // Attribute eines neuen Produkts laut KI, kurz: „Gemüse · exakt · 10 Tage · Variante von Paprika“

@@ -242,6 +242,20 @@ export function lokal(key, standard) {
 }
 export function merken(key, wert) { try { localStorage.setItem("ration." + key, JSON.stringify(wert)); } catch { /* egal */ } }
 
+// Laufende Import-Vorschauen dieses Geräts: die Kopfzeile zeigt den Fortschritt, Klick öffnet die Vorschau
+export const importIds = () => lokal("importe", []);
+export function importMerken(id) {
+  merken("importe", [...new Set([...importIds(), id])]);
+  window.dispatchEvent(new Event("importe"));
+}
+export function importVergessen(id) {
+  merken("importe", importIds().filter((x) => x !== id));
+  window.dispatchEvent(new Event("importe"));
+}
+export const IMPORT_SCHRITT = {Start: "Startet …", "Seite lesen": "Seite wird gelesen", Zuordnen: "Zutaten werden zugeordnet"};
+export const importText = (s) => s.schritt === "KI" ? `KI prüft ${s.anzahl_ki ?? ""} Zutaten`.replace("  ", " ")
+  : IMPORT_SCHRITT[s.schritt] ?? "Läuft …";
+
 /** Produkt bekannt, aber nichts im Bestand (Füllstand und immer da zählen als vorhanden). */
 export const nichtDa = (p) => !p.bestand && !["immer_da", "fuellstand"].includes(p.tracking_modus);
 

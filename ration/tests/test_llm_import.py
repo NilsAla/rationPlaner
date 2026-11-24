@@ -319,3 +319,58 @@ def test_vorschau_wieder_lesen(ki_client, fake_ha):
     assert ki_client.get(f"/api/v1/import/{v['import_id']}").json() == v
     assert ki_client.get("/api/v1/import").json()[0]["import_id"] == v["import_id"]
     assert ki_client.get("/api/v1/import/99999").status_code == 404
+
+
+def _warten(client, import_id, sekunden=5.0):
+    import time
+
+    ende = time.monotonic() + sekunden
+    while time.monotonic() < ende:
+        r = client.get(f"/api/v1/import/{import_id}").json()
+        if r["status"] != "laeuft":
+            return r
+        time.sleep(0.05)
+    raise AssertionError("Import läuft noch")
+
+
+def test_import_im_hintergrund(ki_client, fake_ha):
+    fake_ha.ki_antwort = {"zutaten": []}
+    r = ki_client.post("/api/v1/import/start", json={"url": URL2, "html": _seite(["1 Ei"])})
+    assert r.status_code == 202
+    start = r.json()
+    assert start["status"] == "laeuft" and 0 <= start["fortschritt"] < 100
+    fertig = _warten(ki_client, start["import_id"])
+    assert fertig["status"] == "fertig" and fertig["name"] == "Kategorietest"
+    assert fertig["zutaten"][0]["text"] == "1 Ei"
+    liste = ki_client.get("/api/v1/import").json()
+    assert liste[0]["import_id"] == start["import_id"] and liste[0]["status"] == "fertig"
+    # übernehmen wie nach der synchronen Vorschau
+    e = ki_client.post(
+        f"/api/v1/import/{start['import_id']}/uebernehmen",
+        json={"zutaten": [{"index": 0, "neu_anlegen": "Ei", "menge": 60}]},
+    )
+    assert e.status_code == 201, e.text
+
+
+def test_import_im_hintergrund_fehler(ki_client):
+    r = ki_client.post("/api/v1/import/start", json={"url": URL2, "html": "<html></html>"})
+    fertig = _warten(ki_client, r.json()["import_id"])
+    assert fertig["status"] == "fehler" and "Recipe" in fertig["fehler"]
+
+
+def test_import_fortschritt_und_veraltet():
+    from datetime import timedelta
+
+    from app import importlauf
+    from app.db import RezeptImport
+
+    jetzt = importlauf._jetzt()
+    vor20 = jetzt - timedelta(seconds=20)
+    e = RezeptImport(id=1, url="u", quelle_id="", roh={}, status="laeuft", schritt="KI",
+                     erwartet_s=40.0, ki_start=vor20, angelegt=jetzt)  # fmt: skip
+    st = importlauf.status(e)
+    assert 50 <= st["fortschritt"] <= 60 and 19 <= st["rest_s"] <= 21
+    e.ki_start = jetzt - timedelta(seconds=400)
+    assert importlauf.status(e)["fortschritt"] == 95  # wartet bei 95 %, bis fertig
+    e.angelegt = jetzt - timedelta(hours=1)
+    assert importlauf.status(e)["status"] == "fehler"

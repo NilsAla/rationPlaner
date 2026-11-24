@@ -1,4 +1,4 @@
-import {$, $$, api, esc, guarded, lokal, merken, titel} from "./lib.js";
+import {$, $$, api, esc, guarded, importIds, importText, importVergessen, lokal, merken, titel} from "./lib.js";
 
 const V = new URL(import.meta.url).search; // ?v=<version> für alle Views
 
@@ -152,9 +152,34 @@ function sucheEinrichten() {
   });
 }
 
+// --- Laufende Rezept-Importe: Kreis mit Fortschritt oben rechts, auf jeder Seite --------------
+let importTimer = null;
+async function importStatus() {
+  clearTimeout(importTimer);
+  const ids = importIds(), el = $("#importstatus");
+  if (!ids.length) { el.hidden = true; el.innerHTML = ""; return; }
+  const staende = await Promise.all(ids.map((id) => api(`import/${id}`).catch(() => null)));
+  const liste = ids.map((id, i) => ({id, s: staende[i]}));
+  liste.filter((x) => !x.s).forEach((x) => importVergessen(x.id));  // gelöscht/unbekannt
+  el.innerHTML = liste.filter((x) => x.s).map(({id, s}) => {
+    const href = `#/import?id=${id}`;
+    if (s.status === "laeuft") {
+      const rest = s.rest_s ? ` · noch ca. ${s.rest_s} s` : "";
+      return `<a href="${href}" class="kreis" style="--p:${s.fortschritt}" title="Rezept-Import: ${esc(importText(s))}${rest}">${s.fortschritt}%</a>`;
+    }
+    if (s.status === "fertig") return `<a href="${href}" class="kreis fertig" title="Vorschau fertig: ${esc(s.name)} – öffnen">✓</a>`;
+    return `<a href="${href}" class="kreis fehler" title="Import fehlgeschlagen: ${esc(s.fehler)}">!</a>`;
+  }).join("");
+  el.hidden = !el.innerHTML;
+  const laeuft = liste.some((x) => x.s?.status === "laeuft");
+  importTimer = setTimeout(importStatus, laeuft ? 1500 : 15000);
+}
+window.addEventListener("importe", importStatus);
+
 $("#burger").onclick = () => document.body.classList.toggle("nav-auf");
 $("#scrim").onclick = () => document.body.classList.remove("nav-auf");
 window.addEventListener("hashchange", () => { zeigen(); status(); });
 sucheEinrichten();
 zeigen();
 status();
+importStatus();

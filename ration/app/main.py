@@ -28,6 +28,7 @@ from app import (
     einstellungen,
     fotos,
     haltbarkeit,
+    importlauf,
     inventar,
     katalog,
     kategorisierung,
@@ -55,6 +56,7 @@ from app.db import (
 )
 from app.deps import backend, home_assistant, session, settings
 from app.ha import HomeAssistant, SupervisorHomeAssistant
+from app.importlauf import ImportIn
 from app.inventory.base import (
     Ingredient,
     InsufficientStockError,
@@ -106,12 +108,6 @@ class PackungIn(BaseModel):
 class WeiterePackungIn(PackungIn):
     quelle: Literal["manuell", "bon", "angebot", "llm"] = "manuell"
     gueltig_bis: date | None = None
-
-
-class ImportIn(BaseModel):
-    url: str = Field(min_length=8, max_length=2000)
-    html: str | None = None  # Fallback: Seitenquelltext, falls die Seite den Abruf blockt
-    ki: bool = True  # offene Zutaten per KI zuordnen, falls für den Job eingerichtet
 
 
 class ImportZutatIn(BaseModel):
@@ -431,66 +427,21 @@ async def packung_loeschen(packung_id: int, s: Session = Depends(session)) -> No
 
 
 @api.post("/import/vorschau")
-async def import_vorschau(
-    data: ImportIn,
-    request: Request,
-    s: Session = Depends(session),
-    b: InventoryBackend = Depends(backend),
-    st: Settings = Depends(settings),
-) -> dict:
-    """Liest das Rezept hinter einem Link und schlägt je Zutat Produkt und Menge vor."""
+async def import_vorschau(data: ImportIn, request: Request, s: Session = Depends(session)) -> dict:
+    """Liest das Rezept hinter einem Link und schlägt je Zutat Produkt und Menge vor (synchron;
+    die UI nutzt POST /import/start mit Fortschritt, siehe importlauf.py)."""
     try:
-        roh = await rezept_import.rezept_laden(data.url, data.html)
+        roh, antwort = await importlauf.vorschau_berechnen(request.app, s, data)
     except rezept_import.ImportError_ as err:
         raise HTTPException(422, str(err)) from err
-    aliase = {a.text: (a.produkt_id, a.quelle or "nutzer") for a in s.scalars(select(ZutatAlias))}
-    produkte = await b.list_products()
-    zuordnung = rezept_import.zuordnen(roh, produkte, aliase)
-    ki_ = llm_import.KiErgebnis(aktiv=False)
-    if data.ki and request.app.state.ki.verfuegbar("import"):
-        ki_ = await llm_import.verfeinern(request.app.state.ki, zuordnung, produkte)
-    dublette = s.scalars(select(RezeptMeta).where(RezeptMeta.quelle_id == roh.quelle_id)).first()
-    eintrag = RezeptImport(url=roh.url, quelle_id=roh.quelle_id, roh=asdict(roh))
+    eintrag = RezeptImport(url=roh.url, quelle_id=roh.quelle_id, roh=asdict(roh), status="fertig")
     s.add(eintrag)
     s.flush()
-    antwort = {
-        "import_id": eintrag.id,
-        "name": roh.name,
-        "portionen": roh.portionen,
-        "quelle": roh.quelle,
-        "quelle_id": roh.quelle_id,
-        "url": roh.url,
-        "dublette": dublette.rezept_id if dublette else None,
-        "schritte": roh.schritte,
-        "bild": roh.bild,
-        "schritt_bilder": len(roh.schritt_bilder),
-        "zutaten": [asdict(z) for z in zuordnung],
-        "ki": asdict(ki_),
-    }
+    antwort = {"import_id": eintrag.id, **antwort}
     eintrag.vorschau = antwort
     s.commit()
     log.info("Import-Vorschau %s: %s (%s Zutaten)", eintrag.id, roh.name, len(roh.zutaten))
     return antwort
-
-
-@api.get("/import")
-async def importe(s: Session = Depends(session)) -> list[dict]:
-    """Die letzten Import-Vorschauen (neueste zuerst), z. B. um eine Vorschau wieder zu öffnen."""
-    eintraege = s.scalars(select(RezeptImport).order_by(RezeptImport.id.desc()).limit(20))
-    return [
-        {"import_id": e.id, "url": e.url, "name": (e.roh or {}).get("name"),
-         "angelegt": e.angelegt.isoformat() if e.angelegt else None, "rezept_id": e.rezept_id}
-        for e in eintraege
-    ]  # fmt: skip
-
-
-@api.get("/import/{import_id}")
-async def import_lesen(import_id: int, s: Session = Depends(session)) -> dict:
-    """Gespeicherte Vorschau eines Imports (wie die Antwort von /import/vorschau)."""
-    eintrag = s.get(RezeptImport, import_id)
-    if eintrag is None or eintrag.vorschau is None:
-        raise HTTPException(404, "Vorschau nicht gefunden")
-    return eintrag.vorschau
 
 
 async def _neu_attribute(
@@ -704,6 +655,7 @@ def create_app(
     app = FastAPI(title="rationPlaner", version=__version__, lifespan=lifespan)
     app.include_router(api)
     app.include_router(katalog.router)
+    app.include_router(importlauf.router)
     app.include_router(bon.router)
     app.include_router(kategorisierung.router)
     app.include_router(planer.router)

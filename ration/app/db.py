@@ -101,6 +101,13 @@ class RezeptImport(Base):
     roh: Mapped[dict] = mapped_column(JSON)
     rezept_id: Mapped[str | None] = mapped_column(String, nullable=True)  # nach Übernahme
     vorschau: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # Antwort der Vorschau
+    # Hintergrund-Vorschau (importlauf.py): laeuft/fertig/fehler, None = synchron fertig
+    status: Mapped[str | None] = mapped_column(String, nullable=True)
+    schritt: Mapped[str | None] = mapped_column(String, nullable=True)
+    fehler: Mapped[str | None] = mapped_column(String, nullable=True)
+    anzahl_ki: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    erwartet_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ki_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     angelegt: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
