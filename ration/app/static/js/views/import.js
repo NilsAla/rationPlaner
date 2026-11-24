@@ -54,7 +54,8 @@ function vorschau(box, v, produkte) {
       <div><label>Portionen</label><input id="ipor" type="number" min="1" max="12" value="${v.portionen}"></div></div>
     <h3>Zutaten</h3><div class="tabelle"><table><thead><tr><th>Zutat laut Rezept</th><th>Produkt</th><th>Menge</th><th></th></tr></thead>
     <tbody>${v.zutaten.map((z) => `<tr><td>${esc(z.text)} ${z.status !== "ok" ? `<span class="tag ${z.status === "pruefen" ? "bad" : "warn"}">${esc(z.status)}</span>` : ""}
-        ${z.hinweis ? `<div class="muted tiny">${esc(z.hinweis)}</div>` : ""}</td>
+        ${z.hinweis ? `<div class="muted tiny">${esc(z.hinweis)}</div>` : ""}
+        ${z.pruefung ? `<div class="muted tiny" title="Begründung der KI">KI: ${esc(z.pruefung)}</div>` : ""}</td>
       <td><select data-zp="${z.index}">${opts(z)}</select>
         <input data-zn="${z.index}" value="${esc(z.neu_name ?? z.name)}" style="display:${z.aktion === "neu" ? "block" : "none"};margin-top:4px">
         ${attributText(z) ? `<div class="muted tiny" data-za="${z.index}" style="display:${z.aktion === "neu" ? "block" : "none"}">neu: ${esc(attributText(z))}</div>` : ""}</td>

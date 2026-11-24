@@ -51,6 +51,9 @@ Katalogprodukte):
 
 Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
 1. kategorie: Kategorie des Lebensmittels in der Zutat, eine aus: {kategorien}.
+   pruefung: ein kurzer Satz VOR der Entscheidung: welches Katalogprodukt am besten passt und
+   ob es dasselbe Lebensmittel ist (nur anderes Wort, Farbe, Plural), eine eigene Sorte davon
+   oder etwas anderes. Beispiel: "187 Paprika: dasselbe, Schote ist nur ein anderes Wort".
 2. aktion "zuordnen" mit produkt_id, wenn ein Katalogprodukt dasselbe Lebensmittel ist, auch
    unter anderem Namen oder in anderer Schreibweise (Möhre = Karotte, Lauchzwiebel =
    Frühlingszwiebel, Porree = Lauch, Sojasoße = Sojasauce, gelbe Paprika = Paprika,
@@ -105,6 +108,7 @@ STRUKTUR = {
                     # Kategorie vor der Entscheidung: erst „Gewürz“, dann zuordnen
                     "index": _feld({"number": {}}, True),
                     "kategorie": _feld({"select": {"options": KATEGORIEN}}, True),
+                    "pruefung": _feld({"text": {}}, True),
                     "aktion": _feld({"select": {"options": ["zuordnen", "neu"]}}, True),
                     "produkt_id": _feld({"text": {}}),
                     "g_je_einheit": _feld({"number": {}}, True),
@@ -268,6 +272,7 @@ def anwenden(zuordnung: list[Zuordnung], produkte: list[Product], daten: dict) -
         vorher = (z.aktion, z.produkt_id, z.menge_bestand, z.stueck_g, z.hinweis)
         kategorie = e.get("kategorie") if e.get("kategorie") in KATEGORIEN else None
         z.kategorie = kategorie or z.kategorie
+        z.pruefung = " ".join(str(e.get("pruefung") or "").split())[:200]
         pid = str(e.get("produkt_id") or "").strip()
         if z.sicher:
             pass  # nur die Menge (g_je_einheit) unten

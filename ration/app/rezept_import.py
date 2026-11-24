@@ -144,6 +144,7 @@ class Zuordnung:
     sicher: bool = False  # Code-Treffer ohne Zweifel (bestätigter Alias, gleicher voller Name)
     ki: bool = False  # Vorschlag stammt von der KI
     kategorie: str | None = None  # Kategorie laut KI (Prüfung von KI-Treffern)
+    pruefung: str = ""  # Begründung der KI (Vorschau)
     attribute: dict = field(default_factory=dict)  # neue Produkte: geprüfte KI-Werte
     variante_von: dict | None = None  # neue Produkte: {"produkt_id", "name"} des Oberprodukts
 
