@@ -112,7 +112,8 @@ class RezeptImport(Base):
 
 
 def make_engine(db_url: str) -> Engine:
-    engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    # timeout: Sekunden, die ein Schreiber auf die SQLite-Sperre wartet (Standard 5)
+    engine = create_engine(db_url, connect_args={"check_same_thread": False, "timeout": 30})
     if db_url.startswith("sqlite:///") and ":memory:" not in db_url:
         with engine.connect() as conn:
             conn.exec_driver_sql("PRAGMA journal_mode=WAL")

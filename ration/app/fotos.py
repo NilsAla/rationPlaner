@@ -273,7 +273,17 @@ async def importieren(
     """Bilder einer Rezeptseite laden und speichern; vorhandene Import-Bilder werden ersetzt.
     Fehler einzelner Bilder brechen nichts ab (Hintergrundaufgabe nach dem Import)."""
     auftraege = ([(None, haupt)] if haupt else []) + sorted(schritte.items())
-    ok, fehler = 0, []
+    # Erst alles laden, dann kurz schreiben: eine offene Schreib-Transaktion während der
+    # Downloads sperrte SQLite für Sekunden (live: „database is locked“ beim nächsten Import).
+    geladen: list[tuple[int | None, str, bytes]] = []
+    fehler: list[str] = []
+    for schritt, url in auftraege:
+        try:
+            geladen.append((schritt, url, await herunterladen(url)))
+        except (ValueError, httpx.HTTPError) as err:
+            fehler.append(f"{url}: {err}")
+            log.warning("Rezept %s: Bild %s nicht geladen: %s", rezept_id, url, err)
+    ok = 0
     with Session(engine) as s:
         for f in list(
             s.scalars(
@@ -286,9 +296,8 @@ async def importieren(
         hat_upload_haupt = s.scalars(
             select(RezeptFoto).where(RezeptFoto.rezept_id == rezept_id, RezeptFoto.haupt)
         ).first()
-        for schritt, url in auftraege:
+        for schritt, url, daten in geladen:
             try:
-                daten = await herunterladen(url)
                 speichern(
                     s,
                     st,
@@ -300,9 +309,9 @@ async def importieren(
                     url=url,
                 )
                 ok += 1
-            except (ValueError, httpx.HTTPError) as err:
+            except ValueError as err:  # kein lesbares Bild
                 fehler.append(f"{url}: {err}")
-                log.warning("Rezept %s: Bild %s nicht geladen: %s", rezept_id, url, err)
+                log.warning("Rezept %s: Bild %s nicht gespeichert: %s", rezept_id, url, err)
         s.commit()
     log.info("Rezept %s: %s Bilder importiert, %s Fehler", rezept_id, ok, len(fehler))
     return {"geladen": ok, "fehler": fehler}

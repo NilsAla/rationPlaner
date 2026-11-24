@@ -429,6 +429,9 @@ async def ausfuehren(app, lauf_id: int) -> None:
                             anzahl += 1
                     if verworfen:
                         log.info("Lauf %s verworfen (Code-Guard): %s", lauf_id, verworfen)
+                    # je Batch speichern: eine offene Schreib-Transaktion während des nächsten
+                    # KI-Aufrufs sperrte SQLite, der KI-Protokolleintrag ging verloren
+                    s.commit()
             if umfang.get("naehrwerte", False):
                 anzahl += await _naehrwerte_lauf(s, ki, b, lauf_id, umfang)
             if umfang.get("packungen", False):
@@ -479,6 +482,7 @@ async def ausfuehren(app, lauf_id: int) -> None:
                                 )
                             )
                             anzahl += 1
+                    s.commit()
             lauf.status = "fertig"
             s.commit()
             if ha is not None and anzahl:
@@ -541,6 +545,7 @@ async def _naehrwerte_lauf(s: Session, ki, b, lauf_id: int, umfang: dict) -> int
                 )
             )
             anzahl += 1
+        s.commit()  # je Batch, sonst sperrt die offene Transaktion den nächsten KI-Aufruf
     return anzahl
 
 
