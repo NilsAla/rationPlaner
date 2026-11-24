@@ -184,7 +184,8 @@ def anweisung(zuordnung: list[Zuordnung], produkte: list[Product]) -> str:
     def vorschlag(z: Zuordnung) -> str:
         if z.aktion == "zuordnen":
             return f"{z.produkt_id} {z.produkt}" + (" (fest)" if z.sicher else "")
-        return "neu"
+        # kein „neu“ anzeigen: live übernahm gpt-4.1 das und übersah Paprikaschote = Paprika
+        return "-"
 
     # eigene Nummern 1…n statt Rezept-Index: live zählte die KI sonst selbst (3, 7 → 1, 2)
     zutaten = "\n".join(
