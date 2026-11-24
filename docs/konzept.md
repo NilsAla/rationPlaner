@@ -286,7 +286,18 @@ Produkte darf die KI vorschlagen, der Code nimmt ihn nur, wenn jedes Wort im Zut
 Namensgleichheit der volle Name („Paprika edelsüß“). Je Zutat listet der Code bis zu fünf
 namensähnliche Katalogprodukte als Kandidaten (live übersah gpt-4.1 sonst „Paprikapulver“).
 Modell: der Import-Job läuft wie die Kategorisierung über gpt-4.1 (Temperatur 0,2);
-gpt-4o-mini mit Temperatur 1 war live inkonsistent. Die Vorschau
+gpt-4o-mini mit Temperatur 1 war live inkonsistent. Vor der Entscheidung schreibt die KI je Zutat
+einen Satz `pruefung` (welches Katalogprodukt, dasselbe/Sorte/anders); ohne dieses Feld kippte
+gpt-4.1 bei Paprikaschote je nach Prompt-Detail zwischen Treffer und Variante. Ein Code-Vorschlag
+„neu“ wird nicht angezeigt (verankerte die KI). Varianten nur in gleicher Kategorie.
+**Live-Test 0.29.9 (2026-11-24, leerer Katalog, 25 Rezepte HelloFresh/Chefkoch/Magazin,
+Ein-Klick):** 117 Produkte, alle mit Modus/Kategorie/Haltbarkeit. Korrekt u. a. Paprikaschote,
+gelbe/rote Paprika, Paprika edelsüß → Paprikapulver, Lachs → Lachsfilet, Gemüsebrühepulver →
+Gemüsebrühe, Dose/Tube/Becher/Paket mit Menge, saure Sahne und Dosentomaten getrennt.
+Fehler: Pflanzenöl neben Öl, Spaghetti einmal Spaghettini, einmal neu; Grenzfälle Schafskäse/Feta,
+Peperoni/Chilischote; Varianten teils schief (Couscous → Jasminreis, Reis → Jasminreis statt
+umgekehrt, getrocknete Tomaten → Tomate). Kosten ≈ 1,5 ct je Rezept (gpt-4.1, viel Ausgabe durch
+Begründung und Attribute), Vorschau bis ≈ 19 s. Die Vorschau
 zeigt alles, der Klick auf „Übernehmen“ ist das Review; neue Produkte entstehen dann mit
 Attributen und Oberprodukt. Aliase merken die Quelle: unverändert übernommene KI-Vorschläge
 (`quelle = ki`) gelten beim nächsten Import nicht als sicher und gehen wieder an die KI, damit sich
