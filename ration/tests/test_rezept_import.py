@@ -219,17 +219,10 @@ def test_kein_rezept():
         ("Paprika multicolor", "Paprika"),
         ("Hartkäse ital. Art", "Hartkäse"),
         ("Hartkäse geraspelt", "Hartkäse"),
-        ("Basilikum/Oregano", "Basilikum"),
-        ("Petersilie glatt/Schnittlauch", "Petersilie"),
         ("Hackfleischzubereitung vom Weiderind", "Hackfleischzubereitung"),
         ("Crème fraîche", "Crème fraîche"),
         ("Pimientos de Padrón", "Pimientos de Padrón"),
-        ("saure Sahne", "Saure Sahne"),
-        ("Tomaten, stückige (ca. 400 g)", "Stückige Tomaten"),
-        ("stückige Tomaten", "Stückige Tomaten"),
-        ("Tomate(n) (geschälte, aus der Dose)", "Geschälte Tomaten"),
         ("Tomate(n)", "Tomate"),
-        ("getrocknete Tomaten & schwarze Oliven", "Getrocknete Tomaten"),
         ("rote Zwiebel", "Zwiebel"),
     ],
 )
@@ -237,9 +230,11 @@ def test_kern_name_zusaetze(text, kern):
     assert ri.kern_name(text) == kern
 
 
-def test_alias_fester_begriff():
+def test_alias_key_mit_klammern():
+    # Klammerinhalt zählt: geschälte Dosentomaten sind nicht „Tomate“
     assert ri.alias_key("Tomate(n) (geschälte, aus der Dose)") != ri.alias_key("Tomate(n)")
-    assert ri.alias_key("Tomaten, stückige") == ri.alias_key("stückige Tomaten")
+    assert ri.alias_key("Tomate(n)") == ri.alias_key("Tomate")
+    assert ri.alias_key("Paprika, edelsüß") != ri.alias_key("Paprika")
 
 
 @pytest.mark.parametrize(

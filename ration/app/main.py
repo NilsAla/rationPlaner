@@ -7,7 +7,7 @@ import hmac
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
@@ -60,6 +60,7 @@ from app.inventory.base import (
     InsufficientStockError,
     InventoryBackend,
     NotFoundError,
+    Product,
     ProductPatch,
     TrackingMode,
 )
@@ -120,6 +121,9 @@ class ImportZutatIn(BaseModel):
     einheit: str = "g"  # Bestandseinheit für neu_anlegen
     stueck_g: float | None = Field(default=None, gt=0)  # neu_anlegen: Standard-Packung Stück
     menge: float = Field(ge=0)  # in Bestandseinheit des Produkts
+    ki: bool = False  # Auswahl ist der unveränderte KI-Vorschlag (Alias gilt dann nicht als sicher)
+    attribute: dict | None = None  # neu_anlegen: Werte aus der Vorschau (Kategorie, Modus, …)
+    variante_von: str | None = None  # neu_anlegen: Oberprodukt
 
 
 class UebernehmenIn(BaseModel):
@@ -439,7 +443,7 @@ async def import_vorschau(
         roh = await rezept_import.rezept_laden(data.url, data.html)
     except rezept_import.ImportError_ as err:
         raise HTTPException(422, str(err)) from err
-    aliase = {a.text: a.produkt_id for a in s.scalars(select(ZutatAlias))}
+    aliase = {a.text: (a.produkt_id, a.quelle or "nutzer") for a in s.scalars(select(ZutatAlias))}
     produkte = await b.list_products()
     zuordnung = rezept_import.zuordnen(roh, produkte, aliase)
     ki_ = llm_import.KiErgebnis(aktiv=False)
@@ -464,6 +468,30 @@ async def import_vorschau(
         "zutaten": [asdict(z) for z in zuordnung],
         "ki": asdict(ki_),
     }
+
+
+async def _neu_attribute(
+    b: InventoryBackend, produkt: Product, z: ImportZutatIn
+) -> ProductPatch | None:
+    """Attribute und Oberprodukt eines beim Import neu angelegten Produkts, erneut geprüft.
+    Nur für unkategorisierte Produkte (gleicher Name wie ein bestehendes: nichts ändern)."""
+    if produkt.tracking_mode is not None:
+        return None
+    werte = kategorisierung.produkt_werte(z.attribute or {}, produkt)
+    werte = {k: v for k, v in werte.items() if k in llm_import.ATTRIBUTE}
+    patch = kategorisierung._produkt_patch(werte) if werte else ProductPatch()
+    if z.variante_von and not produkt.parent_id:
+        try:
+            oben = await b.get_product(z.variante_von)
+        except NotFoundError:
+            oben = None
+        if (
+            oben
+            and not oben.parent_id
+            and oben.unit.strip().lower() == produkt.unit.strip().lower()
+        ):
+            patch = replace(patch, parent_id=oben.id)
+    return patch if patch != ProductPatch() else None
 
 
 @api.post("/import/{import_id}/uebernehmen", status_code=201)
@@ -497,13 +525,22 @@ async def import_uebernehmen(
             produkt = await b.create_product(z.neu_anlegen.strip(), z.einheit)
             if z.stueck_g and not produkt.pack_size:
                 await b.set_pack(produkt.id, "Stück", z.stueck_g)
-            neu.append(produkt.name)
+            if patch := await _neu_attribute(b, produkt, z):
+                produkt = await b.update_product(produkt.id, patch)
+            if produkt.name not in neu:
+                neu.append(produkt.name)
         elif z.produkt_id:
             produkt = await b.get_product(z.produkt_id)
         else:
             raise HTTPException(422, f"Zutat {z.index}: produkt_id oder neu_anlegen fehlt")
         zutaten.append(Ingredient(produkt.id, z.menge, original.text))
-        s.merge(ZutatAlias(text=rezept_import.alias_key(original.name), produkt_id=produkt.id))
+        s.merge(
+            ZutatAlias(
+                text=rezept_import.alias_key(original.name),
+                produkt_id=produkt.id,
+                quelle="ki" if z.ki else "nutzer",
+            )
+        )
     if not zutaten:
         raise HTTPException(422, "Keine Zutaten übernommen")
     recipe = await b.create_recipe(

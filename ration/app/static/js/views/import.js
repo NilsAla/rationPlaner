@@ -7,7 +7,7 @@ export default async function render(el, {params}) {
     <input id="url" type="url" placeholder="https://…" value="${esc(params.url ?? "")}">
     <details style="margin-top:8px"><summary>Seite blockt? Quelltext einfügen</summary>
       <textarea id="html" rows="4" placeholder="Seitenquelltext (Strg+U, alles kopieren)"></textarea></details>
-    <label class="inline"><input id="ki" type="checkbox" checked> Offene Zutaten per KI zuordnen</label>
+    <label class="inline"><input id="ki" type="checkbox" checked> KI prüft Zuordnung und beschreibt neue Produkte</label>
     <button class="btn primary voll" id="laden">Vorschau laden</button>
     <p class="muted tiny">Übernommen werden Zutaten, Mengen, Zubereitungsschritte und, wo vorhanden, Titel- und Schrittbilder (lokal gespeichert). Der Link zur Quelle bleibt dabei.</p></div>
     <div id="vor"></div>`;
@@ -19,6 +19,17 @@ export default async function render(el, {params}) {
       vorschau($("#vor", el), v, produkte);
     } finally { b.disabled = false; b.textContent = "Vorschau laden"; }
   });
+}
+
+// Attribute eines neuen Produkts laut KI, kurz: „Gemüse · exakt · 10 Tage · Variante von Paprika“
+const MODUS = {exakt: "exakt", menge: "Menge", fuellstand: "Füllstand", immer_da: "immer da"};
+function attributText(z) {
+  const a = z.attribute || {}, teile = [];
+  if (a.kategorie) teile.push(a.kategorie);
+  if (a.tracking_modus) teile.push(MODUS[a.tracking_modus] ?? a.tracking_modus);
+  if (a.haltbarkeit_tage) teile.push(a.haltbarkeit_tage === -1 ? "unbegrenzt" : `${a.haltbarkeit_tage} Tage`);
+  if (z.variante_von) teile.push(`Variante von ${z.variante_von.name}`);
+  return teile.join(" · ");
 }
 
 function vorschau(box, v, produkte) {
@@ -45,7 +56,8 @@ function vorschau(box, v, produkte) {
     <tbody>${v.zutaten.map((z) => `<tr><td>${esc(z.text)} ${z.status !== "ok" ? `<span class="tag ${z.status === "pruefen" ? "bad" : "warn"}">${esc(z.status)}</span>` : ""}
         ${z.hinweis ? `<div class="muted tiny">${esc(z.hinweis)}</div>` : ""}</td>
       <td><select data-zp="${z.index}">${opts(z)}</select>
-        <input data-zn="${z.index}" value="${esc(z.neu_name ?? z.name)}" style="display:${z.aktion === "neu" ? "block" : "none"};margin-top:4px"></td>
+        <input data-zn="${z.index}" value="${esc(z.neu_name ?? z.name)}" style="display:${z.aktion === "neu" ? "block" : "none"};margin-top:4px">
+        ${attributText(z) ? `<div class="muted tiny" data-za="${z.index}" style="display:${z.aktion === "neu" ? "block" : "none"}">neu: ${esc(attributText(z))}</div>` : ""}</td>
       <td style="width:100px"><input data-zm="${z.index}" type="number" min="0" step="any" value="${z.menge_bestand ?? ""}"></td>
       <td class="muted tiny" data-ze="${z.index}">${esc(einheit[z.produkt_id] ?? "g")}</td></tr>`).join("")}</tbody></table></div>
     <h3>Zubereitung <span class="muted tiny">(${v.schritte.length} Schritte, ein Schritt pro Zeile)</span></h3>
@@ -57,6 +69,8 @@ function vorschau(box, v, produkte) {
   $$("[data-zp]", box).forEach((sel) => sel.onchange = () => {
     const i = sel.dataset.zp;
     $(`[data-zn="${i}"]`, box).style.display = sel.value === "+neu" ? "block" : "none";
+    const za = $(`[data-za="${i}"]`, box);
+    if (za) za.style.display = sel.value === "+neu" ? "block" : "none";
     $(`[data-ze="${i}"]`, box).textContent = einheit[sel.value] ?? "g";
   });
   $("#iok", box).onclick = () => guarded(async () => {
@@ -65,8 +79,11 @@ function vorschau(box, v, produkte) {
       const i = +sel.dataset.zp, menge = $(`[data-zm="${i}"]`, box).value, z = v.zutaten.find((x) => x.index === i);
       if (!sel.value) continue;
       if (menge === "") throw new Error(`Menge fehlt: ${z.text}`);
-      zutaten.push(sel.value === "+neu" ? {index: i, neu_anlegen: $(`[data-zn="${i}"]`, box).value, menge: +menge, stueck_g: z.stueck_g}
-        : {index: i, produkt_id: sel.value, menge: +menge});
+      // ki: Auswahl ist der unveränderte KI-Vorschlag (der Alias gilt dann nicht als sicher)
+      const ki = !!z.ki && sel.value === wert(z);
+      zutaten.push(sel.value === "+neu" ? {index: i, neu_anlegen: $(`[data-zn="${i}"]`, box).value, menge: +menge, stueck_g: z.stueck_g,
+          ki, attribute: z.attribute ?? null, variante_von: z.variante_von?.produkt_id ?? null}
+        : {index: i, produkt_id: sel.value, menge: +menge, ki});
     }
     const e = await post(`import/${v.import_id}/uebernehmen`, {name: $("#iname", box).value, portionen: +$("#ipor", box).value,
       zutaten, trotz_dublette: !!v.dublette, fotos: $("#ifotos", box)?.checked ?? false, schritte: $("#ischr", box).value.split("\n").map((t) => t.trim()).filter(Boolean)});

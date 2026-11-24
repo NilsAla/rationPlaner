@@ -263,23 +263,32 @@ nacheinander mit Ein-Klick-Vorschlag importiert, ohne KI. Danach: Einheiten Tube
 Stängel, Kugel, Paket, Kopf (auch „Stiel/e“, „Zweige“); Zusätze hinter dem Namen („multicolor“,
 „geraspelt“, „ital. Art“, „vom Weiderind“) und HelloFresh-Kräutermix („Basilikum/Oregano“ →
 erste Sorte) fallen weg; Synonyme Paprikaschote→Paprika, Muskatnuss→Muskat,
-Hackfleischzubereitung→Hackfleisch, Öl→Pflanzenöl; Salz-/Kochwasser wird weggelassen. **Feste
-Begriffe** behalten ihr Adjektiv (saure Sahne, stückige/passierte/geschälte/getrocknete Tomaten),
-auch im Alias-Schlüssel. Chefkoch-PLUS-Rezepte (Paywall, kein JSON-LD) werden abgelehnt; der
+Hackfleischzubereitung→Hackfleisch, Öl→Pflanzenöl; Salz-/Kochwasser wird weggelassen. Feste
+Begriffe (saure Sahne, Dosentomaten). Synonyme, Kräutermix und feste Begriffe sind seit 0.29.0
+wieder raus, das entscheidet der KI-Schritt. Chefkoch-PLUS-Rezepte (Paywall, kein JSON-LD) werden abgelehnt; der
 Überschriften-Fallback braucht Zubereitungsschritte, sonst kein Rezept.
 
-**KI-Zuordnung** (`app/llm_import.py`, wenn `ai_task_entity` gesetzt, abschaltbar mit `ki: false`):
-Nach dem Code-Lauf gehen nur die offenen Zutaten (Aktion „neu“) mit dem Produktkatalog
-(id|name|einheit) per `ai_task.generate_data` und Structured Output ans LLM. Es liefert je Zutat
-`zuordnen` + `produkt_id` oder `neu`, dazu `g_je_einheit` und `stueck_g`. Den Namen neuer
-Produkte bildet weiter der Code (im Test lieferte das LLM schlechtere Namen). Eine KI-Zuordnung
-mit völlig anderem Namen (Synonym oder Fehlgriff, live gesehen: „Salz“ → Olivenöl) wird nicht
-übernommen, sondern als erste Alternative mit „KI meint: …?“ angezeigt.
-Der Code validiert (Index und Produkt-ID müssen existieren, Gewichte 0–5000 g) und rechnet:
-Mengen wie beim Code-Lauf, `g_je_einheit` nur dort, wo Tabelle und Einheit keine Menge liefern.
-Alias-/Namens-Treffer und „weglassen“ bleiben Sache des Codes. Rohantwort wird geloggt,
-KI-Vorschläge sind in der Vorschau als „KI“ markiert, angelegt wird erst nach Klick. Fällt die
-KI aus, bleibt der Code-Vorschlag (Hinweis in der Vorschau).
+**KI-Schritt** (`app/llm_import.py`, seit 0.29.0, wenn für den Job „import“ eine KI eingerichtet
+ist, abschaltbar mit `ki: false`): Der Code liefert nur **sichere** Treffer selbst: bestätigter
+Alias oder gleicher voller Name (alle Wortstämme inklusive Klammern und Zusätzen, nur
+Plural-Marker wie „(n)“ fallen weg). Treffer über den Kern-Namen („rote Zwiebel“ → Zwiebel) sind
+ein Vorschlag. Alles nicht Sichere geht in **einem** Aufruf je Rezept mit dem Katalog
+(id|name|einheit|kategorie|oberprodukt) an die KI. Sie liefert je Zutat Kategorie, Treffer oder
+„neu“, Gramm je Einheit (auch bei Treffern, damit Dose/Tube eine Menge bekommen), Stückgewicht und
+für neue Produkte Tracking-Modus, Ablauf-Typ, Haltbarkeit (ungeöffnet/geöffnet) und „Variante
+von“. **Prüfung im Code:** Ein KI-Treffer zählt nur, wenn die Kategorie der Zutat zur Kategorie des
+Katalogprodukts passt (Lauchzwiebel → Frühlingszwiebel ja, Paprika edelsüß → Gemüse-Paprika nein);
+ohne Kategorie am Produkt gilt wie früher die Namensähnlichkeit (live: Salz → Olivenöl). Werte
+neuer Produkte laufen durch dieselben Regeln wie der Kategorisierungslauf (`produkt_werte`),
+Varianten nur auf Produkte ohne eigenes Oberprodukt und mit gleicher Einheit. Den Namen neuer
+Produkte bildet der Code (bei Namensgleichheit der volle Name: „Paprika edelsüß“). Die Vorschau
+zeigt alles, der Klick auf „Übernehmen“ ist das Review; neue Produkte entstehen dann mit
+Attributen und Oberprodukt. Aliase merken die Quelle: unverändert übernommene KI-Vorschläge
+(`quelle = ki`) gelten beim nächsten Import nicht als sicher und gehen wieder an die KI, damit sich
+ein Fehlgriff nicht festsetzt. Kosten: Katalog ≈ 15 Tokens je Produkt und Aufruf (200 Produkte
+≈ 3k Tokens, gpt-4.1-mini ≈ 0,1 ct je Rezept). Fällt die KI aus, bleibt der Code-Vorschlag.
+Hart codiert bleiben nur Mengen und Einheiten; Produkt-Synonyme und „feste Begriffe“ aus 0.28.10
+sind wieder entfernt (Live-Test: hart codierte Regeln haben selbst Dubletten erzeugt).
 
 Kuratierung über Daumen hoch/runter. Planer mischt höchstens 1–2 ungetestete Rezepte pro Woche.
 Die Datenbank bleibt privat; fremde Fotos werden nicht übernommen, Zubereitungsschritte seit 0.12.0 schon (s. Import).

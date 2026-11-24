@@ -119,14 +119,7 @@ KLEIN_G = {
 }
 
 # Zutaten-Namen, die auf ein allgemeineres Produkt gehen, mit eigenem Stückgewicht
-SYNONYM: dict[str, str] = {
-    "knoblauchzeh": "Knoblauch",
-    "möhr": "Karotte",
-    "paprikaschot": "Paprika",
-    "muskatnus": "Muskat",
-    "hackfleischzubereitung": "Hackfleisch",
-    "öl": "Pflanzenöl",  # HelloFresh „Öl“ = neutrales Öl
-}
+SYNONYM: dict[str, str] = {"knoblauchzeh": "Knoblauch", "möhr": "Karotte"}
 # Nie als Zutat übernehmen
 WEGLASSEN: set[str] = {
     "wasser",

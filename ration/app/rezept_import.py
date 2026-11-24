@@ -141,6 +141,11 @@ class Zuordnung:
     status: str = "ok"
     hinweis: str = ""
     alternativen: list[dict] = field(default_factory=list)
+    sicher: bool = False  # Code-Treffer ohne Zweifel (bestätigter Alias, gleicher voller Name)
+    ki: bool = False  # Vorschlag stammt von der KI
+    kategorie: str | None = None  # Kategorie laut KI (Prüfung von KI-Treffern)
+    attribute: dict = field(default_factory=dict)  # neue Produkte: geprüfte KI-Werte
+    variante_von: dict | None = None  # neue Produkte: {"produkt_id", "name"} des Oberprodukts
 
 
 # --- Quelle ----------------------------------------------------------------------
@@ -553,30 +558,10 @@ NACHGESTELLT = re.compile(
 )
 
 
-# Feste Begriffe: hier macht das Adjektiv ein anderes Produkt (saure Sahne ist keine Sahne).
-# Beide Schreibweisen: "stückige Tomaten" und "Tomate(n), stückige" bzw. "Tomate(n) (geschälte)".
-def _fest(adjektiv: str, nomen: str) -> re.Pattern[str]:
-    return re.compile(rf"(?i)\b{adjektiv}\s+{nomen}\b|\b{nomen}[\s,(]+{adjektiv}\b")
-
-
-_TOMATE = r"tomate(?:n|\(n\))?"
-FESTE_BEGRIFFE = [
-    (_fest(r"saure[rn]?", "sahne"), "Saure Sahne"),
-    (_fest(r"(?:stückige|gehackte)", _TOMATE), "Stückige Tomaten"),
-    (_fest("passierte", _TOMATE), "Passierte Tomaten"),
-    (_fest("geschälte", _TOMATE), "Geschälte Tomaten"),
-    (_fest("getrocknete", _TOMATE), "Getrocknete Tomaten"),
-]
-
-
 def kern_name(name: str) -> str:
     """Produktname aus dem Zutatentext: Klammern, Zusätze nach Komma und vorangestellte
     Adjektive (klein geschrieben) weg. "vegane weiße Misopaste" → "Misopaste"."""
-    if begriff := _fester_begriff(name):
-        return begriff
     name = re.sub(r"\(.*?\)", " ", name).split(",")[0]
-    # HelloFresh-Kräutermix „Basilikum/Oregano“: erste Sorte
-    name = re.sub(r"(?<=[a-zäöüß])/[A-ZÄÖÜ].*$", "", name)
     name = NACHGESTELLT.sub("", name)
     name = re.sub(r"(?<=[a-zäöüß])\s+vom\s+\S+\s*$", "", name)  # "Hackfleisch… vom Weiderind"
     woerter = name.split()
@@ -644,8 +629,12 @@ def gramm(z: RohZutat, name: str, stueck_g: float | None = None) -> tuple[float 
     return None, "pruefen", f"Einheit „{e}“ unbekannt"
 
 
-def zuordnen(rezept: RohRezept, produkte: list[Product], aliase: dict[str, str]) -> list[Zuordnung]:
-    """Sicher zuordnen (Alias, gleicher Name, gleicher Kern), sonst neues Produkt vorschlagen.
+def zuordnen(
+    rezept: RohRezept, produkte: list[Product], aliase: dict[str, tuple[str, str]]
+) -> list[Zuordnung]:
+    """Code-Vorschlag je Zutat. Sicher (``sicher=True``) nur über bestätigten Alias oder gleichen
+    vollen Namen; Treffer über den Kern-Namen („rote Zwiebel“ → Zwiebel) sind ein Vorschlag, den
+    die KI prüft. aliase: Text → (produkt_id, quelle); Quelle „ki“ gilt nicht als sicher.
 
     Ähnliche Produkte erscheinen nur als Alternative: "Frühlingszwiebel" ist keine "Zwiebel".
     """
@@ -665,14 +654,15 @@ def zuordnen(rezept: RohRezept, produkte: list[Product], aliase: dict[str, str])
             result.append(zo)
             continue
         treffer = None
-        if (pid := aliase.get(alias_key(z.name))) and pid in by_id:
+        pid, quelle = aliase.get(alias_key(z.name), (None, ""))
+        if pid in by_id:
             treffer = by_id[pid]
+            zo.sicher = quelle != "ki"
         else:
-            # Fester Begriff („Tomate(n) (geschälte)“) nicht über den vollen Namen auf „Tomate“
-            fest = _fester_begriff(z.name) is not None
-            for kandidat in (kern,) if fest else (z.name, kern, synonym):
+            for kandidat in (z.name, kern, synonym):
                 if kandidat and (treffer := by_key.get(_schluessel(kandidat))):
                     break
+            zo.sicher = bool(treffer) and _voll(z.name) == _voll(treffer.name)
         stueck_g = None
         if treffer:
             zo.aktion, zo.produkt_id, zo.produkt = "zuordnen", treffer.id, treffer.name
@@ -714,10 +704,14 @@ def quelle_link(url: str, quelle: str) -> str:
     )
 
 
-def _fester_begriff(text: str) -> str | None:
-    return next((begriff for m, begriff in FESTE_BEGRIFFE if m.search(text)), None)
-
-
 def alias_key(text: str) -> str:
-    """Normalisierter Zutatentext; feste Begriffe („Tomate(n) (geschälte)“) behalten ihren Kern."""
-    return _norm(_fester_begriff(text) or text)
+    """Normalisierter Zutatentext mit Klammerinhalt: „Tomate(n) (geschälte)“ ≠ „Tomate(n)“.
+    Nur Plural-Marker wie „(n)“, „/n“ fallen weg."""
+    text = re.sub(r"\((?:e|n|en|er|s)\)|/(?:e|n|en)\b", "", text)
+    text = unicodedata.normalize("NFKC", text).lower()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-zäöüß ]+", " ", text)).strip()
+
+
+def _voll(text: str) -> frozenset[str]:
+    """Alle Wortstämme inklusive Klammern und Zusätzen: Grundlage für „sicherer Treffer“."""
+    return frozenset(_stamm(w) for w in alias_key(text).split() if len(w) >= 2)

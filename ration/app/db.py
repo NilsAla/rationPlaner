@@ -86,6 +86,8 @@ class ZutatAlias(Base):
 
     text: Mapped[str] = mapped_column(String, primary_key=True)
     produkt_id: Mapped[str] = mapped_column(String)
+    # nutzer: bestätigt/geändert, ki: KI-Vorschlag unverändert übernommen (gilt nicht als sicher)
+    quelle: Mapped[str | None] = mapped_column(String, nullable=True, default="nutzer")
 
 
 class RezeptImport(Base):
