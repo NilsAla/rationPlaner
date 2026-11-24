@@ -100,6 +100,7 @@ class RezeptImport(Base):
     quelle_id: Mapped[str] = mapped_column(String, index=True)
     roh: Mapped[dict] = mapped_column(JSON)
     rezept_id: Mapped[str | None] = mapped_column(String, nullable=True)  # nach Übernahme
+    vorschau: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # Antwort der Vorschau
     angelegt: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

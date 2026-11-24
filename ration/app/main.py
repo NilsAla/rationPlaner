@@ -452,9 +452,8 @@ async def import_vorschau(
     dublette = s.scalars(select(RezeptMeta).where(RezeptMeta.quelle_id == roh.quelle_id)).first()
     eintrag = RezeptImport(url=roh.url, quelle_id=roh.quelle_id, roh=asdict(roh))
     s.add(eintrag)
-    s.commit()
-    log.info("Import-Vorschau %s: %s (%s Zutaten)", eintrag.id, roh.name, len(roh.zutaten))
-    return {
+    s.flush()
+    antwort = {
         "import_id": eintrag.id,
         "name": roh.name,
         "portionen": roh.portionen,
@@ -468,6 +467,30 @@ async def import_vorschau(
         "zutaten": [asdict(z) for z in zuordnung],
         "ki": asdict(ki_),
     }
+    eintrag.vorschau = antwort
+    s.commit()
+    log.info("Import-Vorschau %s: %s (%s Zutaten)", eintrag.id, roh.name, len(roh.zutaten))
+    return antwort
+
+
+@api.get("/import")
+async def importe(s: Session = Depends(session)) -> list[dict]:
+    """Die letzten Import-Vorschauen (neueste zuerst), z. B. um eine Vorschau wieder zu öffnen."""
+    eintraege = s.scalars(select(RezeptImport).order_by(RezeptImport.id.desc()).limit(20))
+    return [
+        {"import_id": e.id, "url": e.url, "name": (e.roh or {}).get("name"),
+         "angelegt": e.angelegt.isoformat() if e.angelegt else None, "rezept_id": e.rezept_id}
+        for e in eintraege
+    ]  # fmt: skip
+
+
+@api.get("/import/{import_id}")
+async def import_lesen(import_id: int, s: Session = Depends(session)) -> dict:
+    """Gespeicherte Vorschau eines Imports (wie die Antwort von /import/vorschau)."""
+    eintrag = s.get(RezeptImport, import_id)
+    if eintrag is None or eintrag.vorschau is None:
+        raise HTTPException(404, "Vorschau nicht gefunden")
+    return eintrag.vorschau
 
 
 async def _neu_attribute(

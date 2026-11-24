@@ -311,3 +311,11 @@ def test_variante_nur_gleiche_kategorie(ki_client, fake_ha, fake_backend):
     _, z = _vorschau2(ki_client, ["1 TL Paprikapulver", "2 Stück Spitzpaprika"])
     assert z["1 TL Paprikapulver"]["variante_von"] is None
     assert z["2 Stück Spitzpaprika"]["variante_von"]["produkt_id"] == paprika
+
+
+def test_vorschau_wieder_lesen(ki_client, fake_ha):
+    fake_ha.ki_antwort = {"zutaten": []}
+    v, _ = _vorschau2(ki_client, ["1 Ei"])
+    assert ki_client.get(f"/api/v1/import/{v['import_id']}").json() == v
+    assert ki_client.get("/api/v1/import").json()[0]["import_id"] == v["import_id"]
+    assert ki_client.get("/api/v1/import/99999").status_code == 404

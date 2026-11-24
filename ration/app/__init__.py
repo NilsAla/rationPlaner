@@ -1,4 +1,4 @@
 """rationPlaner – HA-App für Küchenbestand und Wochenplanung."""
 
-__version__ = "0.29.9"
-API_VERSION = "1.24"
+__version__ = "0.29.10"
+API_VERSION = "1.25"
