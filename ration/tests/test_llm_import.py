@@ -338,7 +338,7 @@ def test_import_im_hintergrund(ki_client, fake_ha):
     r = ki_client.post("/api/v1/import/start", json={"url": URL2, "html": _seite(["1 Ei"])})
     assert r.status_code == 202
     start = r.json()
-    assert start["status"] == "laeuft" and 0 <= start["fortschritt"] < 100
+    assert start["status"] == "laeuft" and start["fortschritt"] == 2
     fertig = _warten(ki_client, start["import_id"])
     assert fertig["status"] == "fertig" and fertig["name"] == "Kategorietest"
     assert fertig["zutaten"][0]["text"] == "1 Ei"

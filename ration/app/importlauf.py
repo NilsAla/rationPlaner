@@ -98,7 +98,8 @@ def status(e: RezeptImport) -> dict:
     zustand, fehler = e.status or "fehler", e.fehler
     if zustand == "laeuft" and e.angelegt and jetzt - e.angelegt > VERALTET:
         zustand, fehler = "fehler", "Abgebrochen (App neu gestartet?)"
-    fortschritt, rest = {"Seite lesen": 5, "Zuordnen": 12}.get(e.schritt or "", 15), None
+    stufen = {"Start": 2, "Seite lesen": 5, "Zuordnen": 12}
+    fortschritt, rest = stufen.get(e.schritt or "", 15), None
     if e.schritt == "KI" and e.ki_start:
         dauer = e.erwartet_s or STANDARD_DAUER
         vergangen = (jetzt - e.ki_start).total_seconds()
