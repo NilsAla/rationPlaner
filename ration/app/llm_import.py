@@ -281,6 +281,8 @@ def anwenden(zuordnung: list[Zuordnung], produkte: list[Product], daten: dict) -
             z.stueck_g = sg
             _menge_neu_berechnen(z, None)
         g = _zahl(e.get("g_je_einheit"))
+        if not g and (z.einheit is None or z.einheit in STUECK):
+            g = sg  # live: Zitrone mit g_je_einheit 0, aber stueck_g 100
         if z.status == "pruefen" and g and z.menge is not None:
             ziel = by_id.get(z.produkt_id or "")
             if ziel is None or ziel.unit.strip().lower() in ("g", "ml"):

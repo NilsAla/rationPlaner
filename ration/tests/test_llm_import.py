@@ -267,6 +267,7 @@ def test_ki_nummern_statt_rezept_index(ki_client, fake_ha, fake_backend):
     assert any(x.startswith("1: ½ Stück Zitrone") for x in zeilen)
     assert any(x.startswith("2: 1 g Paprika, edelsüß") for x in zeilen)
     assert z["½ Stück Zitrone, gewachst"]["produkt_id"] == zitrone
+    assert z["½ Stück Zitrone, gewachst"]["menge_bestand"] == 50  # stueck_g als Ersatz
     assert z["1 g Paprika, edelsüß"]["aktion"] == "neu"
     assert z["1 g Paprika, edelsüß"]["kategorie"] == "Gewürze"
 
