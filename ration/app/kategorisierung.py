@@ -75,16 +75,12 @@ class Vorschlag(Base):
 
 # --- Prompts und Strukturen --------------------------------------------------------------
 
-ANWEISUNG_PRODUKTE = """Du pflegst die Stammdaten eines Haushaltsvorrats in Deutschland.
-Schlage für jedes Produkt Attribute vor. Produkte (id|name|bestandseinheit):
-{liste}
-
-Felder je Produkt:
+# Gemeinsam mit dem Import-Prompt (llm_import.py), damit beide gleich entscheiden
+REGELN_PRODUKT = """\
 - tracking_modus: "exakt" (verderblich, Ablauf je Charge wichtig: Frischgemüse, Fleisch, Milch),
   "menge" (lange haltbar, Menge zählt: Nudeln, Reis, Dosen, Zwiebeln, Kartoffeln),
   "fuellstand" (angebrochen, nur voll/knapp/leer: Mehl, Zucker, Öl, Essig, Senf, Sojasauce),
   "immer_da" (Kleinkram, nie tracken: Salz, Pfeffer, getrocknete Gewürze, Wasser).
-- kategorie: eine aus {kategorien}.
 - ablauf_typ: "verbrauchsdatum" nur bei leicht verderblichem Fleisch/Fisch/Hack, sonst "mhd".
 - haltbarkeit_tage: typische Haltbarkeit ungeöffnet ab Kauf in TAGEN (nicht Monaten!),
   -1 = läuft praktisch nie ab (Salz, Zucker). Nie 0. Richtwerte: Nudeln/Reis 540, Konserven 730,
@@ -93,8 +89,20 @@ Felder je Produkt:
   Hähnchen 3, Salat 5, Paprika 10, Kartoffeln 60, Zwiebeln 60.
 - haltbarkeit_offen_tage: Tage nach dem Öffnen (im Kühlschrank, falls dort gelagert), kleiner
   als ungeöffnet. Richtwerte: Currypaste/Pesto 14, Ketchup/Senf 90, Sojasauce 180, Brühe
-  (Glas/Fond) 7, Milch 3, Joghurt 5, Sahne 3, Konserven 3. 0 nur, wenn Öffnen die Haltbarkeit
-  nicht verkürzt (Nudeln, Reis, Salz, Zucker, getrocknete Gewürze).
+  (Glas/Fond) 7, Milch 3, Joghurt 5, Sahne 3, Konserven 3. 0, wenn Öffnen die Haltbarkeit
+  nicht verkürzt: trockene Vorräte wie Nudeln, Reis, Couscous, Grieß, Hülsenfrüchte (trocken),
+  Salz, Zucker, getrocknete Gewürze."""
+
+ANWEISUNG_PRODUKTE = (
+    """Du pflegst die Stammdaten eines Haushaltsvorrats in Deutschland.
+Schlage für jedes Produkt Attribute vor. Produkte (id|name|bestandseinheit):
+{liste}
+
+Felder je Produkt:
+- kategorie: eine aus {kategorien}.
+"""
+    + REGELN_PRODUKT
+    + """
 - haltbarkeit_gefroren_tage: eingefroren (0 = nicht einfrieren).
 - haltbarkeit_aufgetaut_tage: nach dem Auftauen (0 = egal).
 - g_je_einheit: Gramm je Bestandseinheit (bei Bestandseinheit g: 1).
@@ -103,6 +111,7 @@ Felder je Produkt:
   Bestandseinheit (z. B. Packung 500 für Nudeln in g, Dose 400 für Kidneybohnen in g, Becher
   500 für Joghurt in g, Stück 160 für Paprika). Unsicher → leer lassen.
 Gib für jedes Produkt genau einen Eintrag mit seiner id zurück."""
+)
 
 ANWEISUNG_NAEHRWERTE = """Schätze typische Nährwerte je 100 g für Lebensmittel aus dem deutschen
 Supermarkt, wie in einer Nährwerttabelle (z. B. Bundeslebensmittelschlüssel): roher bzw.

@@ -14,10 +14,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import textwrap
 from dataclasses import dataclass
 
 from app.inventory.base import Product, TrackingMode
-from app.kategorisierung import KATEGORIEN, produkt_werte
+from app.kategorisierung import KATEGORIEN, REGELN_PRODUKT, produkt_werte
 from app.rezept_import import (
     STUECK,
     RohZutat,
@@ -40,7 +41,8 @@ ATTRIBUTE = (
     "haltbarkeit_offen_tage",
 )
 
-ANWEISUNG = """Du ordnest die Zutaten eines Rezepts den Produkten eines Haushaltsvorrats zu.
+ANWEISUNG = (
+    """Du ordnest die Zutaten eines Rezepts den Produkten eines Haushaltsvorrats zu.
 
 Katalog (id|name|einheit|kategorie|oberprodukt):
 {katalog}
@@ -79,25 +81,23 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
    - name: Produktname wie im Supermarktregal, nur mit Wörtern aus dem Zutatentext, ohne
      Menge, Farbe und Zubereitung, Adjektive nur, wenn sie ein anderes Produkt machen
      ("Stückige Tomaten", "Saure Sahne", "Paprika", "Zwiebel", "Paprika edelsüß").
-   - tracking_modus: "exakt" (verderblich: Frischgemüse, Fleisch, Milchprodukte),
-     "menge" (lange haltbar, Menge zählt: Nudeln, Reis, Dosen, Zwiebeln, Kartoffeln),
-     "fuellstand" (angebrochen: Mehl, Zucker, Öl, Essig, Senf, Saucen),
-     "immer_da" (Kleinkram: Salz, Pfeffer, getrocknete Gewürze).
-   - ablauf_typ: "verbrauchsdatum" nur bei Fleisch, Fisch, Hack; sonst "mhd".
-   - haltbarkeit_tage: ungeöffnet ab Kauf in TAGEN (-1 = praktisch unbegrenzt, nie 0).
-   - haltbarkeit_offen_tage: nach dem Öffnen in Tagen (0, wenn Öffnen nichts ändert).
+"""
+    + textwrap.indent(REGELN_PRODUKT, "   ")
+    + """
    - variante_von: id eines Katalogprodukts derselben Kategorie, das das neue Produkt im
      Rezept 1:1 ersetzen kann, weil es eine eigene Sorte davon ist, die man bewusst getrennt
      kauft, weil sie das Gericht verändert (Vollkorn-Penne → Penne, Kirschtomaten → Tomate,
      Olivenöl → Öl). Austauschbare Sorten sind keine Variante, sondern ein Treffer (siehe 2).
-     Keine Variante: Tomatenmark von Dosentomaten, Paprikapulver von Paprika. Nur Produkte
-     ohne eigenes Oberprodukt. Sonst leer.
+     Nur aus derselben Grundzutat. Keine Variante: Tomatenmark von Dosentomaten,
+     Paprikapulver von Paprika, Couscous von Reis (Weizen ist kein Reis). Nur Produkte ohne
+     eigenes Oberprodukt. Sonst leer.
 4. Immer angeben, auch bei "zuordnen":
    g_je_einheit: Gramm für genau 1 Einheit der Mengenangabe (1 Stück, Packung, Dose, Tube,
    Bund, EL, TL, Zehe, Prise; typische Handelsgröße, z. B. 1 Dose Tomaten 400).
    Bei g/kg/ml/l oder ohne Menge: 0.
    stueck_g: Gewicht eines Stücks in Gramm, wenn man es stückweise kauft (Zitrone 100,
    Zwiebel 80), sonst 0."""
+)
 
 
 def _feld(selector: dict, required: bool = False) -> dict:
