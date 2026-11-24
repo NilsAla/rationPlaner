@@ -43,7 +43,9 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
 1. kategorie: Kategorie des Lebensmittels in der Zutat, eine aus: {kategorien}.
 2. aktion "zuordnen" mit produkt_id, wenn ein Katalogprodukt dasselbe Lebensmittel ist, auch
    unter anderem Namen oder in anderer Schreibweise (Möhre = Karotte, Lauchzwiebel =
-   Frühlingszwiebel, Porree = Lauch, Sojasoße = Sojasauce, gelbe Paprika = Paprika).
+   Frühlingszwiebel, Porree = Lauch, Sojasoße = Sojasauce, gelbe Paprika = Paprika,
+   Paprika edelsüß = Paprikapulver, Gemüsebrühepulver = Gemüsebrühe). Suche im ganzen Katalog,
+   nicht nur nach dem Vorschlag des Codes.
    Kein Treffer ist ein anderes Lebensmittel oder eine andere Verarbeitungsform:
    Paprika edelsüß (Gewürz) ≠ Paprika (Gemüse), Tomatenmark ≠ Tomate, saure Sahne ≠ Sahne,
    Dosentomaten (stückig, passiert, geschält) ≠ frische Tomaten, Süßkartoffel ≠ Kartoffel,
