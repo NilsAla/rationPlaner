@@ -54,8 +54,10 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
 2. aktion "zuordnen" mit produkt_id, wenn ein Katalogprodukt dasselbe Lebensmittel ist, auch
    unter anderem Namen oder in anderer Schreibweise (Möhre = Karotte, Lauchzwiebel =
    Frühlingszwiebel, Porree = Lauch, Sojasoße = Sojasauce, gelbe Paprika = Paprika,
-   Paprika edelsüß = Paprikapulver, Gemüsebrühepulver = Gemüsebrühe). Suche im ganzen Katalog,
-   nicht nur nach dem Vorschlag des Codes.
+   Paprika edelsüß = Paprikapulver, Gemüsebrühepulver = Gemüsebrühe). Andere Wörter für
+   dasselbe sind ein Treffer, keine Variante: Paprikaschote = Paprika, Knoblauchzehe =
+   Knoblauch, Brokkoliröschen = Brokkoli, Farbe, Größe, Plural, Einzahl. Suche im ganzen
+   Katalog, nicht nur nach dem Vorschlag des Codes.
    Kein Treffer ist ein anderes Lebensmittel oder eine andere Verarbeitungsform:
    Paprika edelsüß (Gewürz) ≠ Paprika (Gemüse), Tomatenmark ≠ Tomate, saure Sahne ≠ Sahne,
    Dosentomaten (stückig, passiert, geschält) ≠ frische Tomaten, Süßkartoffel ≠ Kartoffel,
@@ -76,8 +78,9 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
    - haltbarkeit_tage: ungeöffnet ab Kauf in TAGEN (-1 = praktisch unbegrenzt, nie 0).
    - haltbarkeit_offen_tage: nach dem Öffnen in Tagen (0, wenn Öffnen nichts ändert).
    - variante_von: id eines Katalogprodukts, für das das neue Produkt im Rezept einspringen
-     kann, weil es eine Sorte davon ist (Vollkorn-Penne → Penne, Spitzpaprika → Paprika,
-     Kirschtomaten → Tomate). Nur Produkte ohne eigenes Oberprodukt. Sonst leer.
+     kann, weil es eine eigene Sorte davon ist, die man getrennt kauft (Vollkorn-Penne →
+     Penne, Spitzpaprika → Paprika, Kirschtomaten → Tomate, Olivenöl → Öl). Nur Produkte ohne
+     eigenes Oberprodukt. Sonst leer.
 4. Immer angeben, auch bei "zuordnen":
    g_je_einheit: Gramm für genau 1 Einheit der Mengenangabe (1 Stück, Packung, Dose, Tube,
    Bund, EL, TL, Zehe, Prise; typische Handelsgröße, z. B. 1 Dose Tomaten 400).
@@ -215,13 +218,14 @@ def passt(z: Zuordnung, p: Product, kategorie: str | None) -> bool:
 
 
 def ki_name(z: Zuordnung, wert: object) -> str | None:
-    """Name eines neuen Produkts von der KI, nur wenn jedes Wort im Zutatentext steht (keine
-    erfundenen Namen) und er kurz ist. Live: Code-Name „Tomaten“ für „stückige Tomaten“."""
+    """Name eines neuen Produkts von der KI, nur wenn er den Code-Namen um Wörter aus dem
+    Zutatentext ergänzt (Adjektiv zurückholen: „Stückige Tomaten“ statt „Tomaten“). Sonst
+    bleibt der Code-Name (live: „Knoblauchzehe“ statt Synonym „Knoblauch“)."""
     name = " ".join(str(wert or "").split())[:60]
     if not name or len(name.split()) > 4:
         return None
-    text = set(_staemme(z.text))
-    if not set(_staemme(name)) <= text:
+    neu, code = set(_staemme(name)), set(_staemme(z.neu_name or kern_name(z.name)))
+    if not neu <= set(_staemme(z.text)) or not code < neu:
         return None
     return name[:1].upper() + name[1:]
 

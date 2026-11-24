@@ -290,8 +290,11 @@ def test_ki_name_nur_aus_zutatentext(ki_client, fake_ha):
         "zutaten": [
             {"index": 1, "kategorie": "Konserven", "aktion": "neu", "name": "Stückige Tomaten"},
             {"index": 2, "kategorie": "Milchprodukte", "aktion": "neu", "name": "Schmand"},
+            {"index": 3, "kategorie": "Gemüse", "aktion": "neu", "name": "Knoblauchzehe"},
         ]
     }
-    _, z = _vorschau2(ki_client, ["1 Packung stückige Tomaten", "2 EL saure Sahne"])
+    zutaten = ["1 Packung stückige Tomaten", "2 EL saure Sahne", "2 Knoblauchzehe(n)"]
+    _, z = _vorschau2(ki_client, zutaten)
     assert z["1 Packung stückige Tomaten"]["neu_name"] == "Stückige Tomaten"
     assert z["2 EL saure Sahne"]["neu_name"] == "Sahne"  # erfundener Name verworfen → Code
+    assert z["2 Knoblauchzehe(n)"]["neu_name"] == "Knoblauch"  # Code-Synonym bleibt
