@@ -297,7 +297,28 @@ Gemüsebrühe, Dose/Tube/Becher/Paket mit Menge, saure Sahne und Dosentomaten ge
 Fehler: Pflanzenöl neben Öl, Spaghetti einmal Spaghettini, einmal neu; Grenzfälle Schafskäse/Feta,
 Peperoni/Chilischote; Varianten teils schief (Couscous → Jasminreis, Reis → Jasminreis statt
 umgekehrt, getrocknete Tomaten → Tomate). Kosten ≈ 1,5 ct je Rezept (gpt-4.1, viel Ausgabe durch
-Begründung und Attribute), Vorschau bis ≈ 19 s. Die Vorschau
+Begründung und Attribute), Vorschau bis ≈ 19 s.
+
+**Modellwahl Import (Entscheidung Nils 2026-11-24): pragmatischer Katalog, gpt-6.2-sol über
+„OpenAI direkt“** (Job `import`, echte Tokens und Kosten im KI-Protokoll; Preise in
+Einstellungen → KI, € je 1 Mio. Tokens). Benchmark: künstliches Rezept mit 30 kniffligen
+Zutaten gegen den Testkatalog (117 Produkte), je Lauf echte Kosten:
+
+| Modell | genau richtig | + als richtige Variante | Kosten/Lauf | Dauer |
+|---|---|---|---|---|
+| gpt-4.1 | 23–26 | +0–1 | 2,9 ct | 14 s |
+| gpt-6-luna | 26–28 | +1 | 0,2 ct | 30 s |
+| gpt-6.1-terra | 24–25 | einzelne | 1,8 ct | 40 s |
+| gpt-6.2-sol | 24 | +4 | 4,9 ct | 58 s |
+| gpt-6.2-astra | 23 | +6 | 13,7 ct | 40 s |
+| **gpt-6.2-sol + pragmatische Regel (0.29.11)** | **29, 29** | +1 | 3,9 ct | 50–57 s |
+
+Die stärkeren Modelle waren nicht schlechter, sondern feiner (Rinderhack, Fleischtomaten,
+Sonnenblumenöl als eigene Varianten). Gewollt ist ein pragmatischer Haushaltsvorrat: im Haushalt
+austauschbare Sorten sind ein Treffer, Varianten nur für bewusst getrennt gekaufte Sorten, die das
+Gericht verändern (Vollkorn-Penne, Kirschtomaten, Olivenöl). Die Beispiele im Prompt stammen
+bewusst nicht aus dem Benchmark. Typisches Rezept (8–15 offene Zutaten): ≈ 1,5–2,5 ct.
+Offen: Vorschau dauert mit Sol ~1 min, in der UI im Hintergrund laufen lassen. Die Vorschau
 zeigt alles, der Klick auf „Übernehmen“ ist das Review; neue Produkte entstehen dann mit
 Attributen und Oberprodukt. Aliase merken die Quelle: unverändert übernommene KI-Vorschläge
 (`quelle = ki`) gelten beim nächsten Import nicht als sicher und gehen wieder an die KI, damit sich
