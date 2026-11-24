@@ -269,3 +269,16 @@ def test_ki_nummern_statt_rezept_index(ki_client, fake_ha, fake_backend):
     assert z["½ Stück Zitrone, gewachst"]["produkt_id"] == zitrone
     assert z["1 g Paprika, edelsüß"]["aktion"] == "neu"
     assert z["1 g Paprika, edelsüß"]["kategorie"] == "Gewürze"
+
+
+def test_aehnliche_kandidaten():
+    from app.inventory.base import Product
+    from app.llm_import import aehnliche
+    from app.rezept_import import Zuordnung
+
+    namen = ["Paprika", "Paprikapulver", "Salz", "Frühlingszwiebel", "Zwiebel"]
+    ps = [Product(str(i), n, "g") for i, n in enumerate(namen)]
+    edel = aehnliche(Zuordnung(0, "1 g Paprika, edelsüß", "Paprika, edelsüß", 1, "g"), ps)
+    assert "1 Paprikapulver" in edel and "Salz" not in edel
+    lauch = aehnliche(Zuordnung(0, "4 Lauchzwiebeln", "Lauchzwiebeln", 4, None), ps)
+    assert "3 Frühlingszwiebel" in lauch

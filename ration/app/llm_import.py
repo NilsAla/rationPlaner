@@ -13,11 +13,20 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 
 from app.inventory.base import Product, TrackingMode
 from app.kategorisierung import KATEGORIEN, produkt_werte
-from app.rezept_import import STUECK, RohZutat, Zuordnung, aehnlichkeit, gramm, kern_name
+from app.rezept_import import (
+    STUECK,
+    RohZutat,
+    Zuordnung,
+    _staemme,
+    aehnlichkeit,
+    gramm,
+    kern_name,
+)
 
 log = logging.getLogger("ration.ki")
 
@@ -36,7 +45,8 @@ ANWEISUNG = """Du ordnest die Zutaten eines Rezepts den Produkten eines Haushalt
 Katalog (id|name|einheit|kategorie|oberprodukt):
 {katalog}
 
-Zutaten (nr: Originaltext | Einheit der Mengenangabe | Vorschlag des Codes):
+Zutaten (nr: Originaltext | Einheit der Mengenangabe | Vorschlag des Codes | ähnliche
+Katalogprodukte):
 {zutaten}
 
 Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
@@ -52,6 +62,8 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
    Sesamöl ≠ Olivenöl, Salz ≠ Öl. Im Zweifel "neu".
    Steht "fest" beim Vorschlag, ist das Produkt gesetzt: gib dieselbe produkt_id zurück.
    Steht ein anderer Vorschlag dabei, prüfe ihn und korrigiere ihn, wenn er falsch ist.
+   Prüfe die ähnlichen Katalogprodukte zuerst; "neu" nur, wenn keins davon und auch sonst
+   kein Katalogprodukt dasselbe Lebensmittel ist.
 3. Sonst aktion "neu" (das Produkt wird angelegt, produkt_id leer). Dann zusätzlich:
    - tracking_modus: "exakt" (verderblich: Frischgemüse, Fleisch, Milchprodukte),
      "menge" (lange haltbar, Menge zählt: Nudeln, Reis, Dosen, Zwiebeln, Kartoffeln),
@@ -63,10 +75,12 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
    - variante_von: id eines Katalogprodukts, für das das neue Produkt im Rezept einspringen
      kann, weil es eine Sorte davon ist (Vollkorn-Penne → Penne, Spitzpaprika → Paprika,
      Kirschtomaten → Tomate). Nur Produkte ohne eigenes Oberprodukt. Sonst leer.
-4. g_je_einheit: Gramm für genau 1 Einheit der Mengenangabe (1 Stück, Packung, Dose, Tube,
+4. Immer angeben, auch bei "zuordnen":
+   g_je_einheit: Gramm für genau 1 Einheit der Mengenangabe (1 Stück, Packung, Dose, Tube,
    Bund, EL, TL, Zehe, Prise; typische Handelsgröße, z. B. 1 Dose Tomaten 400).
    Bei g/kg/ml/l oder ohne Menge: 0.
-5. stueck_g: Gewicht eines Stücks in Gramm, wenn man es stückweise kauft, sonst 0."""
+   stueck_g: Gewicht eines Stücks in Gramm, wenn man es stückweise kauft (Zitrone 100,
+   Zwiebel 80), sonst 0."""
 
 
 def _feld(selector: dict, required: bool = False) -> dict:
@@ -124,6 +138,27 @@ def offen(z: Zuordnung) -> bool:
     return not z.sicher or z.status == "pruefen"
 
 
+KANDIDATEN = 5
+
+
+def aehnliche(z: Zuordnung, produkte: list[Product]) -> str:
+    """Bis zu fünf Katalogprodukte mit Namensbezug (Code filtert vor, die KI wählt aus).
+    Live: ohne Liste übersah gpt-4.1 „Paprikapulver“ für „Paprika, edelsüß“."""
+    kern = kern_name(z.name)
+    endung = _staemme(kern)[-1:] or [""]
+
+    def wert(p: Product) -> float:
+        s = max(aehnlichkeit(kern, p.name), aehnlichkeit(z.name, p.name))
+        # gleiches Grundwort am Ende: Lauchzwiebel ~ Frühlingszwiebel
+        letzte = _staemme(p.name)[-1:] or [""]
+        if len(os.path.commonprefix([endung[0][::-1], letzte[0][::-1]])) >= 5:
+            s = max(s, 0.3)
+        return s
+
+    wertung = sorted(((wert(p), p) for p in produkte), key=lambda x: -x[0])
+    return ", ".join(f"{p.id} {p.name}" for s, p in wertung[:KANDIDATEN] if s > 0)
+
+
 def offene(zuordnung: list[Zuordnung]) -> list[Zuordnung]:
     """Die Zutaten, die an die KI gehen, in fester Reihenfolge (nr = Position + 1)."""
     return [z for z in zuordnung if offen(z)]
@@ -147,7 +182,7 @@ def anweisung(zuordnung: list[Zuordnung], produkte: list[Product]) -> str:
     # eigene Nummern 1…n statt Rezept-Index: live zählte die KI sonst selbst (3, 7 → 1, 2)
     zutaten = "\n".join(
         f"{nr}: {z.text} | {z.einheit or ('ohne Menge' if z.menge is None else 'Stück')}"
-        f" | {vorschlag(z)}"
+        f" | {vorschlag(z)} | {aehnliche(z, produkte) or '-'}"
         for nr, z in enumerate(offene(zuordnung), 1)
     )
     return ANWEISUNG.format(katalog=katalog, zutaten=zutaten, kategorien=", ".join(KATEGORIEN))
