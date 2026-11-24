@@ -298,3 +298,16 @@ def test_ki_name_nur_aus_zutatentext(ki_client, fake_ha):
     assert z["1 Packung stückige Tomaten"]["neu_name"] == "Stückige Tomaten"
     assert z["2 EL saure Sahne"]["neu_name"] == "Sahne"  # erfundener Name verworfen → Code
     assert z["2 Knoblauchzehe(n)"]["neu_name"] == "Knoblauch"  # Code-Synonym bleibt
+
+
+def test_variante_nur_gleiche_kategorie(ki_client, fake_ha, fake_backend):
+    paprika = _produkt(fake_backend, "Paprika", "Gemüse")
+    fake_ha.ki_antwort = {
+        "zutaten": [
+            {"index": 1, "kategorie": "Gewürze", "aktion": "neu", "variante_von": paprika},
+            {"index": 2, "kategorie": "Gemüse", "aktion": "neu", "variante_von": paprika},
+        ]
+    }
+    _, z = _vorschau2(ki_client, ["1 TL Paprikapulver", "2 Stück Spitzpaprika"])
+    assert z["1 TL Paprikapulver"]["variante_von"] is None
+    assert z["2 Stück Spitzpaprika"]["variante_von"]["produkt_id"] == paprika

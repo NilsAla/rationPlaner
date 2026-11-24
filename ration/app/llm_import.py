@@ -77,10 +77,11 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
    - ablauf_typ: "verbrauchsdatum" nur bei Fleisch, Fisch, Hack; sonst "mhd".
    - haltbarkeit_tage: ungeöffnet ab Kauf in TAGEN (-1 = praktisch unbegrenzt, nie 0).
    - haltbarkeit_offen_tage: nach dem Öffnen in Tagen (0, wenn Öffnen nichts ändert).
-   - variante_von: id eines Katalogprodukts, für das das neue Produkt im Rezept einspringen
-     kann, weil es eine eigene Sorte davon ist, die man getrennt kauft (Vollkorn-Penne →
-     Penne, Spitzpaprika → Paprika, Kirschtomaten → Tomate, Olivenöl → Öl). Nur Produkte ohne
-     eigenes Oberprodukt. Sonst leer.
+   - variante_von: id eines Katalogprodukts derselben Kategorie, das das neue Produkt im
+     Rezept 1:1 ersetzen kann, weil es eine eigene Sorte davon ist, die man getrennt kauft
+     (Vollkorn-Penne → Penne, Kirschtomaten → Tomate, Olivenöl → Öl). Keine Variante:
+     Tomatenmark von Dosentomaten, Paprikapulver von Paprika. Nur Produkte ohne eigenes
+     Oberprodukt. Sonst leer.
 4. Immer angeben, auch bei "zuordnen":
    g_je_einheit: Gramm für genau 1 Einheit der Mengenangabe (1 Stück, Packung, Dose, Tube,
    Bund, EL, TL, Zehe, Prise; typische Handelsgröße, z. B. 1 Dose Tomaten 400).
@@ -326,8 +327,10 @@ def _attribute(z: Zuordnung, e: dict, kategorie: str | None, by_id: dict[str, Pr
     werte = produkt_werte(e, Product(id="", name=name, unit="g", category=kategorie))
     z.attribute = {k: v for k, v in werte.items() if k in ATTRIBUTE}
     oben = by_id.get(str(e.get("variante_von") or "").strip())
-    # Grocy kennt eine Ebene; Varianten brauchen dieselbe Bestandseinheit (neu: g)
-    if oben and not oben.parent_id and oben.unit.strip().lower() == "g":
+    # Grocy kennt eine Ebene; Varianten brauchen dieselbe Bestandseinheit (neu: g) und dieselbe
+    # Kategorie (live: Paprikapulver als Variante der Gemüse-Paprika)
+    gleiche_kat = oben is not None and (not oben.category or oben.category == kategorie)
+    if oben and not oben.parent_id and oben.unit.strip().lower() == "g" and gleiche_kat:
         z.variante_von = {"produkt_id": oben.id, "name": oben.name}
     else:
         z.variante_von = None
