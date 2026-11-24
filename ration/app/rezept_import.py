@@ -14,7 +14,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from html import escape, unescape
-from urllib.parse import urlsplit
+from urllib.parse import urldefrag, urlsplit
 
 import httpx
 
@@ -182,6 +182,73 @@ def json_ld_rezept(html: str) -> dict:
     raise ImportError_("Kein schema.org/Recipe auf der Seite gefunden")
 
 
+_BLOCK = re.compile(r"<(h[1-4]|ul|ol)\b[^>]*>(.*?)</\1>", re.S | re.I)
+_ZUTATEN = re.compile(r"(?i)^zutaten\b")
+_ZUBEREITUNG = re.compile(r"(?i)^(zubereitung|anleitung|so geht'?s)\b")
+
+
+def rezept_aus_ueberschriften(html: str) -> dict:
+    """Rezept ohne JSON-LD (z. B. Chefkoch-Magazinartikel) als schema.org/Recipe-Dict.
+
+    Gesucht wird eine Überschrift „Zutaten (für N Portionen)“, danach Listen als Zutaten bis
+    „Zubereitung“, danach Listen als Schritte bis zur nächsten h2 oder dem nächsten Rezept.
+    Name ist die Überschrift direkt davor, sonst die h1 bis zum Doppelpunkt. Nur das erste
+    Rezept der Seite; weitere (Galerie, „Das passt dazu“) bleiben eigene Links.
+    """
+    bloecke = [(m.group(1).lower(), m.group(2)) for m in _BLOCK.finditer(html)]
+    start = next(
+        (
+            i
+            for i, (tag, inhalt) in enumerate(bloecke)
+            if tag.startswith("h") and _ZUTATEN.match(_klartext(inhalt))
+        ),
+        None,
+    )
+    if start is None:
+        raise ImportError_("Kein schema.org/Recipe und keine Überschrift „Zutaten“ gefunden")
+    kopf = _klartext(bloecke[start][1])
+    name = next((_klartext(x) for tag, x in reversed(bloecke[:start]) if tag in ("h2", "h3")), "")
+    if not name and (m := re.search(r"<h1[^>]*>(.*?)</h1>", html, re.S | re.I)):
+        name = _klartext(m.group(1)).split(":")[0]
+    zutaten: list[str] = []
+    schritte: list[dict] = []
+    in_schritten = False
+    for tag, inhalt in bloecke[start + 1 :]:
+        text = re.sub(r"\s+", " ", _klartext(inhalt)).strip()
+        if tag.startswith("h"):
+            if _ZUBEREITUNG.match(text):
+                in_schritten = True
+            elif _ZUTATEN.match(text) or (in_schritten and (tag in ("h1", "h2") or not text)):
+                break  # nächstes Rezept oder nächster Abschnitt
+            elif in_schritten and schritte:
+                schritte.append({"@type": "HowToStep", "text": f"{text.rstrip(':')}:"})
+            continue
+        punkte = [
+            t
+            for li in re.findall(r"<li\b[^>]*>(.*?)</li>", inhalt, re.S | re.I)
+            if (t := re.sub(r"\s+", " ", _klartext(li)).strip())
+        ]
+        if in_schritten:
+            schritte += [{"@type": "HowToStep", "text": t} for t in punkte]
+        else:
+            zutaten += punkte
+    return {
+        "@type": "Recipe",
+        "name": name,
+        "recipeYield": kopf,
+        "recipeIngredient": zutaten,
+        "recipeInstructions": schritte,
+    }
+
+
+def rezept_daten(html: str) -> dict:
+    """schema.org/Recipe aus JSON-LD, sonst aus den Überschriften der Seite."""
+    try:
+        return json_ld_rezept(html)
+    except ImportError_:
+        return rezept_aus_ueberschriften(html)
+
+
 def _zahl(text: str) -> float | None:
     text = text.strip()
     for zeichen, wert in BRUECHE.items():
@@ -205,7 +272,7 @@ ZUSATZ = re.compile(
     r"frisch\s+gemahlen(?:er|es|e)?|aus\s+der\s+mühle)(?![\wäöüß])"
 )
 # "Salz und Pfeffer" ohne Menge: zwei Zutaten
-PAAR = re.compile(r"^([A-ZÄÖÜ][\wäöüß-]+)\s+(?:und|&|\+|sowie)\s+([A-ZÄÖÜ][\wäöüß-]+)$")
+PAAR = re.compile(r"^([A-ZÄÖÜ][\wäöüß-]+)(?:\s*,\s*|\s+(?:und|&|\+|sowie)\s+)([A-ZÄÖÜ][\wäöüß-]+)$")
 
 
 def _ohne_zusatz(text: str) -> str:
@@ -302,6 +369,9 @@ def schritte_aus(instructions: object) -> list[str]:
         if "itemListElement" in instructions:
             unter = schritte_aus(instructions["itemListElement"])
             titel = _klartext(instructions.get("name") or "")
+            # „Zubereitung:“ als einziger Abschnitt (Chefkoch) ist kein Schritt
+            if _ZUBEREITUNG.match(titel):
+                titel = ""
             if titel and unter and instructions.get("@type") == "HowToSection":
                 return [f"{titel}:", *unter]
             return unter
@@ -315,8 +385,16 @@ def schritte_begrenzen(schritte: list[str]) -> list[str]:
     return [s[:MAX_SCHRITT_ZEICHEN] for s in schritte if s][:MAX_SCHRITTE]
 
 
+def _name(data: dict, quelle: str) -> str:
+    name = unescape(str(data.get("name") or "Importiertes Rezept")).strip()
+    if "chefkoch" in quelle:  # „… von Mirko1710“: Chefkoch hängt den Nutzernamen an
+        name = re.sub(r"\s+von\s+\S+$", "", name)
+    return name
+
+
 def rezept_aus_html(html: str, url: str) -> RohRezept:
-    data = json_ld_rezept(html)
+    url = urldefrag(url.strip()).url  # „#gallery-…“ gehört nicht zum Rezept
+    data = rezept_daten(html)
     quelle, quelle_id = quelle_von(url)
     from app.fotos import bilder_aus_html
 
@@ -325,10 +403,10 @@ def rezept_aus_html(html: str, url: str) -> RohRezept:
     if not zutaten:
         raise ImportError_("Rezept ohne Zutatenliste")
     return RohRezept(
-        name=unescape(str(data.get("name") or "Importiertes Rezept")).strip(),
+        name=_name(data, quelle),
         portionen=_portionen(data.get("recipeYield")),
         zutaten=zutaten,
-        url=url.strip(),
+        url=url,
         quelle=quelle,
         quelle_id=quelle_id,
         schritte=schritte_begrenzen(schritte_aus(data.get("recipeInstructions"))),

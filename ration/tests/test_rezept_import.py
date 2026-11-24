@@ -1,5 +1,6 @@
 """Rezept-Import: JSON-LD lesen, Zutaten parsen, zuordnen, Review übernehmen."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -205,3 +206,59 @@ def test_gramm_esslöffel_oel():
     assert ri.gramm(z, z.name)[0] == pytest.approx(13.8)
     z = ri.zutat_parsen("2 Teelöffel Zucker")
     assert ri.gramm(z, z.name)[:2] == (8.0, "schaetzung")
+
+
+# Aufbau wie ein Chefkoch-Magazinartikel (kein JSON-LD-Rezept), Inhalt ausgedacht
+ARTIKEL = """<html><head>
+<meta property="og:image" content="https://img.example.org/artikel/haupt.jpg">
+<script type="application/ld+json">{"@type": "NewsArticle", "headline": "x"}</script>
+</head><body><h1>Testauflauf: Schnell gemacht</h1>
+<h2>So gelingt er</h2><p>Text</p>
+<h2 id="t">Testauflauf mit Brokkoli</h2>
+<ul><li><strong>Arbeitszeit</strong>: ca. 10 Min.</li></ul>
+<h3>Zutaten für 3 Portionen:</h3>
+<ul><!--[--><li>300 g Brokkoli</li><li>Salz, Pfeffer</li><!--]--></ul>
+<h3>Zubereitung </h3>
+<ol><li>Ofen auf 200 Grad vorheizen.</li><li>Brokkoli <b>backen</b>.</li></ol>
+<p>Fazit</p><h2>Tipps der Redaktion</h2><ul><li>kein Schritt</li></ul>
+<h2>Weitere Rezepte</h2><h3>Zutaten für 2 Portionen:</h3><ul><li>1 Ei</li></ul>
+</body></html>"""
+ARTIKEL_URL = "https://www.chefkoch.de/magazin/artikel/123-testauflauf#gallery-recipeGallery0-4"
+
+
+def test_rezept_aus_ueberschriften():
+    r = ri.rezept_aus_html(ARTIKEL, ARTIKEL_URL)
+    assert r.name == "Testauflauf mit Brokkoli" and r.portionen == 3
+    assert r.url == "https://www.chefkoch.de/magazin/artikel/123-testauflauf"
+    assert [(z.menge, z.einheit, z.name) for z in r.zutaten] == [
+        (300, "g", "Brokkoli"),
+        (None, None, "Salz"),
+        (None, None, "Pfeffer"),
+    ]
+    assert r.schritte == ["Ofen auf 200 Grad vorheizen.", "Brokkoli backen."]
+    assert r.bild == "https://img.example.org/artikel/haupt.jpg"
+
+
+def test_chefkoch_rezeptseite_aufgeraeumt():
+    ld = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "Recipe",
+                "name": "Testnudeln von Koch123",
+                "recipeYield": ["2", "2 Portionen"],
+                "recipeIngredient": ["200 g Nudeln"],
+                "recipeInstructions": [
+                    {
+                        "@type": "HowToSection",
+                        "name": "Zubereitung",
+                        "itemListElement": [{"@type": "HowToStep", "text": "Kochen."}],
+                    }
+                ],
+            }
+        ],
+    }
+    html = f'<script type="application/ld+json">{json.dumps(ld)}</script>'
+    r = ri.rezept_aus_html(html, "https://www.chefkoch.de/rezepte/1/Testnudeln.html")
+    assert r.name == "Testnudeln" and r.portionen == 2
+    assert r.schritte == ["Kochen."]

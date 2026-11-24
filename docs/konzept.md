@@ -241,6 +241,13 @@ Schritt pro Zeile) und landen als `<p>`-Absätze in der Grocy-Beschreibung, daru
 Quellenlink, den `kueche.schritte()` beim Lesen wieder herausfiltert. Bilder werden weiterhin
 nicht übernommen, das Repo enthält weiterhin keine Rezeptdaten.
 Blockt eine Seite den Abruf, kann der Quelltext eingefügt werden.
+**Seiten ohne JSON-LD** (z. B. Chefkoch-Magazinartikel, 0.28.6): `rezept_aus_ueberschriften`
+baut aus dem HTML ein schema.org/Recipe-Dict: Überschrift „Zutaten (für N Portionen)“, Listen
+danach als Zutaten bis „Zubereitung“, dann Listen als Schritte bis zur nächsten h2 oder dem
+nächsten Rezept. Name ist die Überschrift davor, Hauptbild `og:image`. Nur das erste Rezept der
+Seite. Galerie-Links sind eigene Rezepte, ein `#fragment` am Link wird verworfen. Chefkoch-
+Rezeptseiten: „… von <Nutzer>“ fällt aus dem Namen weg, ein einzelner Abschnitt „Zubereitung“
+wird nicht zum Schritt. Chefkoch hat keine Schrittbilder.
 
 **KI-Zuordnung** (`app/llm_import.py`, wenn `ai_task_entity` gesetzt, abschaltbar mit `ki: false`):
 Nach dem Code-Lauf gehen nur die offenen Zutaten (Aktion „neu“) mit dem Produktkatalog

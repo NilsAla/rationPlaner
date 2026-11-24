@@ -409,7 +409,7 @@ async def fotos_von_quelle(
         raise HTTPException(422, "Rezept hat keinen Link zur Quelle")
     try:
         html = await rezept_import.laden(m.url)
-        ld = rezept_import.json_ld_rezept(html)
+        ld = rezept_import.rezept_daten(html)
     except rezept_import.ImportError_ as err:
         raise HTTPException(422, str(err)) from err
     haupt, schritte = bilder_aus_html(html, ld)
