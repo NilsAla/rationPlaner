@@ -258,6 +258,15 @@ Mengen mit „ca.“ davor, „1 kl. Glas“ und „Essig*“ werden erkannt (0.
 („Das perfekte Dinner“, mehrere verlinkte Rezepte, keine Karte) melden, dass ein einzelner
 Rezeptlink nötig ist. Stichprobe 2026-11-24: 45 Seiten (15 HelloFresh, 15 Chefkoch-Rezepte,
 15 Magazin) ok, außer Sammelseiten und einem Produktartikel ohne Rezept.
+**Dubletten-Großtest (0.28.10):** 30 Paprika-/Nudel-/Gemüserezepte von HelloFresh und Chefkoch
+nacheinander mit Ein-Klick-Vorschlag importiert, ohne KI. Danach: Einheiten Tube, Zweig, Stiel,
+Stängel, Kugel, Paket, Kopf (auch „Stiel/e“, „Zweige“); Zusätze hinter dem Namen („multicolor“,
+„geraspelt“, „ital. Art“, „vom Weiderind“) und HelloFresh-Kräutermix („Basilikum/Oregano“ →
+erste Sorte) fallen weg; Synonyme Paprikaschote→Paprika, Muskatnuss→Muskat,
+Hackfleischzubereitung→Hackfleisch, Öl→Pflanzenöl; Salz-/Kochwasser wird weggelassen. **Feste
+Begriffe** behalten ihr Adjektiv (saure Sahne, stückige/passierte/geschälte/getrocknete Tomaten),
+auch im Alias-Schlüssel. Chefkoch-PLUS-Rezepte (Paywall, kein JSON-LD) werden abgelehnt; der
+Überschriften-Fallback braucht Zubereitungsschritte, sonst kein Rezept.
 
 **KI-Zuordnung** (`app/llm_import.py`, wenn `ai_task_entity` gesetzt, abschaltbar mit `ki: false`):
 Nach dem Code-Lauf gehen nur die offenen Zutaten (Aktion „neu“) mit dem Produktkatalog

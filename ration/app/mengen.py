@@ -107,12 +107,35 @@ DICHTE: dict[str, float] = {
 }
 LOEFFEL_ML = {"el": 15.0, "tl": 5.0}
 LOEFFEL_FEST_G = {"el": 10.0, "tl": 4.0}  # Pulver, Paste, Gewürz
-KLEIN_G = {"prise": 0.5, "msp": 0.5, "messerspitze": 0.5, "schuss": 10.0, "spritzer": 5.0}
+KLEIN_G = {
+    "prise": 0.5,
+    "msp": 0.5,
+    "messerspitze": 0.5,
+    "schuss": 10.0,
+    "spritzer": 5.0,
+    "zweig": 1.0,  # Kräuter: Zweig, Stiel, Stängel
+    "stiel": 1.0,
+    "stängel": 1.0,
+}
 
 # Zutaten-Namen, die auf ein allgemeineres Produkt gehen, mit eigenem Stückgewicht
-SYNONYM: dict[str, str] = {"knoblauchzeh": "Knoblauch", "möhr": "Karotte"}
+SYNONYM: dict[str, str] = {
+    "knoblauchzeh": "Knoblauch",
+    "möhr": "Karotte",
+    "paprikaschot": "Paprika",
+    "muskatnus": "Muskat",
+    "hackfleischzubereitung": "Hackfleisch",
+    "öl": "Pflanzenöl",  # HelloFresh „Öl“ = neutrales Öl
+}
 # Nie als Zutat übernehmen
-WEGLASSEN: set[str] = {"wasser", "leitungswasser", "eiswürfel"}
+WEGLASSEN: set[str] = {
+    "wasser",
+    "leitungswasser",
+    "eiswürfel",
+    "salzwasser",
+    "kochwasser",
+    "nudelwasser",
+}
 
 
 def nachschlagen(tabelle: dict[str, float], staemme: list[str]) -> float | None:

@@ -50,6 +50,11 @@ EINHEITEN = (
         "flasche",
         "netz",
         "handvoll",
+        "tube",
+        "kugel",
+        "zweig",
+        "stiel",
+        "stängel",
         "cl",
         "dl",
     }
@@ -80,6 +85,11 @@ EINHEIT_ALIAS = {
     "pkg": "packung",
     "päckchen": "packung",
     "kopf": "stück",  # "1 Kopf Brokkoli"
+    "paket": "packung",
+    "tuben": "tube",
+    "kugeln": "kugel",
+    "zweige": "zweig",
+    "stiele": "stiel",
     "köpfe": "stück",
 }
 
@@ -200,6 +210,8 @@ def rezept_aus_ueberschriften(html: str) -> dict:
     Name ist die Überschrift direkt davor, sonst die h1 bis zum Doppelpunkt. Nur das erste
     Rezept der Seite; weitere (Galerie, „Das passt dazu“) bleiben eigene Links.
     """
+    if "ds-subscription-card--plus" in html:
+        raise ImportError_("Chefkoch-PLUS-Rezept: nur mit Abo sichtbar, Import nicht möglich")
     bloecke = [(m.group(1).lower(), m.group(2)) for m in _BLOCK.finditer(html)]
     start = next(
         (
@@ -237,6 +249,8 @@ def rezept_aus_ueberschriften(html: str) -> dict:
             schritte += [{"@type": "HowToStep", "text": t} for t in punkte]
         else:
             zutaten += punkte
+    if not schritte:  # ohne Zubereitung ist es kein Rezept (Footer-Listen, Paywall)
+        raise ImportError_("Kein schema.org/Recipe und keine Zubereitungsschritte gefunden")
     return {
         "@type": "Recipe",
         "name": name,
@@ -291,14 +305,16 @@ def _ohne_zusatz(text: str) -> str:
 def zutaten_parsen(text: str) -> list[RohZutat]:
     """Wie zutat_parsen, trennt aber "Salz und Pfeffer" (ohne Menge) in einzelne Zutaten."""
     z = zutat_parsen(text)
-    if z.menge is None and LISTE.match(z.name):
-        return [RohZutat(z.text, None, None, n) for n in re.split(_TRENNER, z.name)]
+    # "Salz und Pfeffer, schwarzer": Zusatz hinter dem Komma stört die Liste
+    liste = re.sub(r",\s*[a-zäöüß][a-zäöüß ]*$", "", z.name)
+    if z.menge is None and LISTE.match(liste):
+        return [RohZutat(z.text, None, None, n) for n in re.split(_TRENNER, liste)]
     return [z]
 
 
 def _einheit(text: str) -> str:
     """Normalform: "Prise(n)" → prise, "Scheibe/n" → scheibe, "Pck." → packung."""
-    e = re.sub(r"(?:\(e?n?\)|/e?n)$", "", text.lower().rstrip("."))
+    e = re.sub(r"(?:\(e?n?\)|/e?n?)$", "", text.lower().rstrip("."))
     return EINHEIT_ALIAS.get(e, e)
 
 
@@ -530,10 +546,39 @@ def _staemme(text: str) -> list[str]:
     return [_stamm(w) for w in _norm(text).split() if len(w) >= 2]
 
 
+# Zusätze hinter dem Produktnamen: "Paprika multicolor", "Hartkäse ital. Art"
+NACHGESTELLT = re.compile(
+    r"(?i)(?:\s+(?:multicolor|glatt|kraus|geraspelt|gerieben|gehackt|getrocknet|frisch|"
+    r"ital\.\s*art|italienischer\s+art|natur|bio))+\s*$"
+)
+
+
+# Feste Begriffe: hier macht das Adjektiv ein anderes Produkt (saure Sahne ist keine Sahne).
+# Beide Schreibweisen: "stückige Tomaten" und "Tomate(n), stückige" bzw. "Tomate(n) (geschälte)".
+def _fest(adjektiv: str, nomen: str) -> re.Pattern[str]:
+    return re.compile(rf"(?i)\b{adjektiv}\s+{nomen}\b|\b{nomen}[\s,(]+{adjektiv}\b")
+
+
+_TOMATE = r"tomate(?:n|\(n\))?"
+FESTE_BEGRIFFE = [
+    (_fest(r"saure[rn]?", "sahne"), "Saure Sahne"),
+    (_fest(r"(?:stückige|gehackte)", _TOMATE), "Stückige Tomaten"),
+    (_fest("passierte", _TOMATE), "Passierte Tomaten"),
+    (_fest("geschälte", _TOMATE), "Geschälte Tomaten"),
+    (_fest("getrocknete", _TOMATE), "Getrocknete Tomaten"),
+]
+
+
 def kern_name(name: str) -> str:
     """Produktname aus dem Zutatentext: Klammern, Zusätze nach Komma und vorangestellte
     Adjektive (klein geschrieben) weg. "vegane weiße Misopaste" → "Misopaste"."""
+    if begriff := _fester_begriff(name):
+        return begriff
     name = re.sub(r"\(.*?\)", " ", name).split(",")[0]
+    # HelloFresh-Kräutermix „Basilikum/Oregano“: erste Sorte
+    name = re.sub(r"(?<=[a-zäöüß])/[A-ZÄÖÜ].*$", "", name)
+    name = NACHGESTELLT.sub("", name)
+    name = re.sub(r"(?<=[a-zäöüß])\s+vom\s+\S+\s*$", "", name)  # "Hackfleisch… vom Weiderind"
     woerter = name.split()
     while len(woerter) > 1 and woerter[0][:1].islower():
         woerter.pop(0)
@@ -589,7 +634,7 @@ def gramm(z: RohZutat, name: str, stueck_g: float | None = None) -> tuple[float 
         if g := mengen.nachschlagen(mengen.BUND_G, staemme):
             return z.menge * g, "schaetzung", f"1 Bund ≈ {g:g} g"
         return None, "pruefen", "Gewicht je Bund unbekannt"
-    if e is None or e in STUECK or (e and e.startswith("zehe")):
+    if e is None or e in STUECK or e == "kugel" or (e and e.startswith("zehe")):
         g = mengen.nachschlagen(mengen.STUECK_G, staemme) or stueck_g
         if e and e.startswith("zehe"):
             g = mengen.STUECK_G["knoblauchzeh"]
@@ -623,7 +668,9 @@ def zuordnen(rezept: RohRezept, produkte: list[Product], aliase: dict[str, str])
         if (pid := aliase.get(alias_key(z.name))) and pid in by_id:
             treffer = by_id[pid]
         else:
-            for kandidat in (z.name, kern, synonym):
+            # Fester Begriff („Tomate(n) (geschälte)“) nicht über den vollen Namen auf „Tomate“
+            fest = _fester_begriff(z.name) is not None
+            for kandidat in (kern,) if fest else (z.name, kern, synonym):
                 if kandidat and (treffer := by_key.get(_schluessel(kandidat))):
                     break
         stueck_g = None
@@ -667,5 +714,10 @@ def quelle_link(url: str, quelle: str) -> str:
     )
 
 
+def _fester_begriff(text: str) -> str | None:
+    return next((begriff for m, begriff in FESTE_BEGRIFFE if m.search(text)), None)
+
+
 def alias_key(text: str) -> str:
-    return _norm(text)
+    """Normalisierter Zutatentext; feste Begriffe („Tomate(n) (geschälte)“) behalten ihren Kern."""
+    return _norm(_fester_begriff(text) or text)

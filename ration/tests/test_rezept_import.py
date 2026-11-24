@@ -35,6 +35,11 @@ URL = "https://www.hellofresh.de/recipes/testpfanne-mit-paprika-0123456789abcdef
         ("2 EL gestr. Mehl", 2, "el", "Mehl"),
         ("1 gehäufter TL Zucker", 1, "tl", "Zucker"),
         ("1 Kopf Brokkoli", 1, "stück", "Brokkoli"),
+        ("4 Stiel/e Oregano", 4, "stiel", "Oregano"),
+        ("1 Tube/n Tomatenmark", 1, "tube", "Tomatenmark"),
+        ("2 Zweige Thymian", 2, "zweig", "Thymian"),
+        ("2 Kugeln Mozzarella", 2, "kugel", "Mozzarella"),
+        ("1 Paket Champignons", 1, "packung", "Champignons"),
         ("2 Zwiebeln, voll", 2, None, "Zwiebeln, voll"),
         ("1 kl. Stück(e) Ingwer", 1, "stück", "Ingwer"),
         ("2 große Zwiebel(n)", 2, None, "große Zwiebel(n)"),
@@ -65,6 +70,7 @@ def test_zutat_parsen(text, menge, einheit, name):
     [
         ("Salz, Pfeffer, Paprika (edelsüß)", ["Salz", "Pfeffer", "Paprika (edelsüß)"]),
         ("Salz, schwarzer Pfeffer", ["Salz", "schwarzer Pfeffer"]),
+        ("Salz und Pfeffer, schwarzer (aus der Mühle)", ["Salz", "Pfeffer"]),
         ("Weißwein, trockener", ["Weißwein, trockener"]),
         ("Mandeln, (gemahlen)", ["Mandeln, (gemahlen)"]),
     ],
@@ -205,6 +211,35 @@ def test_schritte_formen():
 def test_kein_rezept():
     with pytest.raises(ri.ImportError_):
         ri.rezept_aus_html("<html></html>", URL)
+
+
+@pytest.mark.parametrize(
+    ("text", "kern"),
+    [
+        ("Paprika multicolor", "Paprika"),
+        ("Hartkäse ital. Art", "Hartkäse"),
+        ("Hartkäse geraspelt", "Hartkäse"),
+        ("Basilikum/Oregano", "Basilikum"),
+        ("Petersilie glatt/Schnittlauch", "Petersilie"),
+        ("Hackfleischzubereitung vom Weiderind", "Hackfleischzubereitung"),
+        ("Crème fraîche", "Crème fraîche"),
+        ("Pimientos de Padrón", "Pimientos de Padrón"),
+        ("saure Sahne", "Saure Sahne"),
+        ("Tomaten, stückige (ca. 400 g)", "Stückige Tomaten"),
+        ("stückige Tomaten", "Stückige Tomaten"),
+        ("Tomate(n) (geschälte, aus der Dose)", "Geschälte Tomaten"),
+        ("Tomate(n)", "Tomate"),
+        ("getrocknete Tomaten & schwarze Oliven", "Getrocknete Tomaten"),
+        ("rote Zwiebel", "Zwiebel"),
+    ],
+)
+def test_kern_name_zusaetze(text, kern):
+    assert ri.kern_name(text) == kern
+
+
+def test_alias_fester_begriff():
+    assert ri.alias_key("Tomate(n) (geschälte, aus der Dose)") != ri.alias_key("Tomate(n)")
+    assert ri.alias_key("Tomaten, stückige") == ri.alias_key("stückige Tomaten")
 
 
 @pytest.mark.parametrize(
