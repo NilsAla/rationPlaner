@@ -52,19 +52,25 @@ Katalogprodukte):
 Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
 1. kategorie: Kategorie des Lebensmittels in der Zutat, eine aus: {kategorien}.
    pruefung: ein kurzer Satz VOR der Entscheidung: welches Katalogprodukt am besten passt und
-   ob es dasselbe Lebensmittel ist (nur anderes Wort, Farbe, Plural), eine eigene Sorte davon
-   oder etwas anderes. Beispiel: "187 Paprika: dasselbe, Schote ist nur ein anderes Wort".
+   ob es dasselbe Lebensmittel ist, eine im Haushalt austauschbare Sorte (zählt als dasselbe),
+   eine bewusst getrennt gekaufte Sorte oder etwas anderes.
+   Beispiel: "187 Paprika: dasselbe, Schote ist nur ein anderes Wort".
 2. aktion "zuordnen" mit produkt_id, wenn ein Katalogprodukt dasselbe Lebensmittel ist, auch
    unter anderem Namen oder in anderer Schreibweise (Möhre = Karotte, Lauchzwiebel =
    Frühlingszwiebel, Porree = Lauch, Sojasoße = Sojasauce, gelbe Paprika = Paprika,
    Paprika edelsüß = Paprikapulver, Gemüsebrühepulver = Gemüsebrühe). Andere Wörter für
    dasselbe sind ein Treffer, keine Variante: Paprikaschote = Paprika, Knoblauchzehe =
-   Knoblauch, Brokkoliröschen = Brokkoli, Farbe, Größe, Plural, Einzahl. Suche im ganzen
-   Katalog, nicht nur nach dem Vorschlag des Codes.
+   Knoblauch, Brokkoliröschen = Brokkoli, Farbe, Größe, Plural, Einzahl.
+   Wir führen einen pragmatischen Haushaltsvorrat: Auch eine Sorte ist ein Treffer, wenn ein
+   Haushalt sie austauschbar nutzt (man nimmt beim Einkaufen das eine statt des anderen, das
+   Gericht wird praktisch gleich): Schweinehack = Hackfleisch, Rapsöl = Pflanzenöl,
+   Strauchtomate = Tomate, Rinderbrühe = Fleischbrühe, festkochende Kartoffeln = Kartoffeln,
+   Weizenmehl Type 405 = Mehl. Suche im ganzen Katalog, nicht nur nach dem Vorschlag des Codes.
    Kein Treffer ist ein anderes Lebensmittel oder eine andere Verarbeitungsform:
    Paprika edelsüß (Gewürz) ≠ Paprika (Gemüse), Tomatenmark ≠ Tomate, saure Sahne ≠ Sahne,
    Dosentomaten (stückig, passiert, geschält) ≠ frische Tomaten, Süßkartoffel ≠ Kartoffel,
-   Sesamöl ≠ Olivenöl, Salz ≠ Öl. Im Zweifel "neu".
+   Sesamöl ≠ Olivenöl, Salz ≠ Öl. Im Zweifel: würde ein Haushalt beides austauschbar
+   verwenden? Dann zuordnen, sonst "neu".
    Steht "fest" beim Vorschlag, ist das Produkt gesetzt: gib dieselbe produkt_id zurück.
    Steht ein anderer Vorschlag dabei, prüfe ihn und korrigiere ihn, wenn er falsch ist.
    Prüfe die ähnlichen Katalogprodukte zuerst; "neu" nur, wenn keins davon und auch sonst
@@ -81,10 +87,11 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
    - haltbarkeit_tage: ungeöffnet ab Kauf in TAGEN (-1 = praktisch unbegrenzt, nie 0).
    - haltbarkeit_offen_tage: nach dem Öffnen in Tagen (0, wenn Öffnen nichts ändert).
    - variante_von: id eines Katalogprodukts derselben Kategorie, das das neue Produkt im
-     Rezept 1:1 ersetzen kann, weil es eine eigene Sorte davon ist, die man getrennt kauft
-     (Vollkorn-Penne → Penne, Kirschtomaten → Tomate, Olivenöl → Öl). Keine Variante:
-     Tomatenmark von Dosentomaten, Paprikapulver von Paprika. Nur Produkte ohne eigenes
-     Oberprodukt. Sonst leer.
+     Rezept 1:1 ersetzen kann, weil es eine eigene Sorte davon ist, die man bewusst getrennt
+     kauft, weil sie das Gericht verändert (Vollkorn-Penne → Penne, Kirschtomaten → Tomate,
+     Olivenöl → Öl). Austauschbare Sorten sind keine Variante, sondern ein Treffer (siehe 2).
+     Keine Variante: Tomatenmark von Dosentomaten, Paprikapulver von Paprika. Nur Produkte
+     ohne eigenes Oberprodukt. Sonst leer.
 4. Immer angeben, auch bei "zuordnen":
    g_je_einheit: Gramm für genau 1 Einheit der Mengenangabe (1 Stück, Packung, Dose, Tube,
    Bund, EL, TL, Zehe, Prise; typische Handelsgröße, z. B. 1 Dose Tomaten 400).
