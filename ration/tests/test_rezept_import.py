@@ -26,6 +26,13 @@ URL = "https://www.hellofresh.de/recipes/testpfanne-mit-paprika-0123456789abcdef
         ("1 Pck. Pizzateig (260 g)", 1, "packung", "Pizzateig (260 g)"),
         ("3 EL Olivenöl (plus etwas)", 3, "el", "Olivenöl"),
         ("Salz für das Kochwasser", None, None, "Salz"),
+        ("ca. 400 g große Muschelnudeln", 400, "g", "große Muschelnudeln"),
+        ("ca. 1,2 l heiße Gemüsebrühe", 1.2, "l", "heiße Gemüsebrühe"),
+        ("½ Esslöffel Essig*", 0.5, "el", "Essig"),
+        ("Stück Salz", None, None, "Salz"),
+        ("1 kl. Glas Kapern", 1, "glas", "Kapern"),
+        ("1 kl. Stück(e) Ingwer", 1, "stück", "Ingwer"),
+        ("2 große Zwiebel(n)", 2, None, "große Zwiebel(n)"),
         ("0,5 kg Kartoffeln", 0.5, "kg", "Kartoffeln"),
         ("Salz", None, None, "Salz"),
         ("1 Esslöffel Öl", 1, "el", "Öl"),
@@ -118,6 +125,14 @@ def test_rezept_karte_im_artikel(monkeypatch):
 
     r = asyncio.run(ri.rezept_laden("https://www.chefkoch.de/magazin/artikel/1-burger", KARTE))
     assert r.name == "Test-Burger" and r.url.endswith("/rezepte/42/Test-Burger.html")
+
+
+def test_sammelseite_klare_meldung():
+    import asyncio
+
+    html = "".join(f'<a href="https://www.chefkoch.de/rezepte/{i}/X.html">x</a>' for i in (1, 2, 3))
+    with pytest.raises(ri.ImportError_, match="verlinkt 3 Rezepte"):
+        asyncio.run(ri.rezept_laden("https://www.chefkoch.de/magazin/artikel/1-dinner", html))
 
 
 def test_salz_und_pfeffer_getrennt():

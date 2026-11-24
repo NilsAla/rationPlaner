@@ -294,20 +294,39 @@ def zutaten_parsen(text: str) -> list[RohZutat]:
     return [z]
 
 
+def _einheit(text: str) -> str:
+    """Normalform: "Prise(n)" → prise, "Scheibe/n" → scheibe, "Pck." → packung."""
+    e = re.sub(r"(?:\(e?n?\)|/e?n)$", "", text.lower().rstrip("."))
+    return EINHEIT_ALIAS.get(e, e)
+
+
+def _ist_einheit(text: str) -> bool:
+    return _einheit(text) in EINHEITEN
+
+
 def zutat_parsen(text: str) -> RohZutat:
     """'250 g Spitzpaprika', '½ Stück Zwiebel', '2 EL Olivenöl', 'Salz', 'Salz nach Geschmack'."""
     original = re.sub(r"\s+", " ", unescape(text)).strip()
     clean = _ohne_zusatz(original) or original
+    clean = re.sub(r"(?<=[\wäöüß.)])\*", "", clean)  # HelloFresh-Vorrat: "Essig*"
+    clean = re.sub(r"(?i)^(?:ca\.?|circa|etwa|ungefähr|rund)\s+(?=[\d½¼¾⅓⅔⅛])", "", clean)
+    # "1 kl. Glas Kapern": Größe vor der Einheit fällt weg
+    clean = re.sub(
+        r"(?i)^([\d.,/½¼¾⅓⅔⅛\s]+)(?:kl\.|gr\.|kleine[snr]?|große[snr]?)\s+(?=([^\d\s]+)\s)",
+        lambda m: m.group(1) if _ist_einheit(m.group(2)) else m.group(0),
+        clean,
+    )
     # Einheit ohne Zahl: "Prise Salz", "Schuss Essig" → 1
     if m := re.match(r"^([^\d\s]+)\s+(.+)$", clean):
         e = EINHEIT_ALIAS.get(m.group(1).lower().rstrip("."), m.group(1).lower().rstrip("."))
         if e in {"prise", "msp", "messerspitze", "schuss", "spritzer", "handvoll", "bund"}:
             return RohZutat(original, 1.0, e, m.group(2).strip())
+        if e in STUECK:  # "Stück Salz" (ältere HelloFresh-Rezepte): keine Menge
+            return RohZutat(original, None, None, m.group(2).strip())
     zahl = r"(\d+(?:[.,]\d+)?(?:\s*/\s*\d+)?(?:\s*[½¼¾⅓⅔⅛])?|[½¼¾⅓⅔⅛])"
     m = re.match(rf"^{zahl}\s*(?:-\s*[\d.,]+\s*)?([^\d\s]+\.?)?\s+(.+)$", clean)
     if m and (menge := _zahl(m.group(1))) is not None:
-        einheit = re.sub(r"(?:\(e?n?\)|/e?n)$", "", (m.group(2) or "").lower().rstrip("."))
-        einheit = EINHEIT_ALIAS.get(einheit, einheit)
+        einheit = _einheit(m.group(2) or "")
         name = m.group(3)
         if einheit and einheit not in EINHEITEN:  # "2 Zwiebeln" → keine Einheit
             name, einheit = f"{m.group(2)} {name}", ""
@@ -448,6 +467,13 @@ async def rezept_laden(url: str, html: str | None = None) -> RohRezept:
         return rezept_aus_html(html, url)
     except ImportError_:
         if not (ziel := rezept_karte(html)):
+            # Sammelseite („Das perfekte Dinner“): welches Rezept gemeint ist, weiß nur der Nutzer
+            n = len(set(re.findall(r'href="(https://www\.chefkoch\.de/rezepte/\d+/)', html)))
+            if n >= 2:
+                raise ImportError_(
+                    f"Die Seite enthält kein einzelnes Rezept, sondern verlinkt {n} Rezepte. "
+                    "Bitte den Link eines dieser Rezepte einfügen."
+                ) from None
             raise
     return rezept_aus_html(await laden(ziel), ziel)
 

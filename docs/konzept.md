@@ -254,7 +254,10 @@ Rezept (0.28.7). HelloFresh: Mengen für 3/4 Personen in eckigen Klammern („30
 600 ml]“) und Vorrats-Sternchen fallen aus den Schritten. Der Name kommt aus `__NEXT_DATA__`,
 Untertitel mit Zahlen (Werbung) fallen weg. Gewürzlisten ohne Menge („Salz, Pfeffer, Muskat“)
 werden einzelne Zutaten, Einheiten wie „Prise(n)“, „Scheibe/n“, „Pck.“ werden normalisiert.
-Stichprobe 2026-11-24: je 5 HelloFresh-, Chefkoch-Rezept- und Magazinseiten fehlerfrei.
+Mengen mit „ca.“ davor, „1 kl. Glas“ und „Essig*“ werden erkannt (0.28.8). Sammelseiten
+(„Das perfekte Dinner“, mehrere verlinkte Rezepte, keine Karte) melden, dass ein einzelner
+Rezeptlink nötig ist. Stichprobe 2026-11-24: 45 Seiten (15 HelloFresh, 15 Chefkoch-Rezepte,
+15 Magazin) ok, außer Sammelseiten und einem Produktartikel ohne Rezept.
 
 **KI-Zuordnung** (`app/llm_import.py`, wenn `ai_task_entity` gesetzt, abschaltbar mit `ki: false`):
 Nach dem Code-Lauf gehen nur die offenen Zutaten (Aktion „neu“) mit dem Produktkatalog
