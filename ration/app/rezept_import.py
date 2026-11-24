@@ -76,6 +76,9 @@ EINHEIT_ALIAS = {
     "deziliter": "dl",
     "bünde": "bund",
     "bund(e)": "bund",
+    "pck": "packung",
+    "pkg": "packung",
+    "päckchen": "packung",
 }
 
 
@@ -267,25 +270,27 @@ def _zahl(text: str) -> float | None:
 ZUSATZ = re.compile(
     r"(?i)(?<![\wäöüß])(?:je\s+)?(?:nach\s+(?:geschmack|belieben|bedarf)|bei\s+bedarf|"
     r"zum\s+(?:ab)?schmecken|zum\s+(?:be)?streuen|zum\s+garnieren|zum\s+servieren|"
-    r"zum\s+(?:an)?braten|zum\s+frittieren|zum\s+würzen|zum\s+einfetten|für\s+die\s+form|"
+    r"zum\s+(?:an)?braten|für\s+(?:das|den|die)\s+(?:koch|nudel)?wasser|zum\s+frittieren|zum\s+würzen|zum\s+einfetten|für\s+die\s+form|"
     r"optional|evtl\.?|eventuell|ggf\.?|n\.\s?b\.|etwas|wenig|reichlich|"
     r"frisch\s+gemahlen(?:er|es|e)?|aus\s+der\s+mühle)(?![\wäöüß])"
 )
-# "Salz und Pfeffer" ohne Menge: zwei Zutaten
-PAAR = re.compile(r"^([A-ZÄÖÜ][\wäöüß-]+)(?:\s*,\s*|\s+(?:und|&|\+|sowie)\s+)([A-ZÄÖÜ][\wäöüß-]+)$")
+# "Salz und Pfeffer", "Salz, Pfeffer, Muskat" ohne Menge: je eine Zutat
+_TEIL = r"(?:[a-zäöüß]+\s+)?[A-ZÄÖÜ][\wäöüß-]*(?:\s*\([^()]*\))?"
+_TRENNER = r"\s*,\s*|\s+(?:und|&|\+|sowie)\s+"
+LISTE = re.compile(rf"^{_TEIL}(?:(?:{_TRENNER}){_TEIL})+$")
 
 
 def _ohne_zusatz(text: str) -> str:
     text = ZUSATZ.sub(" ", text)
-    text = re.sub(r"\(\s*\)", " ", text)
+    text = re.sub(r"\(\s*(?:plus|und|oder|sowie)?\s*\)", " ", text)  # "(plus etwas)"
     return re.sub(r"\s+", " ", text).strip(" ,;:-")
 
 
 def zutaten_parsen(text: str) -> list[RohZutat]:
-    """Wie zutat_parsen, trennt aber "Salz und Pfeffer" (ohne Menge) in zwei Zutaten."""
+    """Wie zutat_parsen, trennt aber "Salz und Pfeffer" (ohne Menge) in einzelne Zutaten."""
     z = zutat_parsen(text)
-    if z.menge is None and (m := PAAR.match(z.name)):
-        return [RohZutat(z.text, None, None, m.group(1)), RohZutat(z.text, None, None, m.group(2))]
+    if z.menge is None and LISTE.match(z.name):
+        return [RohZutat(z.text, None, None, n) for n in re.split(_TRENNER, z.name)]
     return [z]
 
 
@@ -301,7 +306,7 @@ def zutat_parsen(text: str) -> RohZutat:
     zahl = r"(\d+(?:[.,]\d+)?(?:\s*/\s*\d+)?(?:\s*[½¼¾⅓⅔⅛])?|[½¼¾⅓⅔⅛])"
     m = re.match(rf"^{zahl}\s*(?:-\s*[\d.,]+\s*)?([^\d\s]+\.?)?\s+(.+)$", clean)
     if m and (menge := _zahl(m.group(1))) is not None:
-        einheit = (m.group(2) or "").lower().rstrip(".")
+        einheit = re.sub(r"(?:\(e?n?\)|/e?n)$", "", (m.group(2) or "").lower().rstrip("."))
         einheit = EINHEIT_ALIAS.get(einheit, einheit)
         name = m.group(3)
         if einheit and einheit not in EINHEITEN:  # "2 Zwiebeln" → keine Einheit
@@ -336,7 +341,7 @@ def schritte_aus_text(text: str) -> list[str]:
 
     Nummern mitten im Satz („ca. 2. Hälfte“) zählen nur, wenn sie aufsteigend ab 1 kommen.
     """
-    text = _klartext(text)
+    text = _ohne_varianten(_klartext(text))
     if not text:
         return []
     marke = re.compile(r"(?:^|(?<=[\s.!?:]))(?:Schritt\s*)?(\d{1,2})\s*[.):]\s+(?=\S)", re.I)
@@ -357,6 +362,17 @@ def schritte_aus_text(text: str) -> list[str]:
     return [re.sub(r"\s+", " ", t).strip() for t in teile if t.strip()]
 
 
+def _ohne_varianten(text: str) -> str:
+    """HelloFresh: „300 ml [450 ml | 600 ml] Wasser\\*“ → „300 ml Wasser“.
+
+    In eckigen Klammern stehen die Mengen für 3 und 4 Personen (Trenner „|“ oder „ I “,
+    auch als Wort: „Die Hälfte [drei Viertel | den ganzen]“),
+    das Sternchen markiert Vorratszutaten. Skaliert wird bei uns per Code.
+    """
+    text = re.sub(r"\s*\[[^\[\]]*(?:\||\d[^\[\]]*\sI\s)[^\[\]]*\]", "", text)
+    return re.sub(r"(?<=[\wäöüß.)])\\?\*", "", text)
+
+
 def schritte_aus(instructions: object) -> list[str]:
     """recipeInstructions: String, Liste, HowToStep, HowToSection (verschachtelt)."""
     if instructions is None:
@@ -375,9 +391,10 @@ def schritte_aus(instructions: object) -> list[str]:
             if titel and unter and instructions.get("@type") == "HowToSection":
                 return [f"{titel}:", *unter]
             return unter
-        text = instructions.get("text") or instructions.get("name") or ""
+        text = _klartext(instructions.get("text") or instructions.get("name") or "")
+        text = _ohne_varianten(text)
         # HowToStep ist schon ein Schritt, Zeilenumbrüche darin nur glätten
-        return [t] if (t := re.sub(r"\s+", " ", _klartext(text)).strip()) else []
+        return [t] if (t := re.sub(r"\s+", " ", text).strip()) else []
     return []
 
 
@@ -385,11 +402,54 @@ def schritte_begrenzen(schritte: list[str]) -> list[str]:
     return [s[:MAX_SCHRITT_ZEICHEN] for s in schritte if s][:MAX_SCHRITTE]
 
 
-def _name(data: dict, quelle: str) -> str:
-    name = unescape(str(data.get("name") or "Importiertes Rezept")).strip()
+def _hf_rezept(html: str) -> dict:
+    """HelloFresh: Rezeptobjekt aus __NEXT_DATA__ (props.pageProps.ssrPayload.recipe)."""
+    m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S | re.I)
+    try:
+        r = json.loads(m.group(1))["props"]["pageProps"]["ssrPayload"]["recipe"] if m else {}
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return {}
+    return r if isinstance(r, dict) else {}
+
+
+def _name(data: dict, quelle: str, html: str) -> str:
+    name = re.sub(r"\s+", " ", unescape(str(data.get("name") or "Importiertes Rezept"))).strip()
     if "chefkoch" in quelle:  # „… von Mirko1710“: Chefkoch hängt den Nutzernamen an
         name = re.sub(r"\s+von\s+\S+$", "", name)
+    if quelle == "hellofresh":
+        # JSON-LD-Name = Name + Untertitel ohne Trenner. Beschreibender Untertitel bleibt,
+        # Werbung mit Zahlen („Nur 10 Minuten aktive Kochzeit“, „50 % weniger CO2e“) fällt weg.
+        hf = _hf_rezept(html)
+        kurz, unter = str(hf.get("name") or "").strip(), str(hf.get("headline") or "").strip()
+        if kurz and name.startswith(kurz):
+            name = f"{kurz}, {unter}" if unter and not re.search(r"\d", unter) else kurz
     return name
+
+
+# Chefkoch-Magazin: Artikel mit eingebetteter Rezeptkarte statt Rezept („Das Rezept aus dem Video“)
+_KARTE = re.compile(
+    r'ds-list-view-item--recipe[^>]*>(?:(?!</a>).)*?href="(https://www\.chefkoch\.de/rezepte/\d+/[^"#?]+)"'
+    r'|href="(https://www\.chefkoch\.de/rezepte/\d+/[^"#?]+)"[^>]*class="[^"]*ds-list-view-item--recipe',
+    re.S,
+)
+
+
+def rezept_karte(html: str) -> str | None:
+    """Link der einzigen eingebetteten Rezeptkarte, wenn die Seite selbst kein Rezept hat.
+    Galerie-Links („weitere Rezepte“) zählen nicht."""
+    links = {a or b for a, b in _KARTE.findall(html)}
+    return links.pop() if len(links) == 1 else None
+
+
+async def rezept_laden(url: str, html: str | None = None) -> RohRezept:
+    """Seite lesen. Zeigt ein Artikel nur auf ein Rezept, dieses laden (Quelle wird das Rezept)."""
+    html = html or await laden(url)
+    try:
+        return rezept_aus_html(html, url)
+    except ImportError_:
+        if not (ziel := rezept_karte(html)):
+            raise
+    return rezept_aus_html(await laden(ziel), ziel)
 
 
 def rezept_aus_html(html: str, url: str) -> RohRezept:
@@ -403,7 +463,7 @@ def rezept_aus_html(html: str, url: str) -> RohRezept:
     if not zutaten:
         raise ImportError_("Rezept ohne Zutatenliste")
     return RohRezept(
-        name=_name(data, quelle),
+        name=_name(data, quelle, html),
         portionen=_portionen(data.get("recipeYield")),
         zutaten=zutaten,
         url=url,

@@ -248,6 +248,13 @@ nächsten Rezept. Name ist die Überschrift davor, Hauptbild `og:image`. Nur das
 Seite. Galerie-Links sind eigene Rezepte, ein `#fragment` am Link wird verworfen. Chefkoch-
 Rezeptseiten: „… von <Nutzer>“ fällt aus dem Namen weg, ein einzelner Abschnitt „Zubereitung“
 wird nicht zum Schritt. Chefkoch hat keine Schrittbilder.
+Magazinartikel ohne eigenes Rezept, aber mit genau einer eingebetteten Rezeptkarte („Das Rezept
+aus dem Video“, `ds-list-view-item--recipe`), laden das verlinkte Rezept; Quelle ist dann das
+Rezept (0.28.7). HelloFresh: Mengen für 3/4 Personen in eckigen Klammern („300 ml [450 ml |
+600 ml]“) und Vorrats-Sternchen fallen aus den Schritten. Der Name kommt aus `__NEXT_DATA__`,
+Untertitel mit Zahlen (Werbung) fallen weg. Gewürzlisten ohne Menge („Salz, Pfeffer, Muskat“)
+werden einzelne Zutaten, Einheiten wie „Prise(n)“, „Scheibe/n“, „Pck.“ werden normalisiert.
+Stichprobe 2026-11-24: je 5 HelloFresh-, Chefkoch-Rezept- und Magazinseiten fehlerfrei.
 
 **KI-Zuordnung** (`app/llm_import.py`, wenn `ai_task_entity` gesetzt, abschaltbar mit `ki: false`):
 Nach dem Code-Lauf gehen nur die offenen Zutaten (Aktion „neu“) mit dem Produktkatalog

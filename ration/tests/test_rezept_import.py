@@ -20,7 +20,12 @@ URL = "https://www.hellofresh.de/recipes/testpfanne-mit-paprika-0123456789abcdef
         ("1 ½ EL Olivenöl", 1.5, "el", "Olivenöl"),
         ("½ Stück Zwiebel", 0.5, "stück", "Zwiebel"),
         ("2 rote Zwiebeln", 2, None, "rote Zwiebeln"),
-        ("1 Packung(en) Mozzarella", 1, "packung(en)", "Mozzarella"),
+        ("1 Packung(en) Mozzarella", 1, "packung", "Mozzarella"),
+        ("1 Prise(n) Zucker", 1, "prise", "Zucker"),
+        ("8 Scheibe/n Parmaschinken", 8, "scheibe", "Parmaschinken"),
+        ("1 Pck. Pizzateig (260 g)", 1, "packung", "Pizzateig (260 g)"),
+        ("3 EL Olivenöl (plus etwas)", 3, "el", "Olivenöl"),
+        ("Salz für das Kochwasser", None, None, "Salz"),
         ("0,5 kg Kartoffeln", 0.5, "kg", "Kartoffeln"),
         ("Salz", None, None, "Salz"),
         ("1 Esslöffel Öl", 1, "el", "Öl"),
@@ -41,6 +46,78 @@ URL = "https://www.hellofresh.de/recipes/testpfanne-mit-paprika-0123456789abcdef
 def test_zutat_parsen(text, menge, einheit, name):
     z = ri.zutat_parsen(text)
     assert (z.menge, z.einheit, z.name) == (menge, einheit, name)
+
+
+@pytest.mark.parametrize(
+    ("text", "namen"),
+    [
+        ("Salz, Pfeffer, Paprika (edelsüß)", ["Salz", "Pfeffer", "Paprika (edelsüß)"]),
+        ("Salz, schwarzer Pfeffer", ["Salz", "schwarzer Pfeffer"]),
+        ("Weißwein, trockener", ["Weißwein, trockener"]),
+        ("Mandeln, (gemahlen)", ["Mandeln, (gemahlen)"]),
+    ],
+)
+def test_gewuerzliste_getrennt(text, namen):
+    assert [z.name for z in ri.zutaten_parsen(text)] == namen
+
+
+def test_hellofresh_varianten_aus_schritten():
+    schritt = {
+        "@type": "HowToStep",
+        "text": "Erhitze 300 ml [450 ml | 600 ml] Wasser\\* und 1 EL [1,5 EL I 2 EL] Öl*.",
+    }
+    assert ri.schritte_aus([schritt]) == ["Erhitze 300 ml Wasser und 1 EL Öl."]
+    assert ri.schritte_aus(["Die Hälfte [drei Viertel | den ganzen] Ingwer."]) == [
+        "Die Hälfte Ingwer."
+    ]
+    assert ri.schritte_aus(["Topf [groß] nehmen."]) == ["Topf [groß] nehmen."]
+
+
+def test_hellofresh_name_ohne_werbung():
+    def seite(name, headline):
+        ld = {"@type": "Recipe", "name": f"{name} {headline}", "recipeIngredient": ["1 Ei"]}
+        nd = {
+            "props": {"pageProps": {"ssrPayload": {"recipe": {"name": name, "headline": headline}}}}
+        }
+        return (
+            f'<script type="application/ld+json">{json.dumps(ld)}</script>'
+            f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(nd)}</script>'
+        )
+
+    r = ri.rezept_aus_html(seite("Flammkuchen", "Nur 10 Minuten aktive Kochzeit"), URL)
+    assert r.name == "Flammkuchen"
+    r = ri.rezept_aus_html(seite("Curry mit Naan", "dazu Reis"), URL)
+    assert r.name == "Curry mit Naan, dazu Reis"
+    r = ri.rezept_aus_html(seite("Grillplatte", "Bifteki und Zaziki"), URL)
+    assert r.name == "Grillplatte, Bifteki und Zaziki"
+
+
+KARTE = """<h1>Burger aus dem Video</h1><h2>Das Rezept aus dem Video</h2>
+<div id="list-recipes0"><div class="ds-list-view-item ds-list-view-item--recipe">
+<a href="https://www.chefkoch.de/rezepte/42/Test-Burger.html">Test-Burger</a></div></div>
+<div id="gallery-recipeGallery0"><div class="ds-slider__item">
+<a href="https://www.chefkoch.de/rezepte/7/Anderes.html">x</a></div></div>"""
+
+
+def test_rezept_karte_im_artikel(monkeypatch):
+    assert ri.rezept_karte(KARTE) == "https://www.chefkoch.de/rezepte/42/Test-Burger.html"
+    assert ri.rezept_karte(ARTIKEL) is None  # Rezept steht im Artikel selbst
+
+    ld = {"@type": "Recipe", "name": "Test-Burger von Grillfan", "recipeIngredient": ["1 Brötchen"]}
+    seiten = {
+        "https://www.chefkoch.de/rezepte/42/Test-Burger.html": (
+            f'<script type="application/ld+json">{json.dumps(ld)}</script>'
+        )
+    }
+
+    async def laden(url, client=None):
+        return seiten[url]
+
+    monkeypatch.setattr(ri, "laden", laden)
+    import asyncio
+
+    r = asyncio.run(ri.rezept_laden("https://www.chefkoch.de/magazin/artikel/1-burger", KARTE))
+    assert r.name == "Test-Burger" and r.url.endswith("/rezepte/42/Test-Burger.html")
 
 
 def test_salz_und_pfeffer_getrennt():

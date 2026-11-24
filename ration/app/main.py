@@ -436,8 +436,7 @@ async def import_vorschau(
 ) -> dict:
     """Liest das Rezept hinter einem Link und schlägt je Zutat Produkt und Menge vor."""
     try:
-        html = data.html or await rezept_import.laden(data.url)
-        roh = rezept_import.rezept_aus_html(html, data.url)
+        roh = await rezept_import.rezept_laden(data.url, data.html)
     except rezept_import.ImportError_ as err:
         raise HTTPException(422, str(err)) from err
     aliase = {a.text: a.produkt_id for a in s.scalars(select(ZutatAlias))}
