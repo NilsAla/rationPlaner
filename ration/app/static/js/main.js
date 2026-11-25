@@ -10,6 +10,7 @@ export const MENUE = [
     {route: "kochen", titel: "Kochmodus", ico: "👩‍🍳", view: "kochen"},
     {route: "plan", titel: "Wochenplan", ico: "📅", view: "plan"},
     {route: "einkauf", titel: "Einkauf", ico: "🛒", view: "einkauf"},
+    {route: "angebote", titel: "Angebote", ico: "🏷️", view: "angebote"},
   ]},
   {gruppe: "Rezepte", ico: "📖", punkte: [
     {route: "rezepte", titel: "Rezeptbuch", ico: "📚", view: "rezepte"},

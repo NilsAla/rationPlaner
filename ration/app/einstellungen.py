@@ -52,9 +52,12 @@ STANDARD: dict[str, dict[str, Any]] = {
     # Varianten eines Parent-Produkts ersetzen sich (Fusilli statt Spaghetti), außer hier gesperrt
     "ersatz": {"gesperrt": []},
     "ki": {"modus": "ha", "openai_modell": "gpt-4.1-mini", "jobs": {}, "preise": {}},
+    # Prospekt-Abruf je Händler: Markt-ID (leer = aus). Penny: wwIdent aus der Marktsuche
+    "angebote": {"penny_markt": ""},
 }
 KI_JOBS = (
     "bon", "import", "kochanleitung", "kategorisierung", "naehrwerte", "planer", "packungen",
+    "angebote",
 )  # fmt: skip
 
 
@@ -129,6 +132,11 @@ def pruefen(gruppe: str, werte: dict) -> dict:
         out["gesperrt"] = sorted({str(x) for x in out["gesperrt"]})
     elif gruppe == "ki":
         out.update(_ki_pruefen(out))
+    elif gruppe == "angebote" and "penny_markt" in out:
+        markt = str(out["penny_markt"] or "").strip()
+        if markt and not markt.isdigit():
+            raise HTTPException(422, "penny_markt: Markt-ID aus der Marktsuche (nur Ziffern)")
+        out["penny_markt"] = markt
     elif gruppe == "ernaehrung":
         if "kcal_mahlzeit" in out:
             out["kcal_mahlzeit"] = int(_bereich(out["kcal_mahlzeit"], 100, 3000, "kcal_mahlzeit"))

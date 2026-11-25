@@ -208,6 +208,7 @@ class Preis(Base):
     markt: Mapped[str | None] = mapped_column(String, nullable=True)
     datum: Mapped[date] = mapped_column(Date)
     quelle: Mapped[str] = mapped_column(String, default="bon")
+    angebot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # aus Angebot
 
 
 class Kochvorgang(Base):

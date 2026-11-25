@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Date, DateTime, Integer, String, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from app import angebote as angebote_mod
 from app import einstellungen, kueche, naehrwerte
 from app.db import Base, Kochvorgang, Packung, PlanEintrag, Preis, RezeptBewertung
 from app.deps import backend, session, settings
@@ -786,6 +787,11 @@ async def kontext_laden(
         weitere[pk.produkt_id].append(Groesse(pk.einheit, pk.menge, pk.quelle, pk.haeufigkeit or 0))
         if pk.quelle == "angebot":
             angebote.add(pk.produkt_id)
+    # laufende Prospekt-Angebote im Planzeitraum (Variante im Angebot zählt fürs Oberprodukt)
+    for pid in angebote_mod.aktiv_je_produkt(s, start, start + timedelta(days=7)):
+        angebote.add(pid)
+        if (p := produkte.get(pid)) and p.parent_id:
+            angebote.add(p.parent_id)
     historie: dict[str, date] = {}
     for e in s.scalars(
         select(PlanEintrag).where(
@@ -819,6 +825,8 @@ async def kontext_laden(
     for pr in s.scalars(select(Preis)):
         if pr.menge <= 0:
             continue
+        if pr.quelle == "angebot" and pr.datum < start - timedelta(days=7):
+            continue  # nur aktuelle Angebotspreise (Konzept: aktueller Angebotspreis)
         kandidat = (rang.get(pr.quelle, 3), pr.datum, pr.preis / pr.menge)
         bisher = preise.get(pr.produkt_id)
         if bisher is None or (kandidat[0], -kandidat[1].toordinal()) < (

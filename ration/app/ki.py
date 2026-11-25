@@ -33,6 +33,7 @@ JOBS = {
     "naehrwerte": "Nährwerte",
     "planer": "Wochenplan",
     "packungen": "Packungsgrößen",
+    "angebote": "Angebote zuordnen",
 }
 BACKENDS = ("ha", "openai")
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app import (
     API_VERSION,
     __version__,
+    angebote,
     ausgaben,
     barcode,
     bon,
@@ -678,6 +679,7 @@ def create_app(
     db_url: str | None = None,
     ki_http=None,
     off_http=None,
+    angebote_http=None,
 ) -> FastAPI:
     """Ohne Argumente: Konfiguration aus /data/options.json. Tests injizieren Fakes."""
 
@@ -696,12 +698,20 @@ def create_app(
             app.state.ha = SupervisorHomeAssistant(st.supervisor_token)
             owned.append(app.state.ha)
         app.state.off_http = off_http
+        app.state.angebote_http = angebote_http
         app.state.ki = ki.KiClient(app.state.ha, app.state.engine, st, ki_http)
         owned.append(app.state.ki)
-        recap = asyncio.create_task(ausgaben.recap_schleife(app)) if st.supervisor_token else None
+        schleifen = (
+            [
+                asyncio.create_task(ausgaben.recap_schleife(app)),
+                asyncio.create_task(angebote.schleife(app)),
+            ]
+            if st.supervisor_token
+            else []
+        )
         yield
-        if recap:
-            recap.cancel()
+        for t in schleifen:
+            t.cancel()
         for client in owned:
             await client.aclose()
 
@@ -723,6 +733,7 @@ def create_app(
     app.include_router(packungen.router)
     app.include_router(ausgaben.router)
     app.include_router(barcode.router)
+    app.include_router(angebote.router)
 
     @app.middleware("http")
     async def aenderungen_protokollieren(request: Request, call_next):

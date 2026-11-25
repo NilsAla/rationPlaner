@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-23, Version 0.28.5 / API 1.23)
+# Roadmap und Übergabe (Stand 2026-11-25, Version 0.32.0 / API 1.28)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -35,7 +35,13 @@ Wochenende: 3 Gerichte geplant, Einkaufsliste schon in `todo.einkaufsliste` gesc
 - [ ] Optional: OpenAI-Direktmodus mit eigenem Key (bisher nur gemockt getestet).
 - [ ] Preise für gpt-4.1 / gpt-4o-mini in Einstellungen → KI eintragen (Nils), sonst nur Tokens.
 
+- [ ] **Angebote (0.32.0):** Angebote → „Markt wählen“ (PLZ), „Jetzt abrufen“, KI-Treffer
+  prüfen und bestätigen. Danach Claude: KI-Log Job `angebote` auswerten (Fehlgriffe wie Chips →
+  Kartoffeln?), `/api/v1/angebote/status`, Preistabelle. KI-Job ggf. auf gpt-4.1 stellen.
+
 ### 2. Bauen (Reihenfolge nach Nutzen)
+0. **Angebotstracker weiter** (siehe Punkt 13): Kaufland/Lidl (Schwarz-Leaflets, Seitenbilder →
+   Vision), dann K+K und EDEKA (Blätterkatalog). Healthcheck-Sensor in der Bridge.
 1. **Einkaufsliste abgleichen statt nur anhängen** (Nils' Frage: „was passiert, wenn ich Reis
    einbuche?“). Heute schreibt `POST /einkaufsliste` nur hinzu, nichts wird entfernt. Ziel:
    Einträge, die die App selbst geschrieben hat (in `einkauf_eintrag` merken, mit Todo-UID bzw.
@@ -276,6 +282,26 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
   `haltbarkeit_pruefen` (0 raus, Abweichung > Faktor 4 vom Richtwert raus, „unbegrenzt“ nur bei
   Lagerware, geöffnet > ungeöffnet raus, < 30 % Abweichung = Rauschen), KI-Standardpackung nur
   ohne gepflegte Packung und ohne Bon-Käufe. Neue Vorschläge ersetzen ältere offene desselben Felds.
+
+### 13. Angebotstracker – Penny erledigt (0.32.0, API 1.28, Nils 2026-11-25)
+- Grundlage: Claude-Doc „Prospekt-Quellen für rationPlaner“ (https://claude.ai/artifact/B2qpmJsEWDqc6oegSfuvfD):
+  alle Händler ohne Login und ohne Headless Browser, Empfehlung Penny zuerst.
+- Umsetzung: `app/angebote.py` (Tabellen `angebot`, `angebot_alias`, `angebot_abruf`, Spalte
+  `preis.angebot_id`), Seite Küche → Angebote (`views/angebote.js`), Einstellung
+  `angebote.penny_markt` (wwIdent aus der Marktsuche). Endpunkte: `GET /angebote`,
+  `GET /angebote/status`, `POST /angebote/abrufen`, `POST /angebote/ki`,
+  `POST /angebote/{id}/zuordnen`, `POST /angebote/bestaetigen`, `GET /angebote/maerkte/penny?q=`.
+- Lokal live gegen penny.de geprüft (KW 48, Emsdetten: 344 Angebote, 293 Lebensmittel,
+  Gültigkeit Mo/Do/Fr–Sa, 288 mit erkannter Größe, Rest wie „3 x 100 Blatt“). Tests mit
+  nachgebauten Antworten (`tests/test_angebote.py`). KI-Zuordnung live noch ungetestet.
+- Offen:
+  1. **Kaufland** (Filiale per `klstorefinder.json`, Flyer `DE_de_KDZ1_{filiale}_D{KW}`) und
+     **Lidl** (Übersicht parsen, Food-Prospekt): Seitenbilder (2400 px) + `keyWords` an einen
+     Vision-Job, Structured Output je Seite (Produkt, Menge, Preis, Grundpreis, App-Preis).
+  2. **K+K** (`kundk_kw{WW}`, Text je Seite als Hilfe) und **EDEKA** (Blätterkatalog-Slot von
+     der Marktseite lesen, PDF/Seitenbild).
+  3. Bridge: `binary_sensor`/`sensor` für den Healthcheck je Händler (heute nur HA-Hinweis).
+  4. Einkaufsliste/Startseite: „im Angebot bei Penny bis Sa“ an Positionen zeigen.
 
 ## Getroffene Entscheidungen (nicht stillschweigend ändern)
 

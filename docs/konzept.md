@@ -522,6 +522,22 @@ Samstags lädt die App die Online-Prospekte der 2–3 genutzten Märkte:
   `packung` mit Quelle `angebot` und Ablauf zum Aktionsende angelegt.
 - Offen: Märkte, Quellen je Markt, Nutzungsbedingungen, Blockaden.
 
+**Umsetzung (0.32.0, `app/angebote.py`):** Recherche „Prospekt-Quellen für rationPlaner“
+(Claude-Doc, 2026-11-25): alle fünf Händler (Penny, Kaufland, Lidl, K+K, EDEKA) liefern ohne
+Login, ein Headless Browser ist nicht nötig. Penny zuerst, weil JSON mit Preisen je
+Verkaufsregion (`/.rest/market` → `sellingRegion`, Kategorien aus `/angebote`,
+`/.rest/offers/by-category/{KW}/{kategorie}?region=`). Gültigkeit aus dem Abschnitt
+(`ab-montag`/`ab-donnerstag`/`ab-freitag`) bis Samstag. Größe parst der Code.
+
+- **Zuordnung:** gemerkter Titel je Händler (`angebot_alias`) > KI-Job `angebote` (nur IDs aus
+  dem Katalog, `gleich`/`variante`/`keins`, unbekannte ID verworfen). KI-Treffer zählen sofort
+  als Overlay im Planer-Scoring, Preise (`preis.angebot_id`, Quelle angebot/streichpreis),
+  Alias und Angebots-Packung (abweichende Größe, gültig bis Aktionsende) erst nach ✓.
+- **Kosten:** Angebotspreise älter als eine Woche zählen nicht mehr (aktueller Angebotspreis).
+- **Zeitplan:** stündliche Prüfung, höchstens ein Abruf am Tag ab 6 Uhr, solange die aktuelle
+  Woche fehlt, ab Mittwoch auch die nächste. **Healthcheck:** `GET /angebote/status`, Abruf
+  ohne Lebensmittel oder mit Fehler = kaputt, HA-Hinweis beim Wechsel ok → kaputt.
+
 ## Oberflächen
 
 | Oberfläche | Wo | Funktionen |
