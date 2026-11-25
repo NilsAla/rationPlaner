@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-25, Version 0.32.0 / API 1.28)
+# Roadmap und Übergabe (Stand 2026-11-25, Version 0.33.0 / API 1.29)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -303,10 +303,16 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
   `ki_pruefen` (Kategorie muss passen, exakter Produktname als ID-Ersatz), Grund sichtbar als
   `ki_info`. „KI neu zuordnen“ (`POST /angebote/ki?neu=true`) fragt Unbestätigtes neu.
   Empfehlung: Job `angebote` auf `ai_task.openai_stammdaten` (gpt-4.1) stellen.
+- 0.33.0 **Kaufland ohne Bilderkennung:** `filiale.kaufland.de/angebote/uebersicht.html`
+  ist serverseitig gerendert (Preis, Streichpreis, Card-Preis, Menge, Grundpreis). Filiale per
+  Cookie `x-aem-variant=DE8360` (geprüft: regionale Artikel wie Böke, Grünkohl), Filialsuche
+  über `.klstorefinder.json`. Nur Hauptkategorien `cat_01`–`cat_08` (decken die Lebensmittel
+  der Themen-Abschnitte ab), Gültigkeit aus „Gültig vom … bis …“. Nächste Woche zeigt Kaufland
+  anfangs nur „Vorwerbung“ ohne Kategorien, die wird übersprungen. Live KW 48: 317 Angebote.
+  Risiko: Ignoriert Kaufland das Cookie, kommt still die Standardfiliale.
 - Offen:
-  1. **Kaufland** (Filiale per `klstorefinder.json`, Flyer `DE_de_KDZ1_{filiale}_D{KW}`) und
-     **Lidl** (Übersicht parsen, Food-Prospekt): Seitenbilder (2400 px) + `keyWords` an einen
-     Vision-Job, Structured Output je Seite (Produkt, Menge, Preis, Grundpreis, App-Preis).
+  1. ~~Kaufland~~ (0.33.0, HTML). **Lidl** (Übersicht parsen, Food-Prospekt): erst prüfen, ob
+     lidl.de ähnlich gerendert ist, sonst Seitenbilder + `keyWords` an einen Vision-Job.
   2. **K+K** (`kundk_kw{WW}`, Text je Seite als Hilfe) und **EDEKA** (Blätterkatalog-Slot von
      der Marktseite lesen, PDF/Seitenbild).
   3. Bridge: `binary_sensor`/`sensor` für den Healthcheck je Händler (heute nur HA-Hinweis).

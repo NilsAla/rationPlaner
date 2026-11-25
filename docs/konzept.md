@@ -534,6 +534,8 @@ Verkaufsregion (`/.rest/market` → `sellingRegion`, Kategorien aus `/angebote`,
   als Overlay im Planer-Scoring, Preise (`preis.angebot_id`, Quelle angebot/streichpreis),
   Alias und Angebots-Packung (abweichende Größe, gültig bis Aktionsende) erst nach ✓.
 - **Kosten:** Angebotspreise älter als eine Woche zählen nicht mehr (aktueller Angebotspreis).
+- **Kaufland (0.33.0):** serverseitig gerenderte Angebotsseite, Filiale per Cookie
+  `x-aem-variant`, nur Hauptkategorien `cat_01`–`cat_08`. Kein Vision-Modell nötig.
 - **Zeitplan:** stündliche Prüfung, höchstens ein Abruf am Tag ab 6 Uhr, solange die aktuelle
   Woche fehlt, ab Mittwoch auch die nächste. **Healthcheck:** `GET /angebote/status`, Abruf
   ohne Lebensmittel oder mit Fehler = kaputt, HA-Hinweis beim Wechsel ok → kaputt.

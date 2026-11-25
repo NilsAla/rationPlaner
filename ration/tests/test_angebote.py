@@ -150,6 +150,8 @@ def ki_antwort(*zuordnungen: tuple[int, str, str | None]) -> dict:
         ("je 1.000 g", (1000.0, "g", False)),
         ("je 1.200-g-Packung", (1200.0, "g", False)),
         ("je 500-g-Schale", (500.0, "g", False)),
+        ("je 750-g-Großpackg.", (750.0, "g", False)),
+        ("je 1,5-kg-Packg.", (1500.0, "g", False)),
         ("je 16 x 11 g", (176.0, "g", False)),
         ("je kg", (1000.0, "g", True)),
         ("je Stück ", (1.0, "Stück", False)),
@@ -339,3 +341,106 @@ def test_ki_neu_fragt_nur_unbestaetigte(a_client, fake_ha):
     assert r["offen"] == 2  # Frischkäse und Spaghetti, nicht die ignorierte Paprika
     liste = {a["titel"]: a for a in a_client.get("/api/v1/angebote").json()}
     assert liste["Paprika rot"]["zuordnung"] == "ignoriert"
+
+
+def kl_kachel(bild: str, titel: str, sub: str, menge: str, preis: str, alt: str = "",
+              karte: str = "") -> str:  # fmt: skip
+    return (
+        f'<a class="k-product-tile" href="#"><img class="k-image" '
+        f'src="https://kaufland.media.schwarz/is/image/schwarz/{bild}" alt="">'
+        f'<div class="k-product-tile__title">{titel}</div>'
+        f'<div class="k-product-tile__subtitle">{sub} </div>'
+        f'<div class="k-product-tile__unit-price">{menge}</div>'
+        f'<div class="k-product-tile__base-price">(1 kg = 1.00)</div>'
+        '<div class="k-product-tile__pricetags-normal">'
+        f'<div class="k-price-tag__price">{preis} </div>'
+        + (f'<span class="k-price-tag__old-price-line-through">{alt}</span>' if alt else "")
+        + '</div><div class="k-product-tile__pricetags-loyalty">'
+        + (f'<div class="k-price-tag__price">{karte} </div>' if karte else "")
+        + "</div></a>"
+    )
+
+
+def kl_seite(abschnitte: list[tuple[str, str, list[str]]]) -> str:
+    return "".join(
+        f'<div id="{sid}" class="k-product-section"><div class="k-product-section__subheadline">'
+        f"{gueltig}</div>{''.join(kacheln)}</div>"
+        for sid, gueltig, kacheln in abschnitte
+    )
+
+
+BUTTER = kl_kachel("b1", "WEIHENSTEPHAN", "Butter", "je 250-g-Packg.", "1.29", "2.99", "1.15")
+WOCHE48 = "Gültig vom 23.11. bis 28.11."
+KL_JETZT = kl_seite([
+    ("cat_0001_TopArticle", "Angebote gültig am 25.11.", [BUTTER]),
+    ("cat_03_Molkereiprodukte__Fette", WOCHE48, [
+        BUTTER,
+        kl_kachel("b2", "SÖBBEKE", "Bioland Natur&shy;joghurt", "je 400-g-Becher", "1.29"),
+    ]),
+    ("cat_09_Drogerie__Tiernahrung", WOCHE48, [kl_kachel("d1", "NIVEA", "Creme", "1 l", "2.49")]),
+])  # fmt: skip
+KL_VORWERBUNG = kl_seite([("cat_Vorwerbung", "Gültig vom 30.11. bis 05.12.",
+                           [kl_kachel("v1", "X", "Y", "je kg", "1.99")])])  # fmt: skip
+
+
+def test_kaufland_seite():
+    w = angebote.kaufland_seite(KL_JETZT, date(2026, 11, 25))
+    assert list(w) == ["2026-48"]
+    butter, joghurt = w["2026-48"]  # Top-Abschnitt und Drogerie fallen weg, Butter nur einmal
+    assert (butter["titel"], butter["preis"], butter["streichpreis"], butter["app_preis"]) == (
+        "WEIHENSTEPHAN Butter", 1.29, 2.99, 1.15,
+    )  # fmt: skip
+    assert (butter["menge"], butter["einheit"], butter["kategorie"]) == (
+        250.0,
+        "g",
+        "Molkereiprodukte, Fette",
+    )
+    assert (butter["gueltig_von"], butter["gueltig_bis"]) == (
+        date(2026, 11, 23),
+        date(2026, 11, 28),
+    )
+    assert joghurt["titel"] == "SÖBBEKE Bioland Naturjoghurt" and joghurt["streichpreis"] is None
+    assert angebote.kaufland_seite(KL_VORWERBUNG, date(2026, 11, 25)) == {}
+    # Jahreswechsel: „29.12. bis 03.01.“
+    neujahr = kl_seite([("cat_06_Grundnahrungsmittel", "Gültig vom 29.12. bis 03.01.",
+                         [kl_kachel("n1", "A", "Reis", "je 1-kg-Packg.", "1.99")])])  # fmt: skip
+    a = angebote.kaufland_seite(neujahr, date(2026, 12, 28))["2026-53"][0]
+    assert (a["gueltig_von"], a["gueltig_bis"]) == (date(2026, 12, 29), date(2027, 1, 3))
+
+
+def test_kaufland_abruf_mit_filiale(fake_backend, fake_ha, tmp_path):
+    cookies = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/.klstorefinder.json"):
+            filiale = {"n": "DE8360", "cn": "Kaufland Emsdetten", "sn": "Katthagen 6-8",
+                       "pc": "48282", "t": "Emsdetten"}  # fmt: skip
+            return httpx.Response(200, json=[filiale])
+        cookies.append(request.headers.get("cookie"))
+        woche = request.url.params["kloffer-week"]
+        return httpx.Response(200, text=KL_JETZT if woche == "current" else KL_VORWERBUNG)
+
+    app = create_app(
+        inventory=fake_backend, ha=fake_ha,
+        app_settings=Settings(data_dir=tmp_path, ai_task_entity="ai_task.test"),
+        db_url=f"sqlite:///{tmp_path / 'k.db'}",
+        angebote_http=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )  # fmt: skip
+    fake_ha.ki_antwort = ki_antwort()
+    with TestClient(app) as c:
+        assert c.get("/api/v1/angebote/maerkte/kaufland?q=Emsdetten").json()[0]["id"] == "DE8360"
+        assert (
+            c.put("/api/v1/einstellungen/angebote", json={"kaufland_markt": "8360"}).json()[
+                "kaufland_markt"
+            ]
+            == "DE8360"
+        )
+        assert (
+            c.put("/api/v1/einstellungen/angebote", json={"kaufland_markt": "x"}).status_code == 422
+        )
+        assert c.post("/api/v1/angebote/abrufen", json={"haendler": "kaufland"}).status_code == 200
+        st = {h["haendler"]: h for h in c.get("/api/v1/angebote/status").json()}
+        liste = c.get("/api/v1/angebote?alle=true").json()
+    assert cookies == ["x-aem-variant=DE8360"] * 2
+    assert st["kaufland"]["ok"] and st["kaufland"]["anzahl"] == 2 and not st["penny"]["aktiv"]
+    assert {a["markt"] for a in liste} == {"Kaufland"}

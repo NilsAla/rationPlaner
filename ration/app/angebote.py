@@ -35,12 +35,18 @@ from app.rezept_import import _norm
 log = logging.getLogger("ration.angebote")
 router = APIRouter(prefix="/api/v1")
 
-HAENDLER = {"penny": "Penny"}
+HAENDLER = {"penny": "Penny", "kaufland": "Kaufland"}
 USER_AGENT = f"rationPlaner/{__version__} (privat, github.com/NilsAla/rationPlaner)"
 PENNY = "https://www.penny.de"
 PENNY_MAERKTE = PENNY + "/.rest/market"
 PENNY_SEITE = PENNY + "/angebote"
 PENNY_KATEGORIE = PENNY + "/.rest/offers/by-category/{woche}/{kategorie}"
+KAUFLAND = "https://filiale.kaufland.de"
+KAUFLAND_SEITE = KAUFLAND + "/angebote/uebersicht.html"
+KAUFLAND_FILIALEN = KAUFLAND + "/.klstorefinder.json"
+# Hauptkategorien mit Lebensmitteln (cat_01 Fleisch … cat_08 Getränke). Themen-Abschnitte
+# (Top, K-Card, Regio, Weihnachten …) wiederholen sie fast nur; ab cat_09 Drogerie/Non-Food.
+KAUFLAND_FOOD = re.compile(r"^cat_0[1-8][a-z]?_")
 # Aktionsbeginn laut Prospekt-Abschnitt („ab-donnerstag--obst-und-gemuese1“), Ende Samstag
 PERIODE = {"ab-montag": 0, "ab-dienstag": 1, "ab-mittwoch": 2, "ab-donnerstag": 3,
            "ab-freitag": 4, "ab-samstag": 5}  # fmt: skip
@@ -133,7 +139,7 @@ def angebot_menge(text: str | None) -> tuple[float, str, bool] | None:
         return 1000.0, "g", True
     t = re.sub(r"(\d)\.(\d{3})(?!\d)", r"\1\2", t)  # 1.000 g
     t = re.sub(r"(\d)\s?I\b", r"\1 l", t)  # 0,7 I (großes i statt l)
-    t = re.sub(r"(?i)(\d)-(kg|g|ml|cl|l)-[a-zäöü]+", r"\1 \2", t)  # 400-g-Packung
+    t = re.sub(r"(?i)(\d)-(kg|g|ml|cl|l)-[a-zäöüß.]+", r"\1 \2", t)  # 400-g-Packung
     if g := groesse_aus_text(t):
         return g[0], g[1], False
     if m := re.search(r"(\d+)(?:er|[- ]?St(?:ü|ue)ck)\b", t):  # 8er-Packung, 3 Stück
@@ -144,7 +150,7 @@ def angebot_menge(text: str | None) -> tuple[float, str, bool] | None:
 
 
 def titel_sauber(text: str) -> str:
-    text = text.replace(" ", " ").replace("*", " ")
+    text = htmllib.unescape(text).replace("\xad", "").replace("\u2028", " ").replace("*", " ")
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -216,8 +222,11 @@ def penny_angebot(t: dict, woche: str, periode: str, kategorie: str) -> dict | N
 # --- Abruf ---------------------------------------------------------------------------------
 
 
-async def _get(http: httpx.AsyncClient, url: str, **params) -> httpx.Response:
-    r = await http.get(url, params=params or None, headers={"User-Agent": USER_AGENT})
+async def _get(
+    http: httpx.AsyncClient, url: str, cookies: str | None = None, **params
+) -> httpx.Response:
+    headers = {"User-Agent": USER_AGENT} | ({"Cookie": cookies} if cookies else {})
+    r = await http.get(url, params=params or None, headers=headers)
     if r.status_code >= 400:
         raise AbrufFehler(f"{url}: HTTP {r.status_code}")
     return r
@@ -260,7 +269,105 @@ async def penny_abrufen(http: httpx.AsyncClient, markt: str) -> dict[str, list[d
     return out
 
 
-ABRUFER = {"penny": penny_abrufen}
+def kaufland_filiale(wert: str) -> str:
+    """„8360“ oder „DE8360“ → „DE8360“; sonst leer."""
+    w = wert.strip().upper()
+    w = "DE" + w if w.isdigit() else w
+    return w if re.fullmatch(r"DE\d{4}", w) else ""
+
+
+def _datum(text: str, bezug: date) -> date:
+    """„23.11.“ → Datum im Jahr, das am nächsten an bezug liegt (Jahreswechsel)."""
+    tag, monat = (int(x) for x in text.strip(". ").split(".")[:2])
+    return min(
+        (date(j, monat, tag) for j in (bezug.year - 1, bezug.year, bezug.year + 1)),
+        key=lambda d: abs((d - bezug).days),
+    )
+
+
+def _klasse(html: str, name: str) -> str:
+    m = re.search(rf'class="k-product-tile__{name}">([^<]*)', html)
+    return titel_sauber(m.group(1)) if m else ""
+
+
+def kaufland_kachel(t: str, von: date, bis: date, kategorie: str) -> dict | None:
+    """Eine Produktkachel der Angebotsseite. Normalpreis-Block vor dem Kaufland-Card-Block."""
+    bild = re.search(r'src="(https://kaufland\.media\.schwarz/is/image/schwarz/([^"?]+))', t)
+    titel = " ".join(x for x in (_klasse(t, "title"), _klasse(t, "subtitle")) if x)
+    if not bild or not titel:
+        return None
+    normal, _, karte = t.partition("k-product-tile__pricetags-loyalty")
+    preise = re.findall(r'k-price-tag__price">([^<]*)', normal)
+    alt = re.findall(r'line-through">([^<]*)', normal) or re.findall(
+        r'line-through">([^<]*)', karte
+    )
+    karten = re.findall(r'k-price-tag__price">([^<]*)', karte)
+    menge_text = _klasse(t, "unit-price") or None
+    groesse = angebot_menge(menge_text)
+    return {
+        "quelle_id": bild.group(2)[:120],
+        "titel": titel[:200],
+        "menge_text": menge_text,
+        "menge": groesse[0] if groesse else None,
+        "einheit": groesse[1] if groesse else None,
+        "lose": groesse[2] if groesse else None,
+        "preis": euro(preise[0]) if preise else None,
+        "preis_text": preise[0].strip() if preise else None,
+        "app_preis": euro(karten[0]) if karten else None,
+        "streichpreis": euro(alt[0]) if alt else None,
+        "grundpreis": _klasse(t, "base-price") or None,
+        "kategorie": kategorie,
+        "typ": "food",
+        "gueltig_von": von,
+        "gueltig_bis": bis,
+        "bild": bild.group(1),
+        "url": None,
+    }
+
+
+def kaufland_seite(seite: str, heute: date | None = None) -> dict[str, list[dict]]:
+    """Woche → Angebote aus den Lebensmittel-Hauptkategorien. Gültigkeit je Abschnitt
+    („Gültig vom 23.11. bis 28.11.“). Nur „Vorwerbung“ ohne Kategorien → leer."""
+    heute = heute or date.today()
+    marken = sorted(
+        (m.start(), sid.group(1))
+        for m in re.finditer(r'<[^>]*class="k-product-section[" ][^>]*>', seite)
+        if (sid := re.search(r'\bid="([^"]+)"', m.group(0)))
+    )
+    out: dict[str, dict[str, dict]] = {}
+    for (start, sid), (ende, _) in zip(marken, [*marken[1:], (len(seite), "")], strict=True):
+        if not KAUFLAND_FOOD.match(sid):
+            continue
+        teil = seite[start:ende]
+        g = re.search(r"[Gg]ültig vom (\d{1,2}\.\d{1,2}\.) bis (\d{1,2}\.\d{1,2}\.)", teil)
+        if not g:
+            continue
+        von = _datum(g.group(1), heute)
+        bis = _datum(g.group(2), von)
+        kategorie = re.sub(r"^cat_[0-9a-z]+_", "", sid).replace("__", ", ").replace("_", " ")
+        woche = out.setdefault(woche_von(von), {})
+        for kachel in teil.split('class="k-product-tile"')[1:]:
+            a = kaufland_kachel(kachel, von, bis, kategorie)
+            if a and a["quelle_id"] not in woche:
+                woche[a["quelle_id"]] = a
+    return {w: list(x.values()) for w, x in out.items() if x}
+
+
+async def kaufland_abrufen(http: httpx.AsyncClient, filiale: str) -> dict[str, list[dict]]:
+    """Diese und nächste Woche; die Filiale wählt das Cookie x-aem-variant (Preise regional)."""
+    filiale = kaufland_filiale(filiale)
+    if not filiale:
+        raise AbrufFehler("Kaufland: Filiale muss DE + 4 Ziffern sein (z. B. DE8360)")
+    out: dict[str, list[dict]] = {}
+    for woche in ("current", "next"):
+        r = await _get(http, KAUFLAND_SEITE, cookies=f"x-aem-variant={filiale}",
+                       **{"kloffer-week": woche})  # fmt: skip
+        for w, liste in kaufland_seite(r.text).items():
+            out.setdefault(w, []).extend(liste)
+    return out
+
+
+ABRUFER = {"penny": penny_abrufen, "kaufland": kaufland_abrufen}
 
 
 def konfig(s: Session) -> dict[str, str]:
@@ -786,10 +893,34 @@ async def bestaetigen(
     return {"ok": ok, "fehler": fehler}
 
 
+def _markt_treffer(haendler: str, daten: list[dict], q: str) -> list[dict]:
+    if haendler == "kaufland":
+        return [
+            {
+                "id": m.get("n"),
+                "name": m.get("cn"),
+                "adresse": f"{m.get('sn', '')}, {m.get('pc', '')} {m.get('t', '')}",
+            }  # fmt: skip
+            for m in daten
+            if str(m.get("pc", "")).startswith(q) or q in str(m.get("t", "")).lower()
+        ]
+    return [
+        {
+            "id": str(m.get("wwIdent")),
+            "name": m.get("marketName"),
+            "adresse": f"{m.get('streetWithHouseNumber', '')}, {m.get('zipCode', '')} "
+            f"{m.get('city', '')}",
+        }  # fmt: skip
+        for m in daten
+        if str(m.get("zipCode", "")).startswith(q) or q in str(m.get("city", "")).lower()
+    ]
+
+
 @router.get("/angebote/maerkte/{haendler}")
 async def maerkte_suchen(haendler: str, q: str, request: Request) -> list[dict]:
     """Märkte nach PLZ oder Ort, für die Einstellung."""
-    if haendler != "penny":
+    quellen = {"penny": PENNY_MAERKTE, "kaufland": KAUFLAND_FILIALEN}
+    if haendler not in quellen:
         raise HTTPException(404, f"Marktsuche für {haendler} gibt es nicht")
     q = q.strip().lower()
     if len(q) < 3:
@@ -798,21 +929,10 @@ async def maerkte_suchen(haendler: str, q: str, request: Request) -> list[dict]:
     eigen = http is None
     http = http or httpx.AsyncClient(timeout=30.0, follow_redirects=True)
     try:
-        maerkte = (await _get(http, PENNY_MAERKTE)).json()
+        daten = (await _get(http, quellen[haendler])).json()
     except (AbrufFehler, httpx.HTTPError, ValueError) as err:
-        raise HTTPException(502, f"Penny nicht erreichbar: {err}") from err
+        raise HTTPException(502, f"{HAENDLER[haendler]} nicht erreichbar: {err}") from err
     finally:
         if eigen:
             await http.aclose()
-    treffer = [
-        {
-            "id": str(m.get("wwIdent")),
-            "name": m.get("marketName"),
-            "adresse": f"{m.get('streetWithHouseNumber', '')}, {m.get('zipCode', '')} "
-            f"{m.get('city', '')}",
-            "region": m.get("sellingRegion"),
-        }  # fmt: skip
-        for m in maerkte
-        if str(m.get("zipCode", "")).startswith(q) or q in str(m.get("city", "")).lower()
-    ]
-    return treffer[:30]
+    return _markt_treffer(haendler, daten, q)[:30]

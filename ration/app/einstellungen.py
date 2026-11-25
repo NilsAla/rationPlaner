@@ -6,6 +6,7 @@ Die HA-App-Optionen (Grocy, ai_task, To-do, Token) werden nur angezeigt, nie hie
 from __future__ import annotations
 
 import copy
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -53,7 +54,7 @@ STANDARD: dict[str, dict[str, Any]] = {
     "ersatz": {"gesperrt": []},
     "ki": {"modus": "ha", "openai_modell": "gpt-4.1-mini", "jobs": {}, "preise": {}},
     # Prospekt-Abruf je Händler: Markt-ID (leer = aus). Penny: wwIdent aus der Marktsuche
-    "angebote": {"penny_markt": ""},
+    "angebote": {"penny_markt": "", "kaufland_markt": ""},  # Kaufland: Filiale DE8360
 }
 KI_JOBS = (
     "bon", "import", "kochanleitung", "kategorisierung", "naehrwerte", "planer", "packungen",
@@ -132,11 +133,18 @@ def pruefen(gruppe: str, werte: dict) -> dict:
         out["gesperrt"] = sorted({str(x) for x in out["gesperrt"]})
     elif gruppe == "ki":
         out.update(_ki_pruefen(out))
-    elif gruppe == "angebote" and "penny_markt" in out:
-        markt = str(out["penny_markt"] or "").strip()
-        if markt and not markt.isdigit():
-            raise HTTPException(422, "penny_markt: Markt-ID aus der Marktsuche (nur Ziffern)")
-        out["penny_markt"] = markt
+    elif gruppe == "angebote":
+        if "penny_markt" in out:
+            markt = str(out["penny_markt"] or "").strip()
+            if markt and not markt.isdigit():
+                raise HTTPException(422, "penny_markt: Markt-ID aus der Marktsuche (nur Ziffern)")
+            out["penny_markt"] = markt
+        if "kaufland_markt" in out:
+            roh = str(out["kaufland_markt"] or "").strip().upper()
+            markt = "DE" + roh if roh.isdigit() else roh
+            if roh and not re.fullmatch(r"DE\d{4}", markt):
+                raise HTTPException(422, "kaufland_markt: Filiale wie DE8360")
+            out["kaufland_markt"] = markt
     elif gruppe == "ernaehrung":
         if "kcal_mahlzeit" in out:
             out["kcal_mahlzeit"] = int(_bereich(out["kcal_mahlzeit"], 100, 3000, "kcal_mahlzeit"))
