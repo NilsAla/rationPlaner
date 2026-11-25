@@ -358,8 +358,14 @@ Regeln:
 - Mengen im Text immer als Zahl mit Einheit für {portionen} Portionen schreiben (z. B. "250 g
   Hähnchen", "2 EL Öl", "1 Zwiebel"), nie "die ganze Packung" o. Ä.: Der Code rechnet sie
   für andere Portionen um.
-- Ein Schritt = ein Handgriff bzw. eine Phase, kurzer Titel im Imperativ (z. B. "Wasser aufsetzen",
-  "Zwiebeln würfeln", "Nudeln ins Wasser"), Text 1–3 Sätze mit den Details aus dem Original.
+- Ein Schritt = ein Arbeitsgang, der zusammengehörige Handgriffe bündelt (alles Gemüse waschen
+  und schneiden, Masse mischen und formen, Soße ansetzen und abschmecken). Ein eigener Schritt
+  lohnt sich, wenn danach etwas gart oder wartet (Timer), etwas nebenher läuft oder die Arbeit
+  wechselt. Bereitstellen, Waschen, Abtropfen und Anrichten nie als eigener Schritt, sondern im
+  Arbeitsgang davor oder danach. Jeden Vorgang nur einmal (Wasser einmal aufsetzen, nicht
+  erhitzen und später nochmal aufkochen). Typisch 8–14 Schritte, aufwendige Rezepte mehr.
+  Kurzer Titel im Imperativ (z. B. "Wasser aufsetzen", "Gemüse schneiden", "Nudeln kochen"),
+  Text 1–4 Sätze mit den Details aus dem Original.
 - zutaten: die Indizes der Zutaten, die in DIESEM Schritt verarbeitet oder in Topf/Pfanne gegeben
   werden. Jede Zutat muss mindestens einmal vorkommen. Wird eine Zutat in mehreren Schritten
   bearbeitet (Paprika schneiden, später anbraten), nenne sie in jedem davon. teilweise: Indizes,
