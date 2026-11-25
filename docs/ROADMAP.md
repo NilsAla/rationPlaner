@@ -310,9 +310,6 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
   der Themen-Abschnitte ab), Gültigkeit aus „Gültig vom … bis …“. Nächste Woche zeigt Kaufland
   anfangs nur „Vorwerbung“ ohne Kategorien, die wird übersprungen. Live KW 48: 317 Angebote.
   Risiko: Ignoriert Kaufland das Cookie, kommt still die Standardfiliale.
-- 0.33.1: Pflanzen und Deko in gemischten Kategorien (Kaufland „Obst, Gemüse, Pflanzen“:
-  Adventsgestecke) per Titel als Non-Food (`PFLANZE`, gilt für alle Händler), gehen nicht an
-  die KI und sind in der Liste ausgeblendet.
 - Offen:
   1. ~~Kaufland~~ (0.33.0, HTML). **Lidl** (Übersicht parsen, Food-Prospekt): erst prüfen, ob
      lidl.de ähnlich gerendert ist, sonst Seitenbilder + `keyWords` an einen Vision-Job.

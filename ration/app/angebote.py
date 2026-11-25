@@ -56,14 +56,6 @@ PERIODE = {"ab-montag": 0, "ab-dienstag": 1, "ab-mittwoch": 2, "ab-donnerstag": 
 PENNY_OHNE = re.compile(
     r"^(drogerie|haushalt|pflanzen|kinderwelt|weihnachten|black-week|kochen-und)"
 )
-# Pflanzen und Deko in gemischten Kategorien (Kaufland „Obst, Gemüse, Pflanzen“). Wortgrenzen,
-# damit Rosenkohl, Rosenbrötchen, Pflanzendrink und Ritter Sport Tanne Lebensmittel bleiben.
-PFLANZE = re.compile(
-    r"(?i)(gesteck|adventskr[aä]nz|\bkr[aä]nze?\b|weihnachtsstern|amaryllis|orchidee|christrose|"
-    r"alpenveilchen|blumenstrau|\bstrau(ß|ss)\b|\btulpen?\b|\brosen?\b|hyazinthe|primeln?\b|"
-    r"topfpflanze|zimmerpflanze|konifere|nordmanntanne|weihnachtsbaum|tannenbaum|mistel|"
-    r"\bzweige\b|\bkerzen?\b|\bpflanzen?\b)"
-)
 KI_BATCH = 40  # Angebote je KI-Aufruf
 ABRUF_AB_STUNDE = 6
 NAECHSTE_WOCHE_AB = 2  # ab Mittwoch nach dem Prospekt der nächsten Woche schauen
@@ -206,10 +198,9 @@ def penny_angebot(t: dict, woche: str, periode: str, kategorie: str) -> dict | N
     if not streich and t.get("originalPriceType") != "uvp":  # UVP ist kein Penny-Normalpreis
         streich = euro(t.get("originalPrice"))
     bild = (t.get("imageRendition") or {}).get("tileSm")
-    titel = titel_sauber(str(t.get("title") or ""))[:200]
     return {
         "quelle_id": str(t["uuid"]),
-        "titel": titel,
+        "titel": titel_sauber(str(t.get("title") or ""))[:200],
         "menge_text": (str(t.get("quantity") or "").strip() or None),
         "menge": groesse[0] if groesse else None,
         "einheit": groesse[1] if groesse else None,
@@ -220,7 +211,7 @@ def penny_angebot(t: dict, woche: str, periode: str, kategorie: str) -> dict | N
         "streichpreis": streich,
         "grundpreis": (str(t.get("basePrice") or "").strip() or None),
         "kategorie": kategorie,
-        "typ": "nonfood" if t.get("type") == "non-food" or PFLANZE.search(titel) else "food",
+        "typ": "nonfood" if t.get("type") == "non-food" else "food",
         "gueltig_von": wochentag(woche, PERIODE.get(periode, 0)),
         "gueltig_bis": wochentag(woche, 5),
         "bild": bild,
@@ -326,7 +317,7 @@ def kaufland_kachel(t: str, von: date, bis: date, kategorie: str) -> dict | None
         "streichpreis": euro(alt[0]) if alt else None,
         "grundpreis": _klasse(t, "base-price") or None,
         "kategorie": kategorie,
-        "typ": "nonfood" if PFLANZE.search(titel) else "food",
+        "typ": "food",
         "gueltig_von": von,
         "gueltig_bis": bis,
         "bild": bild.group(1),
