@@ -36,6 +36,12 @@ nicht stillschweigend aufweichen. Nutzer ist erfahrener Sysadmin (HAOS auf N100,
    `ration/app/__init__.py` (`API_VERSION`) und `SUPPORTED_API_MAJOR` der Bridge anheben.
 6. **Name ist Platzhalter.** Slug/Domain `ration` nur in `ration/config.yaml` und
    `custom_components/ration/const.py` definieren, nirgends sonst hart codieren.
+7. **Keine White- und Blacklists für Einzelfälle** (Nils 2026-11-25). Fällt etwas Falsches
+   auf, nicht Wörter, Titel oder Produkte in eine Liste schreiben („Gesteck“, „Kranz“ …), das
+   ist ein Kampf gegen Windmühlen. Stattdessen die Struktur der Quelle nutzen (Kategorien,
+   Typ-Felder, IDs) oder die Regel verallgemeinern. Geht das nicht, bleibt der Fall drin und
+   wird über den normalen Weg behandelt (KI ordnet nichts zu, Nutzer ignoriert per Klick).
+   Feste Werte nur, wenn sie eine Struktur der Quelle beschreiben (z. B. Kaufland `cat_01`–`cat_08`).
 
 ## Grocy
 
