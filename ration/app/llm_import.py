@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import textwrap
 from dataclasses import dataclass
 
@@ -24,6 +25,7 @@ from app.rezept_import import (
     RohZutat,
     Zuordnung,
     _staemme,
+    _voll,
     aehnlichkeit,
     gramm,
     kern_name,
@@ -231,14 +233,16 @@ def passt(z: Zuordnung, p: Product, kategorie: str | None) -> bool:
 
 
 def ki_name(z: Zuordnung, wert: object) -> str | None:
-    """Name eines neuen Produkts von der KI, nur wenn er den Code-Namen um Wörter aus dem
-    Zutatentext ergänzt (Adjektiv zurückholen: „Stückige Tomaten“ statt „Tomaten“). Sonst
-    bleibt der Code-Name (live: „Knoblauchzehe“ statt Synonym „Knoblauch“)."""
+    """Name eines neuen Produkts von der KI, nur aus Wörtern des Zutatentexts und nur, wenn er
+    mehr sagt als der Code-Name: ergänzt ihn („Stückige Tomaten“ statt „Tomaten“) oder stammt
+    aus dem Zusatz, den der Code wegwirft („Käse (Emmentaler)“ → „Emmentaler“). Sonst bleibt
+    der Code-Name (live: „Knoblauchzehe“ statt Synonym „Knoblauch“)."""
     name = " ".join(str(wert or "").split())[:60]
     if not name or len(name.split()) > 4:
         return None
-    neu, code = set(_staemme(name)), set(_staemme(z.neu_name or kern_name(z.name)))
-    if not neu <= set(_staemme(z.text)) or not code < neu:
+    neu, code = _voll(name), _voll(z.neu_name or kern_name(z.name))
+    zusatz = _voll(" ".join(re.findall(r"\((.*?)\)", z.name) + z.name.split(",")[1:]))
+    if not neu <= _voll(z.text) or not (code < neu or (neu <= zusatz and neu - code)):
         return None
     return name[:1].upper() + name[1:]
 

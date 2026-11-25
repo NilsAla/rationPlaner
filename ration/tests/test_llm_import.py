@@ -300,6 +300,20 @@ def test_ki_name_nur_aus_zutatentext(ki_client, fake_ha):
     assert z["2 Knoblauchzehe(n)"]["neu_name"] == "Knoblauch"  # Code-Synonym bleibt
 
 
+def test_ki_name_aus_klammerzusatz(ki_client, fake_ha):
+    # live: „200 g Käse (Emmentaler), gerieben“ wurde zu „Käse“, die KI sagte „Emmentaler“
+    fake_ha.ki_antwort = {
+        "zutaten": [
+            {"index": 1, "kategorie": "Käse", "aktion": "neu", "name": "Emmentaler"},
+            {"index": 2, "kategorie": "Käse", "aktion": "neu", "name": "Gouda"},
+        ]
+    }
+    zutaten = ["200 g Käse (Emmentaler), gerieben", "100 g Käse (mittelalt)"]
+    _, z = _vorschau2(ki_client, zutaten)
+    assert z["200 g Käse (Emmentaler), gerieben"]["neu_name"] == "Emmentaler"
+    assert z["100 g Käse (mittelalt)"]["neu_name"] == "Käse"  # Gouda steht nirgends
+
+
 def test_variante_nur_gleiche_kategorie(ki_client, fake_ha, fake_backend):
     paprika = _produkt(fake_backend, "Paprika", "Gemüse")
     fake_ha.ki_antwort = {
