@@ -529,7 +529,8 @@ Verkaufsregion (`/.rest/market` → `sellingRegion`, Kategorien aus `/angebote`,
 `/.rest/offers/by-category/{KW}/{kategorie}?region=`). Gültigkeit aus dem Abschnitt
 (`ab-montag`/`ab-donnerstag`/`ab-freitag`) bis Samstag. Größe parst der Code.
 
-- **Zuordnung:** gemerkter Titel je Händler (`angebot_alias`) > KI-Job `angebote` (nur IDs aus
+- **Zuordnung:** gemerkter Titel je Händler (`angebot_alias`) > Namensregel im Code
+  (Kopfwort des Titels = Kopfwort des Produkts, Komposita als Variante) > KI-Job `angebote` (nur IDs aus
   dem Katalog, `gleich`/`variante`/`keins`, unbekannte ID verworfen). KI-Treffer zählen sofort
   als Overlay im Planer-Scoring, Preise (`preis.angebot_id`, Quelle angebot/streichpreis),
   Alias und Angebots-Packung (abweichende Größe, gültig bis Aktionsende) erst nach ✓.

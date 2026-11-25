@@ -2,8 +2,9 @@ import {$, $$, api, dialog, dmy, esc, eur, guarded, lokal, merken, meldeMassen, 
 
 // Angebote aus Prospekten: Abruf-Status je Händler, Zuordnung zu Produkten prüfen.
 // Die KI schlägt nur vor; Preise, Alias und Angebots-Packung entstehen erst mit ✓.
+const VORSCHLAG = ["code", "ki"]; // unbestätigt: Namensregel oder KI
 const FILTER = [
-  ["pruefen", "Zu prüfen", (a) => a.zuordnung === "ki"],
+  ["pruefen", "Zu prüfen", (a) => VORSCHLAG.includes(a.zuordnung)],
   ["zugeordnet", "Zugeordnet", (a) => ["alias", "nutzer"].includes(a.zuordnung)],
   ["offen", "Ohne Treffer", (a) => !a.zuordnung || a.zuordnung === "ki_keins"],
   ["ignoriert", "Ignoriert", (a) => a.zuordnung === "ignoriert"],
@@ -51,7 +52,7 @@ export default async function render(el) {
   const such = lokal("angebote.suche", "").toLowerCase();
   const passt = FILTER.find((f) => f[0] === filter)?.[2] ?? (() => true);
   const zeilen = liste.filter((a) => passt(a) && (!such || `${a.titel} ${a.produkt ?? ""}`.toLowerCase().includes(such)));
-  const kiTreffer = zeilen.filter((a) => a.zuordnung === "ki");
+  const kiTreffer = zeilen.filter((a) => VORSCHLAG.includes(a.zuordnung));
   const unbearbeitet = liste.filter((a) => !a.zuordnung).length;
   const nachName = Object.fromEntries(produkte.map((p) => [p.name.toLowerCase(), p.id]));
 
@@ -67,8 +68,8 @@ export default async function render(el) {
     <p class="muted tiny">Abruf automatisch einmal am Tag, bis die aktuelle Woche da ist, ab Mittwoch auch die nächste. Kaputte Abrufe melden sich als HA-Hinweis.</p></div>
   <div class="card"><div class="kopf"><h2>Angebote (${liste.length})</h2><div class="aktionen">
       ${unbearbeitet ? `<button class="btn klein" id="ki">${unbearbeitet} der KI geben</button>` : ""}
-      ${liste.some((a) => ["ki", "ki_keins"].includes(a.zuordnung)) ? `<button class="btn klein" id="kineu" title="Unbestätigte KI-Ergebnisse neu zuordnen lassen; Bestätigtes und Ignoriertes bleibt">KI neu zuordnen</button>` : ""}
-      ${kiTreffer.length ? `<button class="btn klein primary" id="alle">${kiTreffer.length} KI-Treffer bestätigen</button>` : ""}</div></div>
+      ${liste.some((a) => [...VORSCHLAG, "ki_keins"].includes(a.zuordnung)) ? `<button class="btn klein" id="kineu" title="Unbestätigte Vorschläge neu: erst Namensregel, dann KI; Bestätigtes und Ignoriertes bleibt">Neu zuordnen</button>` : ""}
+      ${kiTreffer.length ? `<button class="btn klein primary" id="alle">${kiTreffer.length} Vorschläge bestätigen</button>` : ""}</div></div>
     <div class="chips">${FILTER.map(([k, t, f]) => `<button class="chip ${k === filter ? "on" : ""}" data-f="${k}">${t} <span class="muted">${liste.filter(f).length}</span></button>`).join("")}</div>
     <input id="such" placeholder="Suchen …" value="${esc(such)}" style="margin:8px 0">
     <datalist id="angprod">${produkte.map((p) => `<option value="${esc(p.name)}">`).join("")}</datalist>
@@ -80,7 +81,7 @@ export default async function render(el) {
       <div class="preis"><b>${a.preis != null ? eur(a.preis) : esc(a.preis_text ?? "–")}</b>
         ${a.streichpreis ? `<div class="muted tiny"><s>${eur(a.streichpreis)}</s></div>` : ""}
         ${a.app_preis ? `<div class="tiny" title="mit Händler-App">App ${eur(a.app_preis)}</div>` : ""}</div>
-      <div class="zuo">${a.zuordnung === "ki" ? `<span>✨ ${esc(a.produkt)}</span><button class="btn klein primary" data-ok title="bestätigen">✓</button>`
+      <div class="zuo">${VORSCHLAG.includes(a.zuordnung) ? `<span title="${a.zuordnung === "ki" ? "KI-Vorschlag" : "Name passt"}">${a.zuordnung === "ki" ? "✨" : "🔤"} ${esc(a.produkt)}</span><button class="btn klein primary" data-ok title="bestätigen">✓</button>`
         : ["alias", "nutzer"].includes(a.zuordnung) ? `<span class="ok">✓ ${esc(a.produkt)}</span>`
         : a.zuordnung === "ignoriert" ? `<span class="muted">ignoriert</span>` : ""}
         <input list="angprod" data-wahl placeholder="${a.produkt ? "anderes Produkt …" : "Produkt …"}">

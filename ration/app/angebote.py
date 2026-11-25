@@ -30,7 +30,7 @@ from app.db import Base, Packung, Preis
 from app.deps import backend, session
 from app.inventory.base import InventoryBackend, Product
 from app.kategorisierung import KATEGORIEN
-from app.rezept_import import _norm
+from app.rezept_import import _norm, _stamm, kern_name
 
 log = logging.getLogger("ration.angebote")
 router = APIRouter(prefix="/api/v1")
@@ -60,6 +60,7 @@ KI_BATCH = 40  # Angebote je KI-Aufruf
 ABRUF_AB_STUNDE = 6
 NAECHSTE_WOCHE_AB = 2  # ab Mittwoch nach dem Prospekt der nächsten Woche schauen
 ZUGEORDNET = ("alias", "nutzer")  # bestätigte Zuordnung
+VORSCHLAG = ("code", "ki")  # unbestätigt: Namensregel im Code oder KI
 STUECK = {"stück", "stk", "st", "packung", "pck", "dose", "glas", "flasche", "bund", "becher"}
 
 
@@ -409,7 +410,7 @@ def alias_anwenden(s: Session, haendler: str | None = None) -> int:
     aliase = {(a.haendler, a.text): a.produkt_id for a in s.scalars(select(AngebotAlias))}
     n = 0
     q = select(Angebot).where(
-        Angebot.zuordnung.is_(None) | Angebot.zuordnung.in_(("ki", "ki_keins"))
+        Angebot.zuordnung.is_(None) | Angebot.zuordnung.in_((*VORSCHLAG, "ki_keins"))
     )
     if haendler:
         q = q.where(Angebot.haendler == haendler)
@@ -418,6 +419,79 @@ def alias_anwenden(s: Session, haendler: str | None = None) -> int:
         if key in aliase:
             a.produkt_id = aliase[key]
             a.zuordnung = "alias" if aliase[key] else "ignoriert"
+            n += 1
+    return n
+
+
+# --- Namensregel (Code, vor der KI) --------------------------------------------------------
+
+
+def _woerter(text: str) -> list[tuple[str, bool]]:
+    """(Stamm, großgeschrieben) je Wort vor Komma/Zusatz. Bindestrich-Wörter zählen als ein
+    Wort (Dessert-Ei, Paprika-Chips), Teile in Großbuchstaben (Marken, TK-) fallen weg."""
+    text = re.split(r"[,»«(]", text)[0]
+    out = []
+    for w in re.findall(r"[A-Za-zÄÖÜäöüß]+(?:-[A-Za-zÄÖÜäöüß]+)*", text):
+        teile = [t for t in w.split("-") if not t.isupper()]
+        if teile and len(wort := "".join(teile)) >= 2:
+            out.append((_stamm(wort.lower()), teile[0][0].isupper()))
+    return out
+
+
+def _kopf(text: str) -> str | None:
+    """Kopfwort: letztes großgeschriebenes Wort („MÜHLENHOF Frisches Hackfleisch gemischt“ →
+    hackfleisch, „Paprika-Chips“ → paprikachips, „Bio-Spitzpaprika, rot“ → biospitzpaprika)."""
+    gross = [w for w, g in _woerter(text) if g]
+    return gross[-1] if gross else None
+
+
+def _passt_wort(a: str, b: str) -> bool:
+    return a == b or (min(len(a), len(b)) >= 4 and (a.startswith(b) or b.startswith(a)))
+
+
+def namensregel(titel: str, produkte: list[Product]) -> tuple[Product, str] | None:
+    """Produkt, dessen Kopfwort der Kopf des Titels ist (gleich) oder auf den er endet
+    (Variante: Spitzpaprika → Paprika). Weitere Wörter des Produktnamens müssen im Titel
+    stehen. Mehrere gleich gute Produkte → None (dann entscheidet die KI)."""
+    kopf = _kopf(titel)
+    if not kopf:
+        return None
+    staemme = [w for w, _ in _woerter(titel)]
+    kandidaten: list[tuple[int, int, Product, str]] = []
+    for p in produkte:
+        pk = _kopf(kern_name(p.name))
+        if not pk:
+            continue
+        pw = [w for w, _ in _woerter(kern_name(p.name)) if w != pk]
+        if kopf == pk:
+            art = "gleich"
+        elif len(pk) >= 4 and kopf.endswith(pk):
+            art = "variante"
+        else:
+            continue
+        zusatz = pw
+        if not all(any(_passt_wort(z, t) for t in staemme) for z in zusatz):
+            continue
+        kandidaten.append((art == "gleich", len(zusatz), p, art))
+    if not kandidaten:
+        return None
+    kandidaten.sort(key=lambda k: (k[0], k[1]), reverse=True)
+    if len(kandidaten) > 1 and kandidaten[0][:2] == kandidaten[1][:2]:
+        return None
+    return kandidaten[0][2], kandidaten[0][3]
+
+
+def code_zuordnen(s: Session, produkte: list[Product], haendler: str | None = None) -> int:
+    """Offene Lebensmittel-Angebote per Namensregel vorschlagen (ohne KI)."""
+    q = select(Angebot).where(Angebot.zuordnung.is_(None), Angebot.typ == "food")
+    if haendler:
+        q = q.where(Angebot.haendler == haendler)
+    n = 0
+    for a in s.scalars(q):
+        if treffer := namensregel(a.titel, produkte):
+            p, art = treffer
+            a.produkt_id, a.zuordnung = p.id, "code"
+            a.ki_info = f"Name passt ({art})"
             n += 1
     return n
 
@@ -624,7 +698,7 @@ def aktiv_je_produkt(s: Session, von: date, bis: date | None = None) -> dict[str
     for a in s.scalars(
         select(Angebot).where(
             Angebot.produkt_id.is_not(None),
-            Angebot.zuordnung.in_((*ZUGEORDNET, "ki")),
+            Angebot.zuordnung.in_((*ZUGEORDNET, *VORSCHLAG)),
             Angebot.gueltig_bis >= von,
             Angebot.gueltig_von <= bis,
         )
@@ -644,6 +718,7 @@ class Ergebnis:
     anzahl: int = 0
     neu: int = 0
     alias: int = 0
+    code: int = 0
     ki: dict = field(default_factory=dict)
     fehler: str | None = None
 
@@ -673,6 +748,8 @@ async def abrufen(app, haendler: str, markt: str) -> Ergebnis:
             erg.neu = speichern(s, haendler, wochen)
             s.commit()
             erg.alias = alias_anwenden(s, haendler)
+            if app.state.backend is not None:
+                erg.code = code_zuordnen(s, await app.state.backend.list_products(), haendler)
             s.commit()
         erg.ok = True
     except (AbrufFehler, httpx.HTTPError) as err:
@@ -852,9 +929,11 @@ async def ki_nochmal(
     „passt zu nichts“) neu fragen; Bestätigtes und Ignoriertes bleibt."""
     request.app.state.ki.pruefen("angebote")
     if neu:
-        for a in s.scalars(select(Angebot).where(Angebot.zuordnung.in_(("ki", "ki_keins")))):
+        for a in s.scalars(select(Angebot).where(Angebot.zuordnung.in_((*VORSCHLAG, "ki_keins")))):
             a.produkt_id, a.zuordnung, a.ki_info = None, None, None
         s.commit()
+    code_zuordnen(s, await b.list_products())
+    s.commit()
     return await ki_zuordnen(s, request.app.state.ki, b)
 
 
@@ -884,8 +963,8 @@ async def bestaetigen(
     ok, fehler = [], []
     for aid in data.ids:
         a = s.get(Angebot, aid)
-        if a is None or a.zuordnung != "ki" or a.produkt_id not in produkte:
-            fehler.append({"id": aid, "fehler": "kein offener KI-Treffer"})
+        if a is None or a.zuordnung not in VORSCHLAG or a.produkt_id not in produkte:
+            fehler.append({"id": aid, "fehler": "kein offener Vorschlag"})
             continue
         zuordnen(s, a, produkte[a.produkt_id])
         ok.append(aid)

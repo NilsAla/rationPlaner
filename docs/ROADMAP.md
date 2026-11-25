@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-25, Version 0.33.0 / API 1.29)
+# Roadmap und Übergabe (Stand 2026-11-25, Version 0.34.0 / API 1.29)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -310,6 +310,15 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
   der Themen-Abschnitte ab), Gültigkeit aus „Gültig vom … bis …“. Nächste Woche zeigt Kaufland
   anfangs nur „Vorwerbung“ ohne Kategorien, die wird übersprungen. Live KW 48: 317 Angebote.
   Risiko: Ignoriert Kaufland das Cookie, kommt still die Standardfiliale.
+- 0.33.1/0.33.2: Pflanzen-Wortliste eingebaut und auf Nils' Wunsch wieder entfernt
+  (Grundregel 7 in CLAUDE.md: keine White-/Blacklists für Einzelfälle).
+- 0.34.0 **Namensregel vor der KI** (`namensregel`, Zuordnung `code`, „🔤“ in der Liste):
+  Kopfwort = letztes großgeschriebenes Wort (Marken in Großbuchstaben fallen weg,
+  Bindestrich-Wörter zählen als eins). Gleich = gleiches Kopfwort wie das Produkt, Variante =
+  Kopf endet auf das Produkt-Kopfwort (Spitzpaprika → Paprika). Zusatzwörter des Produkts
+  müssen im Titel stehen. Mehrdeutig → KI. Wie KI-Treffer nur Vorschlag (✓ nötig).
+  Live KW 48 mit Nils' Katalog: Penny 15/264, Kaufland 20/317 ohne KI; daneben etwa 5
+  (Rama mit Butter, Balsamico Zwiebeln, Sprühsahne, Instant-Nudeln, Marzipankartoffeln).
 - Offen:
   1. ~~Kaufland~~ (0.33.0, HTML). **Lidl** (Übersicht parsen, Food-Prospekt): erst prüfen, ob
      lidl.de ähnlich gerendert ist, sonst Seitenbilder + `keyWords` an einen Vision-Job.

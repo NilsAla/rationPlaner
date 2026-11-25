@@ -20,6 +20,7 @@ from app.angebote import (
     woche_von,
 )
 from app.db import Packung, Preis
+from app.inventory.base import Product
 from app.main import create_app
 from app.settings import Settings
 
@@ -255,7 +256,7 @@ def test_planer_overlay(a_client, fake_ha):
     a_client.post("/api/v1/angebote/abrufen", json={})
     with Session(a_client.app.state.engine) as s:
         aktiv = angebote.aktiv_je_produkt(s, HEUTE, HEUTE + timedelta(days=7))
-    assert set(aktiv) == {"nudeln"}
+    assert set(aktiv) == {"nudeln", "paprika"}  # Paprika per Namensregel
 
 
 def test_healthcheck_kaputt_meldet_einmal(a_client, fake_ha, penny):
@@ -444,3 +445,52 @@ def test_kaufland_abruf_mit_filiale(fake_backend, fake_ha, tmp_path):
     assert cookies == ["x-aem-variant=DE8360"] * 2
     assert st["kaufland"]["ok"] and st["kaufland"]["anzahl"] == 2 and not st["penny"]["aktiv"]
     assert {a["markt"] for a in liste} == {"Kaufland"}
+
+
+NAMENSKATALOG = [
+    Product(id=str(i), name=n, unit="g")
+    for i, n in enumerate([
+        "Champignons", "Gemischtes Hackfleisch", "Hackfleischzubereitung vom Weiderind",
+        "Tomate", "Tomatenmark", "Paprika", "Paprikapulver", "Ei", "Kartoffeln", "Süßkartoffel",
+        "Hartkäse", "TK-Blattspinat", "Zwiebel", "Lauchzwiebeln", "Frischkäse",
+    ])
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("titel", "erwartet"),
+    [  # Live-Titel Penny/Kaufland KW 48
+        ("Braune Champignons", ("Champignons", "gleich")),
+        ("MÜHLENHOF Frisches Hackfleisch gemischt", ("Gemischtes Hackfleisch", "gleich")),
+        ("Romatomaten", ("Tomate", "variante")),
+        ("Dtsch. Cocktailrispentomaten", ("Tomate", "variante")),
+        ("Span. Bio-Spitzpaprika, rot", ("Paprika", "variante")),
+        ("Dtsch. Speisekartoffeln", ("Kartoffeln", "variante")),
+        ("Ägypt./amerikan. Süßkartoffeln, lose", ("Süßkartoffel", "gleich")),
+        ("OLD AMSTERDAM Holl. Hartkäse", ("Hartkäse", "gleich")),
+        ("Dtsch./niederl. Zwiebeln, rot", ("Zwiebel", "gleich")),
+        ("IGLO Blattspinat", ("TK-Blattspinat", "gleich")),
+        ("KIDS WORLD Dessert-Ei", None),  # Bindestrich-Wort, Kopf ist Dessertei
+        ("LAY'S Paprika-Chips", None),
+        ("ALMETTE Frischkäsezubereitung", None),  # Kopf Zubereitung
+        ("Deutsche Möhren", None),  # Synonym → KI
+        ("MÜHLENHOF Frische Hähnchen-Medaillons", None),
+    ],
+)
+def test_namensregel(titel, erwartet):
+    treffer = angebote.namensregel(titel, NAMENSKATALOG)
+    assert (treffer[0].name, treffer[1]) == erwartet if erwartet else treffer is None
+
+
+def test_namensregel_vor_ki(a_client, fake_ha):
+    # Fixture-Katalog: Nudeln, Paprika rot, Olivenöl. „Paprika rot“ passt per Name.
+    fake_ha.ki_antwort = ki_antwort()
+    a_client.post("/api/v1/angebote/abrufen", json={})
+    liste = {a["titel"]: a for a in a_client.get("/api/v1/angebote").json()}
+    assert (
+        liste["Paprika rot"]["zuordnung"] == "code"
+        and liste["Paprika rot"]["produkt_id"] == "paprika"
+    )
+    assert "Paprika rot" not in fake_ha.ki_anfragen[-1].split("Angebote (index|titel|menge):")[1]
+    r = a_client.post("/api/v1/angebote/bestaetigen", json={"ids": [liste["Paprika rot"]["id"]]})
+    assert r.json()["ok"] == [liste["Paprika rot"]["id"]]
