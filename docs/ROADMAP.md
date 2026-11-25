@@ -320,6 +320,11 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
 
 ## Getroffene Entscheidungen (nicht stillschweigend ändern)
 
+- **Angebote nur per Kategorie der Quelle filtern** (Nils 2026-11-25): keine Wortlisten auf
+  Titeln („Gesteck“, „Kranz“ …), das ist ein Loch ohne Boden. Was in einer gemischten
+  Kategorie durchrutscht (Kaufland „Obst, Gemüse, Pflanzen“), bleibt drin; die KI ordnet es
+  keinem Produkt zu.
+
 - Grocy bleibt Master, Zugriff nur über `InventoryBackend`. Fotos, Nährwerte, Quellen,
   Anleitungen liegen in der App-DB bzw. `/data`.
 - LLM wählt aus, Code rechnet. Nichts aus der KI automatisch übernehmen (Vorschläge + Review).
