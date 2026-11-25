@@ -29,6 +29,7 @@ from app.bon import groesse_aus_text
 from app.db import Base, Packung, Preis
 from app.deps import backend, session
 from app.inventory.base import InventoryBackend, Product
+from app.kategorisierung import KATEGORIEN
 from app.rezept_import import _norm
 
 log = logging.getLogger("ration.angebote")
@@ -82,6 +83,7 @@ class Angebot(Base):
     produkt_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     # None offen · ki KI-Treffer · ki_keins KI fand nichts · alias/nutzer bestätigt · ignoriert
     zuordnung: Mapped[str | None] = mapped_column(String, nullable=True)
+    ki_info: Mapped[str | None] = mapped_column(String, nullable=True)  # Sorte, verworfener Treffer
     abgerufen: Mapped[datetime] = mapped_column(DateTime)
 
 
@@ -321,24 +323,31 @@ def _feld(selector: dict, required: bool = False) -> dict:
 
 
 PASSUNG = ["gleich", "variante", "keins"]
-STRUKTUR = {
-    "zuordnungen": {
-        "description": "Genau ein Eintrag je Angebot",
-        "required": True,
-        "selector": {
-            "object": {
-                "multiple": True,
-                "fields": {
-                    "index": _feld({"number": {}}, True),
-                    "passung": _feld({"select": {"options": PASSUNG}}, True),
-                    "produkt_id": _feld({"text": {}}),
-                },
-            }
-        },
-    }
-}
 
-ANWEISUNG = """Ordne Supermarkt-Angebote den Produkten aus meinem Küchenkatalog zu.
+
+def struktur(produkte: list[Product]) -> dict:
+    """Sorte und Kategorie zuerst (erst benennen, dann zuordnen), IDs nur als Auswahl."""
+    return {
+        "zuordnungen": {
+            "description": "Genau ein Eintrag je Angebot",
+            "required": True,
+            "selector": {
+                "object": {
+                    "multiple": True,
+                    "fields": {
+                        "index": _feld({"number": {}}, True),
+                        "sorte": _feld({"text": {}}, True),
+                        "kategorie": _feld({"select": {"options": KATEGORIEN}}, True),
+                        "passung": _feld({"select": {"options": PASSUNG}}, True),
+                        "produkt_id": _feld({"select": {"options": [p.id for p in produkte]}}),
+                    },
+                }
+            },
+        }
+    }
+
+
+ANWEISUNG = """Prüfe Supermarkt-Angebote gegen meinen Küchenkatalog.
 
 Katalog (id|name|kategorie):
 {katalog}
@@ -346,14 +355,19 @@ Katalog (id|name|kategorie):
 Angebote (index|titel|menge):
 {angebote}
 
-Regeln:
-- Ein Angebot passt, wenn ich es statt meines Produkts kaufen würde. Marke, Herkunft, Haltung und
-  Handelsname spielen keine Rolle („ALMETTE Frischkäsezubereitung“ = Frischkäse).
-- passung gleich: dieselbe Sorte. passung variante: eng verwandt und austauschbar (Fusilli für
-  Nudeln, Cherrytomaten für Tomaten). Sonst passung keins und keine produkt_id.
-- Verarbeitete Produkte passen nicht zur Zutat: Kartoffelchips ≠ Kartoffeln, Erdbeerjoghurt ≠
-  Erdbeeren, Fertiggericht ≠ Zutat, Tierfutter und Drogerie passen nie.
-- produkt_id nur aus dem Katalog, genau wie dort geschrieben. Im Zweifel keins.
+Vorgehen je Angebot:
+1. sorte: was das Angebot ist, 1–3 Wörter ohne Marke („SIMPLY SUNNY Mandeln“ → Mandeln,
+   „MÜHLENHOF Rinder-Rouladen“ → Rinderrouladen). kategorie: Kategorie dieser Sorte.
+2. Steht genau diese Sorte im Katalog (anderer Name ist ok: Möhren = Karotte, Hirtenkäse =
+   Feta), dann passung gleich und ihre produkt_id. Eine Sorte des Katalogprodukts (Romatomaten
+   für Tomate, Fusilli für Nudeln, Basmati für Reis): passung variante.
+3. Sonst passung keins, keine produkt_id. Das ist der Normalfall, die meisten Angebote passen
+   zu nichts. Nie nach Ähnlichkeit raten: Mandeln ≠ Butter, Pistazien ≠ Kürbiskerne,
+   Rouladen ≠ Chorizo, Schweineschnitzel ≠ Hähnchenbrust, Fruchtessig ≠ Olivenöl,
+   Milch ≠ Sahne, Camembert ≠ Mozzarella, Fruchtjoghurt ≠ Sahne.
+4. Verarbeitetes passt nicht zur Zutat: Kartoffelchips ≠ Kartoffeln, Pizza ≠ Mehl,
+   Fertiggericht ≠ Zutat. Tierfutter und Drogerie passen nie.
+5. produkt_id ist die Zahl/ID vor dem ersten „|“, nie der Name.
 """
 
 
@@ -363,17 +377,35 @@ def anweisung(angebote: list[Angebot], produkte: list[Product]) -> str:
     return ANWEISUNG.format(katalog=katalog, angebote=zeilen)
 
 
+def ki_pruefen(e: dict, produkte: dict[str, Product]) -> tuple[Product | None, str | None]:
+    """KI-Treffer prüfen. Live (gpt-4o-mini, 2026-11-25): Namen statt IDs („Gnocchi“) und
+    Fehlgriffe quer durch Kategorien (Mandeln → Butter). Ergebnis (Produkt, Hinweis)."""
+    sorte = " ".join(str(e.get("sorte") or "").split())[:60]
+    if e.get("passung") not in ("gleich", "variante"):
+        return None, sorte or None
+    wert = str(e.get("produkt_id") or "").strip()
+    p = produkte.get(wert)
+    if p is None:  # Name statt ID: nur exakter Produktname zählt
+        p = next((x for x in produkte.values() if x.name.strip().lower() == wert.lower()), None)
+    if p is None:
+        return None, f"{sorte} · KI-ID {wert} unbekannt" if wert else sorte or None
+    kat = e.get("kategorie")
+    if p.category and kat in KATEGORIEN and kat != p.category:
+        return None, f"{sorte} · KI meinte {p.name}, aber {kat} ≠ {p.category}"
+    return p, sorte or None
+
+
 def ki_anwenden(angebote: list[Angebot], daten: dict, produkte: dict[str, Product]) -> int:
-    """IDs gegen den Katalog prüfen; unbekannte ID = kein Treffer. Gibt Treffer zurück."""
+    """KI-Antwort übernehmen (nur geprüfte Treffer). Gibt die Zahl der Treffer zurück."""
     treffer = 0
     for e in daten.get("zuordnungen") or []:
         try:
             a = angebote[int(e.get("index"))]
         except (TypeError, ValueError, IndexError):
             continue
-        pid = str(e.get("produkt_id") or "").strip()
-        if e.get("passung") in ("gleich", "variante") and pid in produkte:
-            a.produkt_id, a.zuordnung = pid, "ki"
+        p, a.ki_info = ki_pruefen(e, produkte)
+        if p:
+            a.produkt_id, a.zuordnung = p.id, "ki"
             treffer += 1
         else:
             a.produkt_id, a.zuordnung = None, "ki_keins"
@@ -397,7 +429,10 @@ async def ki_zuordnen(s: Session, ki, b: InventoryBackend, haendler: str | None 
         teil = offen[i : i + KI_BATCH]
         try:
             daten = await ki.generate(
-                "angebote", "rationPlaner Angebote zuordnen", anweisung(teil, katalog), STRUKTUR
+                "angebote",
+                "rationPlaner Angebote zuordnen",
+                anweisung(teil, katalog),
+                struktur(katalog),
             )
         except Exception as err:  # noqa: BLE001 - Angebote bleiben offen, Abruf gilt trotzdem
             log.warning("KI-Zuordnung der Angebote fehlgeschlagen: %s", err)
@@ -637,6 +672,7 @@ def als_dict(a: Angebot, namen: dict[str, str]) -> dict:
         "produkt_id": a.produkt_id,
         "produkt": namen.get(a.produkt_id or ""),
         "zuordnung": a.zuordnung,
+        "ki_info": a.ki_info,
     }
 
 
@@ -700,10 +736,18 @@ async def jetzt_abrufen(
 
 @router.post("/angebote/ki")
 async def ki_nochmal(
-    request: Request, s: Session = Depends(session), b: InventoryBackend = Depends(backend)
+    request: Request,
+    neu: bool = False,
+    s: Session = Depends(session),
+    b: InventoryBackend = Depends(backend),
 ) -> dict:
-    """Offene Angebote (erneut) der KI geben, z. B. nachdem die KI eingerichtet wurde."""
+    """Offene Angebote der KI geben. neu=true: auch unbestätigte KI-Ergebnisse (Treffer und
+    „passt zu nichts“) neu fragen; Bestätigtes und Ignoriertes bleibt."""
     request.app.state.ki.pruefen("angebote")
+    if neu:
+        for a in s.scalars(select(Angebot).where(Angebot.zuordnung.in_(("ki", "ki_keins")))):
+            a.produkt_id, a.zuordnung, a.ki_info = None, None, None
+        s.commit()
     return await ki_zuordnen(s, request.app.state.ki, b)
 
 

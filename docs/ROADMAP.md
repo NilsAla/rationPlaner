@@ -297,6 +297,12 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
 - 0.32.1: Penny-Abschnitte ohne Lebensmittel werden nicht abgerufen (`data-category-type`
   nonfood plus Sperrliste `PENNY_OHNE`: Drogerie, Haushalt, Pflanzen, Kinderwelt, Weihnachten,
   Black Week). KW 48: 264 statt 344 Angebote, 16 statt 25 Abrufe.
+- 0.32.2 nach erstem Live-Lauf (gpt-4o-mini, Nils warf ~2/3 der Treffer raus: Mandeln → Butter,
+  Rouladen → Chorizo, Fruchtessig → Olivenöl; Hack/Tomaten/Nudeln kamen als Name statt ID):
+  KI nennt erst `sorte` und `kategorie`, `produkt_id` als Auswahlliste, Code-Guard
+  `ki_pruefen` (Kategorie muss passen, exakter Produktname als ID-Ersatz), Grund sichtbar als
+  `ki_info`. „KI neu zuordnen“ (`POST /angebote/ki?neu=true`) fragt Unbestätigtes neu.
+  Empfehlung: Job `angebote` auf `ai_task.openai_stammdaten` (gpt-4.1) stellen.
 - Offen:
   1. **Kaufland** (Filiale per `klstorefinder.json`, Flyer `DE_de_KDZ1_{filiale}_D{KW}`) und
      **Lidl** (Übersicht parsen, Food-Prospekt): Seitenbilder (2400 px) + `keyWords` an einen

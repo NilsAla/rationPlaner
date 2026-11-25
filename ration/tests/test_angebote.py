@@ -137,7 +137,7 @@ def a_client(fake_backend, fake_ha, tmp_path, penny):
 
 
 def ki_antwort(*zuordnungen: tuple[int, str, str | None]) -> dict:
-    return {"zuordnungen": [{"index": i, "passung": p, "produkt_id": pid}
+    return {"zuordnungen": [{"index": i, "sorte": "x", "passung": p, "produkt_id": pid}
                             for i, p, pid in zuordnungen]}  # fmt: skip
 
 
@@ -297,3 +297,45 @@ def test_faellig(tmp_path):
                            wochen="2026-48,2026-49", anzahl=5))  # fmt: skip
         s.commit()
         assert not faellig(s, "penny", montag + timedelta(days=3))
+
+
+def test_ki_guard_mit_live_fehlgriffen():
+    """Live 2026-11-25 (gpt-4o-mini): Namen statt IDs und Fehlgriffe quer durch Kategorien."""
+    from app.angebote import ki_pruefen
+    from app.inventory.base import Product
+
+    produkte = {p.id: p for p in [
+        Product(id="323", name="Butter", unit="g", category="Milchprodukte"),
+        Product(id="383", name="Gnocchi", unit="g", category="Nudeln & Reis"),
+        Product(id="331", name="Tomate", unit="g", category="Gemüse"),
+        Product(id="398", name="Kürbiskerne", unit="g", category="Nüsse & Saaten"),
+        Product(id="320", name="Olivenöl", unit="ml", category="Öl & Essig"),
+        Product(id="404", name="Reis", unit="g"),
+    ]}  # fmt: skip
+
+    def e(sorte, kat, passung, pid):
+        return {"sorte": sorte, "kategorie": kat, "passung": passung, "produkt_id": pid}
+
+    p, info = ki_pruefen(e("Mandeln", "Nüsse & Saaten", "gleich", "323"), produkte)
+    assert p is None and "Nüsse & Saaten ≠ Milchprodukte" in info
+    assert ki_pruefen(e("Gnocchi", "Nudeln & Reis", "gleich", "Gnocchi"), produkte)[0].id == "383"
+    assert ki_pruefen(e("Romatomaten", "Gemüse", "variante", "tomate"), produkte)[0].id == "331"
+    p, info = ki_pruefen(e("Hackfleisch", "Fleisch", "gleich", "Gemischtes Hack"), produkte)
+    assert p is None and "unbekannt" in info
+    assert ki_pruefen(e("Mandeln", "Nüsse & Saaten", "keins", None), produkte) == (None, "Mandeln")
+    # Produkt ohne Kategorie: KI-Kategorie kann nichts widerlegen
+    assert ki_pruefen(e("Expressreis", "Nudeln & Reis", "variante", "404"), produkte)[0].id == "404"
+
+
+def test_ki_neu_fragt_nur_unbestaetigte(a_client, fake_ha):
+    fake_ha.ki_antwort = ki_antwort((1, "gleich", "nudeln"))
+    a_client.post("/api/v1/angebote/abrufen", json={})
+    liste = {a["titel"]: a for a in a_client.get("/api/v1/angebote").json()}
+    a_client.post(
+        f"/api/v1/angebote/{liste['Paprika rot']['id']}/zuordnen", json={"produkt_id": None}
+    )
+    fake_ha.ki_antwort = ki_antwort((0, "gleich", "nudeln"))
+    r = a_client.post("/api/v1/angebote/ki?neu=true").json()
+    assert r["offen"] == 2  # Frischkäse und Spaghetti, nicht die ignorierte Paprika
+    liste = {a["titel"]: a for a in a_client.get("/api/v1/angebote").json()}
+    assert liste["Paprika rot"]["zuordnung"] == "ignoriert"

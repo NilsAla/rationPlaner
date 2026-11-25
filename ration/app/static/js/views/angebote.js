@@ -67,6 +67,7 @@ export default async function render(el) {
     <p class="muted tiny">Abruf automatisch einmal am Tag, bis die aktuelle Woche da ist, ab Mittwoch auch die nächste. Kaputte Abrufe melden sich als HA-Hinweis.</p></div>
   <div class="card"><div class="kopf"><h2>Angebote (${liste.length})</h2><div class="aktionen">
       ${unbearbeitet ? `<button class="btn klein" id="ki">${unbearbeitet} der KI geben</button>` : ""}
+      ${liste.some((a) => ["ki", "ki_keins"].includes(a.zuordnung)) ? `<button class="btn klein" id="kineu" title="Unbestätigte KI-Ergebnisse neu zuordnen lassen; Bestätigtes und Ignoriertes bleibt">KI neu zuordnen</button>` : ""}
       ${kiTreffer.length ? `<button class="btn klein primary" id="alle">${kiTreffer.length} KI-Treffer bestätigen</button>` : ""}</div></div>
     <div class="chips">${FILTER.map(([k, t, f]) => `<button class="chip ${k === filter ? "on" : ""}" data-f="${k}">${t} <span class="muted">${liste.filter(f).length}</span></button>`).join("")}</div>
     <input id="such" placeholder="Suchen …" value="${esc(such)}" style="margin:8px 0">
@@ -74,7 +75,8 @@ export default async function render(el) {
     ${zeilen.length ? zeilen.map((a) => `<div class="ang" data-id="${a.id}">
       ${a.bild ? `<img src="${esc(a.bild)}" alt="" loading="lazy">` : `<span></span>`}
       <div class="text">${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.titel)}</a>` : esc(a.titel)}
-        <div class="muted tiny">${esc(a.markt)} · ${esc(a.menge_text ?? "")} · ${esc(gueltig(a))}${a.grundpreis ? " · " + esc(a.grundpreis) : ""}</div></div>
+        <div class="muted tiny">${esc(a.markt)} · ${esc(a.menge_text ?? "")} · ${esc(gueltig(a))}${a.grundpreis ? " · " + esc(a.grundpreis) : ""}</div>
+        ${a.ki_info ? `<div class="muted tiny">KI: ${esc(a.ki_info)}</div>` : ""}</div>
       <div class="preis"><b>${a.preis != null ? eur(a.preis) : esc(a.preis_text ?? "–")}</b>
         ${a.streichpreis ? `<div class="muted tiny"><s>${eur(a.streichpreis)}</s></div>` : ""}
         ${a.app_preis ? `<div class="tiny" title="mit Händler-App">App ${eur(a.app_preis)}</div>` : ""}</div>
@@ -104,6 +106,13 @@ export default async function render(el) {
   if (ki) ki.onclick = () => guarded(async () => {
     ki.disabled = true; ki.textContent = "KI arbeitet …";
     const r = await post("angebote/ki");
+    toast(r.fehler ? `KI: ${r.fehler}` : `${r.treffer} von ${r.offen} zugeordnet`, r.fehler ? "fehler" : "");
+    neu();
+  });
+  const kineu = $("#kineu", el);
+  if (kineu) kineu.onclick = () => guarded(async () => {
+    kineu.disabled = true; kineu.textContent = "KI arbeitet …";
+    const r = await post("angebote/ki?neu=true");
     toast(r.fehler ? `KI: ${r.fehler}` : `${r.treffer} von ${r.offen} zugeordnet`, r.fehler ? "fehler" : "");
     neu();
   });
