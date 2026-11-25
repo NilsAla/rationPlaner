@@ -43,6 +43,12 @@ PENNY_KATEGORIE = PENNY + "/.rest/offers/by-category/{woche}/{kategorie}"
 # Aktionsbeginn laut Prospekt-Abschnitt („ab-donnerstag--obst-und-gemuese1“), Ende Samstag
 PERIODE = {"ab-montag": 0, "ab-dienstag": 1, "ab-mittwoch": 2, "ab-donnerstag": 3,
            "ab-freitag": 4, "ab-samstag": 5}  # fmt: skip
+# Penny-Abschnitte ohne Lebensmittel: nonfood laut Seite oder per Name (Drogerie und Pflanzen
+# sind dort als „food“ markiert). Gemischte wie „dauerhaft im Preis gesenkt“ (Tierfutter)
+# bleiben, die KI ordnet dort nichts zu.
+PENNY_OHNE = re.compile(
+    r"^(drogerie|haushalt|pflanzen|kinderwelt|weihnachten|black-week|kochen-und)"
+)
 KI_BATCH = 40  # Angebote je KI-Aufruf
 ABRUF_AB_STUNDE = 6
 NAECHSTE_WOCHE_AB = 2  # ab Mittwoch nach dem Prospekt der nächsten Woche schauen
@@ -151,8 +157,8 @@ def wochentag(woche: str, tag: int) -> date:
 
 
 def penny_kategorien(seite: str) -> dict[str, list[tuple[str, str]]]:
-    """Woche → [(Periode, Kategorie-Name)] aus der Angebotsseite. Abschnitte nach dem Reiter
-    „next-week“ gehören zur nächsten Woche."""
+    """Woche → [(Periode, Kategorie-Name)] aus der Angebotsseite, nur Lebensmittel-Abschnitte.
+    Abschnitte nach dem Reiter „next-week“ gehören zur nächsten Woche."""
     aktuell = re.search(r'data-current-week="(\d{4}-\d{1,2})"', seite)
     naechste = re.search(r'data-next-week="(\d{4}-\d{1,2})"', seite)
     if not aktuell:
@@ -164,6 +170,8 @@ def penny_kategorien(seite: str) -> dict[str, list[tuple[str, str]]]:
         sid = re.search(r'\bid="([^"]+)"', tag)
         name = re.search(r'data-category-name="([^"]+)"', tag)
         if not sid or not name or 'data-period-category="true"' in tag:
+            continue
+        if 'data-category-type="nonfood"' in tag or PENNY_OHNE.match(name.group(1)):
             continue
         periode = sid.group(1).split("--", 1)[0]
         nae = grenze != -1 and m.start() > grenze and naechste

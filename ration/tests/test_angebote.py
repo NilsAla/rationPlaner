@@ -36,8 +36,12 @@ def seite(naechste: bool = False) -> str:
         'data-period-category="false" data-category-name="kuehlregal">',
         '<section id="ab-donnerstag--obst-und-gemuese1" data-period-category="false"\n'
         'data-category-name="obst-und-gemuese1">',
-        '<section id="ab-montag--black-week" data-period-category="false" '
-        'data-category-name="black-week">',
+        '<section id="ab-montag--weitere" data-period-category="false" '
+        'data-category-name="weitere-angebote">',
+        '<section id="ab-montag--black-week" data-category-type="nonfood" '
+        'data-period-category="false" data-category-name="black-week">',
+        '<section id="ab-montag--drogerie-und-haushalt1" data-category-type="food" '
+        'data-period-category="false" data-category-name="drogerie-und-haushalt1">',
         '<section id="ab-montag--menu" data-period-category="true" data-category-name="menu">',
         "</div>",
     ]
@@ -74,7 +78,7 @@ KATEGORIEN = {
         kachel("u3", "Paprika rot", "je Stück", "0.69"),
         kachel("u2", "BARILLA Spaghetti", "je 1.000-g-Packung", "1.49²"),  # doppelt
     ],
-    "black-week": [
+    "weitere-angebote": [
         {
             **kachel(
                 "u9",
@@ -167,7 +171,7 @@ def test_kategorien_und_wochen():
     assert k[WOCHE] == [
         ("ab-montag", "kuehlregal"),
         ("ab-donnerstag", "obst-und-gemuese1"),
-        ("ab-montag", "black-week"),
+        ("ab-montag", "weitere-angebote"),
     ]
     assert k[NAECHSTE] == [("ab-montag", "kuehlregal")]
 
@@ -179,7 +183,7 @@ def test_angebot_preise_und_gueltigkeit():
         "ALMETTE Frischkäse", 1.11, 1.99, 0.99,
     )  # fmt: skip
     assert (a["gueltig_von"], a["gueltig_bis"]) == (date(2026, 11, 26), date(2026, 11, 28))
-    uvp = penny_angebot(KATEGORIEN["black-week"][0], "2026-48", "ab-montag", "black-week")
+    uvp = penny_angebot(KATEGORIEN["weitere-angebote"][0], "2026-48", "ab-montag", "w")
     assert uvp["streichpreis"] is None and uvp["typ"] == "nonfood"  # UVP ist kein Normalpreis
     rabatt = penny_angebot(kachel("r", "X", "je 100 g", "30% Rabatt"), "2026-48", "ab-montag", "k")
     assert rabatt["preis"] is None and rabatt["preis_text"] == "30% Rabatt"
@@ -192,6 +196,7 @@ def test_abruf_ki_zuordnung_und_liste(a_client, fake_ha, penny):
     r = a_client.post("/api/v1/angebote/abrufen", json={})
     assert r.json() == {"gestartet": ["penny"]}
     assert any("region=R1" in u for u in penny.aufrufe)
+    assert not any("drogerie" in u or "black-week" in u for u in penny.aufrufe)
     liste = {a["titel"]: a for a in a_client.get("/api/v1/angebote").json()}
     assert set(liste) == {"ALMETTE Frischkäse", "BARILLA Spaghetti", "Paprika rot"}
     assert liste["ALMETTE Frischkäse"]["zuordnung"] == "ki_keins"  # unbekannte ID verworfen

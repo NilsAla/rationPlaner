@@ -294,6 +294,9 @@ Eintrag je Tag, ändert sich also nicht; Abbuchen wie gewohnt über „Gekocht�
 - Lokal live gegen penny.de geprüft (KW 48, Emsdetten: 344 Angebote, 293 Lebensmittel,
   Gültigkeit Mo/Do/Fr–Sa, 288 mit erkannter Größe, Rest wie „3 x 100 Blatt“). Tests mit
   nachgebauten Antworten (`tests/test_angebote.py`). KI-Zuordnung live noch ungetestet.
+- 0.32.1: Penny-Abschnitte ohne Lebensmittel werden nicht abgerufen (`data-category-type`
+  nonfood plus Sperrliste `PENNY_OHNE`: Drogerie, Haushalt, Pflanzen, Kinderwelt, Weihnachten,
+  Black Week). KW 48: 264 statt 344 Angebote, 16 statt 25 Abrufe.
 - Offen:
   1. **Kaufland** (Filiale per `klstorefinder.json`, Flyer `DE_de_KDZ1_{filiale}_D{KW}`) und
      **Lidl** (Übersicht parsen, Food-Prospekt): Seitenbilder (2400 px) + `keyWords` an einen
