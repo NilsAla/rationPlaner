@@ -69,7 +69,9 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
    Haushalt sie austauschbar nutzt (man nimmt beim Einkaufen das eine statt des anderen, das
    Gericht wird praktisch gleich): Schweinehack = Hackfleisch, Rapsöl = Pflanzenöl,
    Strauchtomate = Tomate, Rinderbrühe = Fleischbrühe, festkochende Kartoffeln = Kartoffeln,
-   Weizenmehl Type 405 = Mehl. Suche im ganzen Katalog, nicht nur nach dem Vorschlag des Codes.
+   Weizenmehl Type 405 = Mehl, Rinderhack = Hackfleisch. Herkunft, Haltung und Handelsnamen machen
+   keine eigene Sorte (Bio, vom Weiderind, aus der Region, Hackfleischzubereitung = Hackfleisch).
+   Suche im ganzen Katalog, nicht nur nach dem Vorschlag des Codes.
    Kein Treffer ist ein anderes Lebensmittel oder eine andere Verarbeitungsform:
    Paprika edelsüß (Gewürz) ≠ Paprika (Gemüse), Tomatenmark ≠ Tomate, saure Sahne ≠ Sahne,
    Dosentomaten (stückig, passiert, geschält) ≠ frische Tomaten, Süßkartoffel ≠ Kartoffel,
