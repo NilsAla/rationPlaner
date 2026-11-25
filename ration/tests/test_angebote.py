@@ -444,3 +444,22 @@ def test_kaufland_abruf_mit_filiale(fake_backend, fake_ha, tmp_path):
     assert cookies == ["x-aem-variant=DE8360"] * 2
     assert st["kaufland"]["ok"] and st["kaufland"]["anzahl"] == 2 and not st["penny"]["aktiv"]
     assert {a["markt"] for a in liste} == {"Kaufland"}
+
+
+@pytest.mark.parametrize(
+    ("titel", "pflanze"),
+    [
+        ("Adventsgestecke", True), ("Weihnachtsstern", True), ("Mini-Tannenbaum", True),
+        ("Christrose", True), ("Duftalpenveilchen", True), ("Rosen, 7 Stiele", True),
+        ("Dtsch. Basilikum XXL", False), ("ALPRO Pflanzendrink", False), ("Rosenkohl", False),
+        ("Rosenbrötchen", False), ("RITTER SPORT Tanne", False), ("FERRERO Stern", False),
+        ("Zimtsterne", False), ("Dtsch. Grünkohl", False),
+    ],
+)  # fmt: skip
+def test_pflanzen_sind_nonfood(titel, pflanze):
+    assert bool(angebote.PFLANZE.search(titel)) is pflanze
+    k = kl_kachel("p", "", titel, "je", "9.99")
+    a = angebote.kaufland_kachel(
+        k, date(2026, 11, 23), date(2026, 11, 28), "Obst, Gemuese, Pflanzen"
+    )
+    assert a["typ"] == ("nonfood" if pflanze else "food")
