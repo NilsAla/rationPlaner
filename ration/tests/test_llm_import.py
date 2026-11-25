@@ -24,6 +24,9 @@ def ki_client(fake_backend, fake_ha, tmp_path):
         db_url=f"sqlite:///{tmp_path / 'test.db'}",
     )
     with TestClient(app) as c:
+        # Kochanleitung ohne KI (OpenAI ohne Schlüssel): hier geht es nur um die Zuordnung,
+        # die Anleitung im Import testet test_import_anleitung.py
+        c.put("/api/v1/einstellungen/ki", json={"jobs": {"kochanleitung": {"modus": "openai"}}})
         yield c
 
 
@@ -388,3 +391,20 @@ def test_import_fortschritt_und_veraltet():
     assert importlauf.status(e)["fortschritt"] == 95  # wartet bei 95 %, bis fertig
     e.angelegt = jetzt - timedelta(hours=1)
     assert importlauf.status(e)["status"] == "fehler"
+
+
+def test_ki_treffer_art(ki_client, fake_ha, fake_backend):
+    nudeln = _produkt(fake_backend, "Nudeln", "Nudeln & Reis")
+    feta = _produkt(fake_backend, "Feta", "Käse")
+    fake_ha.ki_antwort = {
+        "zutaten": [
+            {"index": 1, "kategorie": "Nudeln & Reis", "aktion": "zuordnen",
+             "produkt_id": nudeln, "treffer": "oberbegriff"},
+            {"index": 2, "kategorie": "Käse", "aktion": "zuordnen",
+             "produkt_id": feta, "treffer": "unsinn"},
+        ]
+    }  # fmt: skip
+    _, z = _vorschau2(ki_client, ["200 g Fusilli", "150 g Hirtenkäse"])
+    assert z["200 g Fusilli"]["treffer"] == "oberbegriff"
+    assert z["150 g Hirtenkäse"]["produkt_id"] == feta
+    assert z["150 g Hirtenkäse"]["treffer"] is None  # unbekannter Wert verworfen

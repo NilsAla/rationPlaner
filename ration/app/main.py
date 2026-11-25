@@ -129,6 +129,9 @@ class UebernehmenIn(BaseModel):
     schritte: list[str] | None = None  # bearbeitete Schritte, sonst die aus der Quelle
     trotz_dublette: bool = False
     fotos: bool = True  # Haupt- und Schrittbilder der Quelle lokal speichern
+    # geprüfte Kochanleitung aus der Vorschau, Zutaten als Index der Import-Zeilen
+    anleitung: list[dict] | None = Field(default=None, max_length=kochen.MAX_SCHRITTE)
+    anleitung_quelle: str = "ki"  # ki / code / manuell
 
 
 class EinkaufslisteIn(BaseModel):
@@ -150,10 +153,28 @@ async def version() -> dict:
 
 
 @api.get("/produkte")
-async def produkte(b: InventoryBackend = Depends(backend)) -> list[dict]:
+async def produkte(nutzung: bool = False, b: InventoryBackend = Depends(backend)) -> list[dict]:
+    """Alle Produkte. nutzung=true: zusätzlich Kategorie, Oberprodukt und Anzahl der Rezepte
+    (Suche in der Import-Prüfung: „Hirtenkäse steht bei mir unter Feta, 4 Rezepte“)."""
+    alle = sorted(await b.list_products(), key=lambda p: p.name.lower())
+    rezepte: dict[str, int] = {}
+    if nutzung:
+        for r in await b.list_recipes():
+            for pid in {z.product_id for z in r.ingredients}:
+                rezepte[pid] = rezepte.get(pid, 0) + 1
+    namen = {p.id: p.name for p in alle}
     return [
         {"id": p.id, "name": p.name, "einheit": p.unit, "tracking_modus": p.tracking_mode}
-        for p in sorted(await b.list_products(), key=lambda p: p.name.lower())
+        | (
+            {
+                "kategorie": p.category,
+                "oberprodukt": namen.get(p.parent_id or ""),
+                "rezepte": rezepte.get(p.id, 0),
+            }
+            if nutzung
+            else {}
+        )
+        for p in alle
     ]
 
 
@@ -529,6 +550,18 @@ async def import_uebernehmen(
     s.merge(
         RezeptMeta(rezept_id=recipe.id, quelle=roh.quelle, quelle_id=roh.quelle_id, url=roh.url)
     )
+    if schritte := _import_anleitung(data):
+        quelle = data.anleitung_quelle if data.anleitung_quelle in ("ki", "code") else "manuell"
+        s.merge(
+            kochen.KochAnleitung(
+                rezept_id=recipe.id,
+                schritte=schritte,
+                quelle=quelle,
+                status="geprueft",  # im Import gesehen und bestätigt
+                basis=kochen.basis_hash(recipe),
+                hinweise=[],
+            )
+        )
     s.commit()
     bilder = {int(k): v for k, v in (roh.schritt_bilder or {}).items()}
     if data.fotos and (roh.bild or bilder):
@@ -543,7 +576,27 @@ async def import_uebernehmen(
         "neue_produkte": neu,
         "weggelassen": len(roh.zutaten) - len(zutaten),
         "fotos": (1 if roh.bild else 0) + len(bilder) if data.fotos else 0,
+        "anleitung": len(schritte),
     }
+
+
+def _import_anleitung(data: UebernehmenIn) -> list[dict]:
+    """Schritte der Vorschau auf die Rezept-Zutaten umrechnen: Import-Zeile → Position im
+    Rezept (Reihenfolge von data.zutaten). Weggelassene Zeilen fallen aus den Schritten."""
+    pos = {z.index: i for i, z in enumerate(data.zutaten)}
+    schritte = []
+    for roh in data.anleitung or []:
+        if not isinstance(roh, dict):
+            continue
+        zutaten = []
+        for z in roh.get("zutaten") or []:
+            idx = z.get("zutat") if isinstance(z, dict) else z
+            if isinstance(idx, int) and idx in pos:
+                anteil = z.get("anteil", 1) if isinstance(z, dict) else 1
+                zutaten.append({"zutat": pos[idx], "anteil": anteil})
+        if schritt := kochen.schritt_pruefen({**roh, "zutaten": zutaten}, len(data.zutaten)):
+            schritte.append(schritt)
+    return schritte
 
 
 @api.post("/einkaufsliste")

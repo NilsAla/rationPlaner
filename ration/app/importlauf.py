@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import llm_import, rezept_import
+from app import kochen, kueche, llm_import, rezept_import
 from app.db import RezeptImport, RezeptMeta, ZutatAlias
 from app.deps import session
 from app.protokoll import KiAnfrage
@@ -43,19 +43,52 @@ def _jetzt() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)  # wie SQLite CURRENT_TIMESTAMP (UTC, naiv)
 
 
-def erwartete_dauer(s: Session) -> float:
-    """Median der letzten fünf erfolgreichen Import-Aufrufe der KI."""
-    werte = [
-        d
-        for d in s.scalars(
-            select(KiAnfrage.dauer_s)
-            .where(KiAnfrage.job == "import", KiAnfrage.fehler.is_(None))
-            .order_by(KiAnfrage.id.desc())
-            .limit(5)
-        )
-        if d
+def erwartete_dauer(s: Session, jobs: tuple[str, ...] = ("import",)) -> float:
+    """Median der letzten fünf erfolgreichen KI-Aufrufe je Job; parallele Jobs: der längste."""
+    dauern = []
+    for job in jobs:
+        werte = [
+            d
+            for d in s.scalars(
+                select(KiAnfrage.dauer_s)
+                .where(KiAnfrage.job == job, KiAnfrage.fehler.is_(None))
+                .order_by(KiAnfrage.id.desc())
+                .limit(5)
+            )
+            if d
+        ]
+        dauern.append(round(statistics.median(werte), 1) if werte else STANDARD_DAUER)
+    return max(dauern, default=STANDARD_DAUER)
+
+
+async def anleitung_entwurf(
+    ki, roh: rezept_import.RohRezept, zuordnung: list[rezept_import.Zuordnung], mit_ki: bool
+) -> dict:
+    """Schritt-für-Schritt-Anleitung zum Prüfen im Import, Zutaten als Index der Import-Zeilen.
+
+    Läuft parallel zur KI-Zuordnung und kennt deshalb nur die Zutatentexte, nicht die
+    Produkte. Ohne KI oder bei Fehlern: Code-Vorschlag aus den Originalschritten."""
+    namen = [z.name for z in zuordnung]
+    mengen = [
+        f"{kueche.menge(z.menge)} {z.einheit or ''}".strip() if z.menge is not None else "-"
+        for z in zuordnung
     ]
-    return round(statistics.median(werte), 1) if werte else STANDARD_DAUER
+    fehler = None
+    if mit_ki and namen:
+        try:
+            schritte, hinweise = await kochen.ki_schritte(
+                ki, roh.name, roh.portionen, namen, mengen, roh.schritte
+            )
+            return {"quelle": "ki", "schritte": schritte, "hinweise": hinweise, "fehler": None}
+        except Exception as err:  # noqa: BLE001 - Import läuft mit Code-Vorschlag weiter
+            log.warning("KI-Anleitung im Import fehlgeschlagen: %s", err)
+            fehler = str(err) or type(err).__name__
+    return {
+        "quelle": "code",
+        "schritte": kochen.schritte_aus_original(namen, roh.schritte),
+        "hinweise": [],
+        "fehler": fehler,
+    }
 
 
 async def vorschau_berechnen(
@@ -69,10 +102,22 @@ async def vorschau_berechnen(
     produkte = await app.state.backend.list_products()
     zuordnung = rezept_import.zuordnen(roh, produkte, aliase)
     ki_ = llm_import.KiErgebnis(aktiv=False)
-    if data.ki and app.state.ki.verfuegbar("import"):
-        if anzahl := len(llm_import.offene(zuordnung)):
-            melden("KI", anzahl)
-        ki_ = await llm_import.verfeinern(app.state.ki, zuordnung, produkte)
+    zuordnen_ki = data.ki and app.state.ki.verfuegbar("import")
+    anleitung_ki = data.ki and app.state.ki.verfuegbar("kochanleitung")
+    anzahl = len(llm_import.offene(zuordnung)) if zuordnen_ki else 0
+    jobs = (("import",) if anzahl else ()) + (("kochanleitung",) if anleitung_ki else ())
+    if jobs:
+        melden("KI", anzahl, jobs)
+
+    async def zuordnen_lauf() -> llm_import.KiErgebnis:
+        if not zuordnen_ki:
+            return ki_
+        return await llm_import.verfeinern(app.state.ki, zuordnung, produkte)
+
+    # Zuordnung und Anleitung gleichzeitig: Wartezeit = der längere Aufruf
+    ki_, anleitung = await asyncio.gather(
+        zuordnen_lauf(), anleitung_entwurf(app.state.ki, roh, zuordnung, anleitung_ki)
+    )
     dublette = s.scalars(select(RezeptMeta).where(RezeptMeta.quelle_id == roh.quelle_id)).first()
     return roh, {
         "status": "fertig",
@@ -87,6 +132,7 @@ async def vorschau_berechnen(
         "schritt_bilder": len(roh.schritt_bilder),
         "zutaten": [asdict(z) for z in zuordnung],
         "ki": asdict(ki_),
+        "anleitung": anleitung,
     }
 
 
@@ -127,14 +173,15 @@ def _fehler(engine, eintrag_id: int, text: str) -> None:
 async def _lauf(app, eintrag_id: int, data: ImportIn) -> None:
     engine = app.state.engine
 
-    def melden(schritt: str, anzahl: int | None = None) -> None:
+    def melden(schritt: str, anzahl: int | None = None, jobs: tuple[str, ...] = ()) -> None:
         with Session(engine) as s:
             e = s.get(RezeptImport, eintrag_id)
             if e is None:
                 return
             e.schritt = schritt
             if schritt == "KI":
-                e.ki_start, e.anzahl_ki, e.erwartet_s = _jetzt(), anzahl, erwartete_dauer(s)
+                e.ki_start, e.anzahl_ki = _jetzt(), anzahl
+                e.erwartet_s = erwartete_dauer(s, jobs or ("import",))
             s.commit()
 
     try:

@@ -42,6 +42,7 @@ class FakeHomeAssistant:
         self.items = list(items or [])
         self.ki_antwort: dict | Exception | list = {}  # Liste: eine Antwort je Aufruf
         self.ki_anfragen: list[str] = []
+        self.ki_antwort_je_aufgabe: dict[str, dict | Exception] = {}  # task_name → Antwort
         self.ki_anhaenge: list = []
         self.hinweise: list[tuple[str, str]] = []
         self.zustaende: dict[str, dict] = {}  # entity_id → {"state": …, "attributes": {…}}
@@ -80,7 +81,7 @@ class FakeHomeAssistant:
     ) -> dict:
         self.ki_anfragen.append(instructions)
         self.ki_anhaenge.append(attachments)
-        antwort = self.ki_antwort
+        antwort = self.ki_antwort_je_aufgabe.get(task_name, self.ki_antwort)
         if isinstance(antwort, list):
             antwort = antwort.pop(0) if len(antwort) > 1 else antwort[0]
         if isinstance(antwort, Exception):

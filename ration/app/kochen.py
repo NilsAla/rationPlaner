@@ -219,12 +219,18 @@ def zutaten_zuordnen(schritte: list[dict], fehlend: list[int], namen: list[str])
         ziel["zutaten"].append({"zutat": i, "anteil": 1.0})
 
 
+def _namen(r: Recipe, produkte: dict[str, Product]) -> list[str]:
+    return [produkte[z.product_id].name if z.product_id in produkte else "?" for z in r.ingredients]
+
+
 def aus_originalschritten(r: Recipe, produkte: dict[str, Product]) -> list[dict]:
     """Code-Fallback: je Originalschritt ein Schritt, Zutaten per Namenstreffer, Timer per Regex."""
-    namen = [
-        produkte[z.product_id].name if z.product_id in produkte else "?" for z in r.ingredients
-    ]
-    original = kueche.schritte(r.description) or ["Alle Zutaten nach Rezept verarbeiten."]
+    return schritte_aus_original(_namen(r, produkte), kueche.schritte(r.description))
+
+
+def schritte_aus_original(namen: list[str], original: list[str]) -> list[dict]:
+    """Code-Fallback ohne Grocy-Rezept (auch für den Import): Zutaten als Index in `namen`."""
+    original = original or ["Alle Zutaten nach Rezept verarbeiten."]
     schritte = []
     for nr, text in enumerate(original[:MAX_SCHRITTE]):
         d = dauern_s(text)
@@ -407,18 +413,24 @@ def struktur(n_zutaten: int, n_original: int = 0) -> dict:
 
 
 async def mit_ki(kc, r: Recipe, produkte: dict[str, Product]) -> tuple[list[dict], list[str]]:
-    """LLM schreibt um, Code validiert, höchstens eine Reparaturrunde. → (Schritte, Hinweise)"""
-    namen = [
-        produkte[z.product_id].name if z.product_id in produkte else "?" for z in r.ingredients
-    ]
+    """Anleitung für ein gespeichertes Rezept (Zutaten mit Produktname und Bestandsmenge)."""
+    namen = _namen(r, produkte)
     einheiten = [
         produkte[z.product_id].unit if z.product_id in produkte else "" for z in r.ingredients
     ]
+    mengen = [f"{kueche.menge(z.amount)} {einheiten[i]}" for i, z in enumerate(r.ingredients)]
+    return await ki_schritte(kc, r.name, r.servings, namen, mengen, kueche.schritte(r.description))
+
+
+async def ki_schritte(
+    kc, name: str, portionen: int, namen: list[str], mengen: list[str], original: list[str]
+) -> tuple[list[dict], list[str]]:
+    """LLM schreibt um, Code validiert, höchstens eine Reparaturrunde. → (Schritte, Hinweise)
+
+    Zutaten sind Indizes in `namen`; der Import ruft das vor dem Anlegen in Grocy auf."""
     zutaten_text = "\n".join(
-        f"{i} | {n} | {kueche.menge(z.amount)} {einheiten[i]}"
-        for i, (n, z) in enumerate(zip(namen, r.ingredients, strict=True))
+        f"{i} | {n} | {m}" for i, (n, m) in enumerate(zip(namen, mengen, strict=True))
     )
-    original = kueche.schritte(r.description)
     original_text = (
         "\n".join(f"{i + 1}. {t}" for i, t in enumerate(original)) or "(keine Schritte hinterlegt)"
     )
@@ -430,8 +442,8 @@ async def mit_ki(kc, r: Recipe, produkte: dict[str, Product]) -> tuple[list[dict
             "kochanleitung",
             "rationPlaner Kochanleitung",
             ANWEISUNG.format(
-                name=r.name,
-                portionen=r.servings,
+                name=name,
+                portionen=portionen,
                 zutaten=zutaten_text,
                 schritte=original_text,
                 max=MAX_SCHRITTE,
@@ -439,7 +451,7 @@ async def mit_ki(kc, r: Recipe, produkte: dict[str, Product]) -> tuple[list[dict
             ),
             struktur(len(namen), len(original)),
         )
-        log.info("Kochanleitung %s Rohantwort: %s", r.id, json.dumps(daten, ensure_ascii=False))
+        log.info("Kochanleitung %s Rohantwort: %s", name, json.dumps(daten, ensure_ascii=False))
         roh_schritte = [
             {**x, "original": [int(o) - 1 for o in x.get("original") or [] if str(o).isdigit()]}
             for x in (daten.get("schritte") or [])

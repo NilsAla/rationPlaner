@@ -72,6 +72,10 @@ Je Zutat genau ein Eintrag, index = die nr vor dem Doppelpunkt:
    Weizenmehl Type 405 = Mehl, Rinderhack = Hackfleisch. Herkunft, Haltung und Handelsnamen machen
    keine eigene Sorte (Bio, vom Weiderind, aus der Region, Hackfleischzubereitung = Hackfleisch).
    Suche im ganzen Katalog, nicht nur nach dem Vorschlag des Codes.
+   treffer (nur bei "zuordnen"): "gleich" = dasselbe Lebensmittel, nur anderes Wort,
+   Schreibweise, Farbe oder Größe (Paprikaschote → Paprika); "oberbegriff" = das
+   Katalogprodukt ist der allgemeinere Begriff für eine Sorte (Fusilli → Nudeln);
+   "austauschbar" = eine andere Sorte, die der Haushalt stattdessen nimmt (Hirtenkäse → Feta).
    Kein Treffer ist ein anderes Lebensmittel oder eine andere Verarbeitungsform:
    Paprika edelsüß (Gewürz) ≠ Paprika (Gemüse), Tomatenmark ≠ Tomate, saure Sahne ≠ Sahne,
    Dosentomaten (stückig, passiert, geschält) ≠ frische Tomaten, Süßkartoffel ≠ Kartoffel,
@@ -122,6 +126,9 @@ STRUKTUR = {
                     "pruefung": _feld({"text": {}}, True),
                     "aktion": _feld({"select": {"options": ["zuordnen", "neu"]}}, True),
                     "produkt_id": _feld({"text": {}}),
+                    "treffer": _feld(
+                        {"select": {"options": ["gleich", "oberbegriff", "austauschbar"]}}
+                    ),
                     "g_je_einheit": _feld({"number": {}}, True),
                     "stueck_g": _feld({"number": {}}, True),
                     "tracking_modus": _feld(
@@ -162,6 +169,7 @@ def offen(z: Zuordnung) -> bool:
 
 
 KANDIDATEN = 5
+TREFFER = ("gleich", "oberbegriff", "austauschbar")  # Art des KI-Treffers, nur für die Vorschau
 
 
 def aehnliche(z: Zuordnung, produkte: list[Product]) -> str:
@@ -292,6 +300,8 @@ def anwenden(zuordnung: list[Zuordnung], produkte: list[Product], daten: dict) -
         elif e.get("aktion") == "zuordnen" and pid in by_id:
             p = by_id[pid]
             if passt(z, p, kategorie):
+                if e.get("treffer") in TREFFER:
+                    z.treffer = e["treffer"]
                 if z.produkt_id != p.id:
                     z.aktion, z.produkt_id, z.produkt, z.neu_name = "zuordnen", p.id, p.name, None
                     z.alternativen = []

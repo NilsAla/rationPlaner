@@ -326,7 +326,10 @@ KI-Protokoll, der Balken bleibt bei 95 % stehen, bis die Antwort da ist. Hängt 
 als 15 min (App neu gestartet), gilt er als abgebrochen. UI: Balken auf der Import-Seite, auf allen
 Seiten oben rechts ein Kreis mit Prozent, nach Abschluss ein Haken, Klick öffnet die Vorschau
 (`#/import?id=…`, gemerkt je Gerät). `POST /import/vorschau` bleibt synchron (Tests, Bridge). Die Vorschau
-zeigt alles, der Klick auf „Übernehmen“ ist das Review; neue Produkte entstehen dann mit
+zeigt alles, der Klick auf „Übernehmen“ ist das Review (ab 0.31.0 farbig je Zeile: grün =
+sicherer oder „gleich“-Treffer, gelb = Oberbegriff/austauschbare Sorte laut KI-Feld `treffer`,
+blau = neu, rot = Menge fehlt oder KI widerspricht; Antippen öffnet eine Suche über alle Produkte
+mit Kategorie und Anzahl Rezepte, `GET /produkte?nutzung=true`); neue Produkte entstehen dann mit
 Attributen und Oberprodukt. Aliase merken die Quelle: unverändert übernommene KI-Vorschläge
 (`quelle = ki`) gelten beim nächsten Import nicht als sicher und gehen wieder an die KI, damit sich
 ein Fehlgriff nicht festsetzt. Kosten: Katalog ≈ 15 Tokens je Produkt und Aufruf (200 Produkte
@@ -422,6 +425,16 @@ zeigt seine Zutaten mit gerechneter Menge zum Abhaken und, wo nötig, einen Time
 - `KochSitzung`: aktueller Schritt, erledigte Schritte, abgehakte Zutaten, laufende Timer.
   Liegt auf dem Server, damit Handy und Küchen-Tablet denselben Stand sehen (Poll alle 4 s).
 - `AnleitungLauf`: Massenumschreibung im Hintergrund mit Fortschritt und Fehlern je Rezept.
+
+**Anleitung schon beim Import (0.31.0):** Die Vorschau startet den Job `kochanleitung` parallel
+zur KI-Zuordnung (`asyncio.gather`, Wartezeit = der längere Aufruf, Schätzung aus beiden
+Medianen). Weil die Produkte da noch nicht feststehen, verweisen die Schritte auf die
+Import-Zeilen (Index, Zutatentext + Menge). Eigener Aufruf statt eines gemeinsamen Prompts: der
+Zuordnungs-Prompt trägt den Katalog, die Anleitung braucht ihn nicht; jeder Job behält sein
+Modell, und scheitert die Anleitung, bleibt die Zuordnung (dann Code-Vorschlag aus den
+Originalschritten). Beim Übernehmen rechnet der Code die Indizes auf die Rezept-Zutaten um
+(weggelassene Zeilen fallen heraus) und speichert die Anleitung als `geprueft`, weil sie im
+Import gesehen wurde. Leiter-Icon und Sammellauf bleiben für alte Rezepte.
 
 **KI-Migrator (LLM wählt aus, Code rechnet):**
 - Ein `ai_task.generate_data`-Aufruf je Rezept, Structured Output. Zutaten nur als Index ins

@@ -145,6 +145,7 @@ class Zuordnung:
     ki: bool = False  # Vorschlag stammt von der KI
     kategorie: str | None = None  # Kategorie laut KI (Prüfung von KI-Treffern)
     pruefung: str = ""  # Begründung der KI (Vorschau)
+    treffer: str | None = None  # KI-Treffer: gleich / oberbegriff / austauschbar (Vorschau-Farbe)
     attribute: dict = field(default_factory=dict)  # neue Produkte: geprüfte KI-Werte
     variante_von: dict | None = None  # neue Produkte: {"produkt_id", "name"} des Oberprodukts
 

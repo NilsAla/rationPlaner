@@ -253,8 +253,8 @@ export function importVergessen(id) {
   window.dispatchEvent(new Event("importe"));
 }
 export const IMPORT_SCHRITT = {Start: "Startet …", "Seite lesen": "Seite wird gelesen", Zuordnen: "Zutaten werden zugeordnet"};
-export const importText = (s) => s.schritt === "KI" ? `KI prüft ${s.anzahl_ki ?? ""} Zutaten`.replace("  ", " ")
-  : IMPORT_SCHRITT[s.schritt] ?? "Läuft …";
+export const importText = (s) => s.schritt !== "KI" ? IMPORT_SCHRITT[s.schritt] ?? "Läuft …"
+  : s.anzahl_ki ? `KI prüft ${s.anzahl_ki} Zutaten und schreibt die Anleitung` : "KI schreibt die Anleitung";
 
 /** Produkt bekannt, aber nichts im Bestand (Füllstand und immer da zählen als vorhanden). */
 export const nichtDa = (p) => !p.bestand && !["immer_da", "fuellstand"].includes(p.tracking_modus);
