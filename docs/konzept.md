@@ -601,8 +601,9 @@ Pfade relativ (Ingress), statische Dateien mit `Cache-Control: no-cache`, Module
   Bewertung, Wochenplan als Kalender (0.36.1, Wunsch Nils: schneller von Hand
   planen): freier Tag mit ＋ → Rezeptsuche (kochbare zuerst, Portionen-Stepper), × entfernt,
   Antippen öffnet Portionen/Tag/anderes Rezept/KI-Tausch, Ziehen verschiebt (belegt: tauschen;
-  Pointer Events, am Handy 300 ms lange drücken, sonst scrollt die Seite). Am Handy Tagesliste
-  ab heute statt 7 Spalten. Die Tagesauswahl für den Planer liegt als Chips in dessen Karte,
+  Pointer Events, am Handy 300 ms lange drücken, sonst scrollt die Seite). Am Handy (0.36.3)
+  kompakter Monatskalender (Foto bzw. Namensanfang je Tag), darunter der gewählte Tag mit
+  Kochen/Ändern/Entfernen; ＋ öffnet direkt die Suche. Die Tagesauswahl für den Planer liegt als Chips in dessen Karte,
   Regler unter „Wünsche und Optionen“, Einkauf nach Kategorie gruppiert mit Kosten.
 - **Rezepte:** Rezeptbuch (Tabelle oder Karten, Suche, Tags, kochbar, Favoriten, „Rezepte mit
   Produkt X“), Massenaktionen (Tags, Aufwand, Status, Favorit, Löschen), Leser mit Meinung und

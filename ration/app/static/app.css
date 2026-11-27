@@ -231,22 +231,42 @@ details > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 @media (hover: none) { .gericht .g-weg { opacity: 1; } }
 .gericht.zieht { opacity: .35; }
 .gericht.geist { position: fixed; z-index: 100; pointer-events: none; box-shadow: 0 10px 30px rgba(0,0,0,.25); opacity: .95; cursor: grabbing; }
-/* Handy: Tagesliste statt sieben enger Spalten, vergangene Tage nur beim Zurückblättern */
+.hinweis-klein, #tagdetail, .gericht .g-kurz { display: none; }
+.tagdetail .heute-tag { font-size: 10px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 999px; padding: 0 6px; }
+/* Handy: kompakter Monatskalender (Foto bzw. Namensanfang je Tag), gewählter Tag darunter */
 @media (max-width: 700px) {
-  .kalender { grid-template-columns: 1fr; gap: 6px; }
-  .kalender .wt { display: none; }
-  .kalender.ab-heute .tag-zelle.vergangen { display: none; }
-  .tag-zelle { min-height: 0; flex-direction: row; align-items: center; padding: 8px 10px; }
-  .tag-zelle .tz-kopf { flex-direction: column; align-items: center; gap: 0; width: 42px; flex: none; }
-  .tag-zelle .wt-kurz { display: block; font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
-  .tag-zelle .nr { font-size: 17px; }
-  .tag-zelle .heute-tag { margin: 2px 0 0; }
-  .tag-zelle .plus { min-height: 46px; }
-  .tag-zelle.monatsanfang { margin-top: 8px; }
-  .gericht { flex: 1; padding: 6px 8px; }
-  .gericht img, .gericht .g-ico { width: 40px; height: 40px; }
-  .gericht .g-name { font-size: 14px; }
-  .gericht .g-weg { position: static; opacity: 1; width: 32px; height: 32px; font-size: 18px; box-shadow: none; }
+  .hinweis-gross { display: none; } .hinweis-klein { display: block; }
+  #tagdetail { display: block; }
+  .kalender { gap: 3px; }
+  .kalender .wt { font-size: 11px; }
+  .tag-zelle { min-height: 0; aspect-ratio: 1 / 1.15; padding: 3px; gap: 2px; border-radius: 9px; align-items: stretch; overflow: hidden; }
+  .tag-zelle .tz-kopf { justify-content: center; }
+  .tag-zelle .nr { font-size: 12px; }
+  .tag-zelle .heute-tag { display: none; }
+  .tag-zelle.heute .nr { background: var(--accent); color: #fff; border-radius: 999px; padding: 0 5px; }
+  .tag-zelle.gewaehlt { border-color: var(--text); box-shadow: 0 0 0 1px var(--text) inset; }
+  .tag-zelle.aus.frei:not(.vergangen) { background: var(--card); }
+  .tag-zelle .plus { min-height: 0; border: 0; font-size: 16px; opacity: .55; padding: 0; }
+  .kalender.einplanen .plus { font-size: 16px; opacity: 1; }
+  .gericht { flex: 1; flex-direction: column; justify-content: center; gap: 1px; padding: 2px; border-radius: 7px; }
+  .gericht img { width: 100%; height: auto; aspect-ratio: 1; max-height: 34px; object-fit: cover; border-radius: 6px; }
+  .gericht .g-ico { display: none; }
+  .gericht img + .g-kurz { display: none; }
+  .gericht .g-kurz { display: block; font-size: 10px; font-weight: 650; line-height: 1.1; text-align: center; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gericht .g-text, .gericht .g-weg { display: none; }
+  .gericht.gekocht { opacity: .55; }
+  .gericht.geist { width: 56px !important; }
+  .tagdetail { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--hover); }
+  .td-kopf { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .td-gericht { display: flex; gap: 12px; align-items: center; }
+  .td-bild { width: 64px; height: 64px; border-radius: 10px; overflow: hidden; flex: none; display: grid; place-items: center;
+    background: var(--card); font-size: 26px; text-decoration: none; }
+  .td-bild img { width: 100%; height: 100%; object-fit: cover; }
+  .td-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+  .td-text a { color: var(--text); text-decoration: none; font-size: 16px; }
+  .td-aktionen { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .td-aktionen .btn { flex: 1; }
 }
 /* Planer: Tage als Chips */
 .tage-wahl { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
@@ -537,4 +557,8 @@ img.gewaehlt-foto { outline: 3px solid var(--accent); outline-offset: 2px; }
   .ez-tabelle tr[data-ez] td:nth-child(3) { grid-area: e; } .ez-tabelle tr[data-ez] td:nth-child(4) { grid-area: d; }
   .ez-tabelle tr[data-ez] td:nth-child(5) { grid-area: l; } .ez-tabelle tr[data-ez] td:nth-child(6) { grid-area: pr; }
   .ez-tabelle tr[data-ez] td:nth-child(7) { grid-area: x; }
+}
+@media (max-width: 899px) {
+  #toasts { bottom: calc(78px + env(safe-area-inset-bottom)); left: 12px; right: 12px; align-items: stretch; }
+  body.kochmodus #toasts { bottom: 16px; }
 }

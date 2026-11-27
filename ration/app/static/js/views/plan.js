@@ -3,7 +3,9 @@ import {$, $$, api, del, dialog, dmy, esc, eur, fmt, fotoUrl, guarded, heute, pl
 // Wochenplan: Kalender mit + (Rezept suchen), × (entfernen), Antippen (ändern) und Ziehen
 // (verschieben, auf belegtem Tag tauschen; Handy: lange drücken). Darunter der Planer, der
 // für ausgewählte Tage einen Vorschlag macht.
-const state = {auswahl: null, monat: 0, personen: {}};
+const state = {auswahl: null, monat: 0, personen: {}, gewaehlt: null};
+// Handy: kompakter Monatskalender (Fotos statt Namen) und darunter der gewählte Tag
+const KOMPAKT = "(max-width: 700px)";
 const wdOf = (d) => (new Date(d + "T12:00:00").getDay() + 6) % 7;
 // Personen eines Tages: gewählt, sonst Standard je Wochentag, sonst Portionen-Standard
 const personenStandard = (planer, d) => planer.personen_je_wochentag?.[String(wdOf(d))] ?? planer.portionen;
@@ -29,6 +31,7 @@ export default async function render(el, ctx = {}) {
   const zelle = (d) => {
     const p = byDay[d], vergangen = d < h, r = p && rezept[p.rezept_id];
     const cls = ["tag-zelle", vergangen ? "vergangen" : "", d === h ? "heute" : "", p ? "belegt" : "frei",
+      d === state.gewaehlt ? "gewaehlt" : "",
       !kochtage.includes(wdOf(d)) ? "aus" : "", d.slice(8) === "01" ? "monatsanfang" : ""].join(" ");
     return `<div class="${cls}" data-tag="${d}">
       <div class="tz-kopf"><span class="wt-kurz">${WOCHENTAGE[wdOf(d)]}</span><span class="nr">${Number(d.slice(8))}.${
@@ -36,6 +39,7 @@ export default async function render(el, ctx = {}) {
         ${d === h ? `<span class="heute-tag">heute</span>` : ""}</div>
       ${p ? `<div class="gericht ${p.status === "gekocht" ? "gekocht" : ""}" data-g="${d}" ${vergangen ? "" : `title="Antippen: ändern · Ziehen: verschieben"`}>
           ${r?.foto ? `<img src="${fotoUrl(r.foto)}" alt="" draggable="false">` : `<span class="g-ico">🍽️</span>`}
+          <span class="g-kurz">${esc((name[p.rezept_id] ?? "?").split(/[\s-]/)[0])}</span>
           <span class="g-text"><span class="g-name">${esc(name[p.rezept_id] ?? "?")}</span><span class="g-p">${p.portionen} P.${p.status === "gekocht" ? " · gekocht" : ""}</span></span>
           ${vergangen ? "" : `<button class="g-weg" data-weg="${d}" title="Entfernen" aria-label="Entfernen">×</button>`}</div>`
         : vergangen ? "" : `<button class="plus" data-plus="${d}" aria-label="Gericht hinzufügen">${ein ? "＋ hier einplanen" : "＋"}</button>`}
@@ -46,9 +50,11 @@ export default async function render(el, ctx = {}) {
       <span class="muted">Tag antippen.</span> <a class="btn klein" href="#/plan">Abbrechen</a></div>` : ""}
     <div class="card"><div class="kopf"><h2>Kalender</h2><div class="aktionen">
       <button class="btn klein" data-m="-1" aria-label="Zurück">◀</button><button class="btn klein" data-m="0">heute</button><button class="btn klein" data-m="1" aria-label="Weiter">▶</button></div></div>
-    <p class="muted small">＋ fügt ein Gericht hinzu, × entfernt es. Gericht ziehen zum Verschieben (am Handy lange drücken), auf einen belegten Tag zum Tauschen.</p>
+    <p class="muted small hinweis-gross">＋ fügt ein Gericht hinzu, × entfernt es. Gericht ziehen zum Verschieben, auf einen belegten Tag zum Tauschen.</p>
+    <p class="muted small hinweis-klein">Tag antippen · ＋ fügt hinzu · Gericht lange drücken und ziehen zum Verschieben.</p>
     <div class="kalender ${state.monat === 0 ? "ab-heute" : ""} ${ein ? "einplanen" : ""}">${WOCHENTAGE.map((w) => `<div class="wt">${w}</div>`).join("")}
-      ${tage.map(zelle).join("")}</div></div>
+      ${tage.map(zelle).join("")}</div>
+    <div id="tagdetail"></div></div>
 
     <div class="grid">
     <div class="card"><h2>Plan vorschlagen</h2>
@@ -78,7 +84,6 @@ export default async function render(el, ctx = {}) {
 
   // --- Kalender: hinzufügen, entfernen, ändern, verschieben ---------------------------
   const kal = $(".kalender", el);
-  kal.querySelector(".tag-zelle.heute")?.scrollIntoView?.({block: "nearest"});
   $$("[data-plus]", el).forEach((b) => b.onclick = () => guarded(async () => {
     const d = b.dataset.plus;
     if (ein) {
@@ -96,8 +101,40 @@ export default async function render(el, ctx = {}) {
     await del(`plan/${d}`);
     toast(`${name[byDay[d].rezept_id] ?? "Gericht"} am ${wt(d)} entfernt`); neu();
   }));
+  // Handy: gewählter Tag unter dem Kalender (Name, Portionen, Kochen, Ändern, Entfernen)
+  const kompakt = () => matchMedia(KOMPAKT).matches;
+  if (!state.gewaehlt || !tage.includes(state.gewaehlt)) state.gewaehlt = tage.includes(h) ? h : tage[0];
+  const detail = () => {
+    const box = $("#tagdetail", el), d = state.gewaehlt, p = byDay[d], r = p && rezept[p.rezept_id];
+    $$(".tag-zelle", kal).forEach((z) => z.classList.toggle("gewaehlt", z.dataset.tag === d));
+    box.innerHTML = `<div class="tagdetail">
+      <div class="td-kopf"><b>${esc(tagLang(d))}</b>${d === h ? ` <span class="heute-tag">heute</span>` : ""}</div>
+      ${p ? `<div class="td-gericht">
+          <a href="#/rezept/${esc(p.rezept_id)}" class="td-bild">${r?.foto ? `<img src="${fotoUrl(r.foto)}" alt="">` : "🍽️"}</a>
+          <div class="td-text"><a href="#/rezept/${esc(p.rezept_id)}"><b>${esc(name[p.rezept_id] ?? "?")}</b></a>
+            <span class="muted small">${p.portionen} Portionen${p.status === "gekocht" ? " · gekocht" : ""}${r && !r.kochbar ? ` · <span class="soon">${r.fehlend.length} fehlt</span>` : r ? ` · <span class="ok">alles da</span>` : ""}</span></div></div>
+        ${d >= h ? `<div class="td-aktionen">
+          ${d === h && p.status !== "gekocht" ? `<a class="btn primary" href="#/kochen">👩‍🍳 Kochen</a>` : ""}
+          <button class="btn" data-td="aendern">✎ Ändern</button><button class="btn danger" data-td="weg">× Entfernen</button></div>` : ""}`
+      : d >= h ? `<button class="btn primary voll" data-td="plus" style="margin-top:6px">＋ Gericht hinzufügen</button>`
+      : `<p class="muted small">Nichts geplant.</p>`}</div>`;
+    $$("[data-td]", box).forEach((b) => b.onclick = () => guarded(async () => {
+      const a = b.dataset.td;
+      if (a === "plus") return $(`[data-plus="${d}"]`, kal)?.click();
+      if (a === "weg") { await del(`plan/${d}`); toast(`${name[p.rezept_id] ?? "Gericht"} am ${wt(d)} entfernt`); return neu(); }
+      if (await tagBearbeiten(d, p, buch, name, zukunft)) neu();
+    }));
+  };
+  detail();
+  // Handy: Antippen eines Tages wählt ihn (leere Zukunftstage öffnen direkt die Suche über ＋)
+  kal.addEventListener("click", (e) => {
+    if (!kompakt() || e.target.closest("button,[data-g]")) return;
+    const z = e.target.closest("[data-tag]");
+    if (z) { state.gewaehlt = z.dataset.tag; detail(); }
+  });
   ziehen(kal, {
     klick: (d) => guarded(async () => {
+      if (kompakt()) { state.gewaehlt = d; detail(); return; }
       if (d < h) { location.hash = `#/rezept/${byDay[d].rezept_id}`; return; }
       if (await tagBearbeiten(d, byDay[d], buch, name, zukunft)) neu();
     }),
@@ -107,6 +144,8 @@ export default async function render(el, ctx = {}) {
     }),
     darf: (d) => d >= h,
   });
+
+  matchMedia(KOMPAKT).addEventListener("change", detail, {signal: abbruch.signal});
 
   // --- Planer ------------------------------------------------------------------------
   $$("[data-pers]", el).forEach((i) => i.onchange = () => { state.personen[i.dataset.pers] = +i.value; });
@@ -149,7 +188,7 @@ export async function rezeptWaehlen(datum, buch, portionen, aktuell = null) {
   const sortiert = [...buch].sort((a, b) => (b.kochbar - a.kochbar) || (b.favorit ?? 0) - (a.favorit ?? 0) || a.name.localeCompare(b.name, "de"));
   const eintrag = (r) => `<button type="button" class="rw-zeile ${r.id === aktuell ? "aktuell" : ""}" data-r="${esc(r.id)}">
     ${r.foto ? `<img src="${fotoUrl(r.foto)}" alt="" loading="lazy">` : `<span class="g-ico">🍽️</span>`}
-    <span class="rw-text"><b>${esc(r.name)}</b><small class="muted">${r.kochbar ? `<span class="ok">● alles da</span>` : `${r.fehlend} fehlt`}${
+    <span class="rw-text"><b>${esc(r.name)}</b><small class="muted">${r.kochbar ? `<span class="ok">● alles da</span>` : `${r.fehlend.length} fehlt`}${
       r.gekocht ? ` · ${r.gekocht}× gekocht` : " · neu"}${r.aufwand ? ` · ${esc(r.aufwand)}` : ""}</small></span></button>`;
   const liste = () => {
     const q = filter.trim().toLowerCase();
