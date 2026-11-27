@@ -2,7 +2,7 @@ import {$$, api, dialog, esc, fmt, guarded, lokal, merken, zeit} from "../lib.js
 
 // Jede KI-Anfrage: Aufgabe, Backend, Tokens (≈ = geschätzt), Kosten; Details mit Anweisung, Schema, Rohantwort
 const ZEITRAUM = {tag: "Heute (24 h)", woche: "7 Tage", monat: "30 Tage"};
-const JOB = {bon: "Kassenbon", import: "Rezept-Import", kochanleitung: "Kochanleitung", kategorisierung: "Kategorisierung",
+const JOB = {bon: "Kassenbon", import: "Rezept-Import", kochanleitung: "Kochanleitung", rezept: "Rezept generieren", kategorisierung: "Kategorisierung",
   naehrwerte: "Nährwerte", planer: "Wochenplan", packungen: "Packungsgrößen", unbekannt: "älter (ohne Job)"};
 const euro = (x) => x == null ? "–" : x < 0.01 && x > 0 ? `${(x * 100).toLocaleString("de-DE", {maximumFractionDigits: 3})} ct`
   : x.toLocaleString("de-DE", {style: "currency", currency: "EUR", maximumFractionDigits: 4});

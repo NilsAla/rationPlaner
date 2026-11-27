@@ -111,6 +111,19 @@ class RezeptImport(Base):
     angelegt: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class RezeptEntwurf(Base):
+    """KI-generiertes Rezept (rezept_ki.py): Wunsch und Versionen, bis es in den Import geht."""
+
+    __tablename__ = "rezept_entwurf"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    prompt: Mapped[str] = mapped_column(String)
+    optionen: Mapped[dict] = mapped_column(JSON)  # portionen, aufwand, vorrat
+    versionen: Mapped[list] = mapped_column(JSON)  # [{"wunsch", "rezept", "angelegt"}]
+    import_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # nach „Übernehmen“
+    angelegt: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 def make_engine(db_url: str) -> Engine:
     # timeout: Sekunden, die ein Schreiber auf die SQLite-Sperre wartet (Standard 5)
     engine = create_engine(db_url, connect_args={"check_same_thread": False, "timeout": 30})

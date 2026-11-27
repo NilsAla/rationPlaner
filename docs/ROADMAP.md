@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-25, Version 0.34.0 / API 1.29)
+# Roadmap und Übergabe (Stand 2026-11-27, Version 0.35.0 / API 1.30)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -35,6 +35,11 @@ Wochenende: 3 Gerichte geplant, Einkaufsliste schon in `todo.einkaufsliste` gesc
 - [ ] Optional: OpenAI-Direktmodus mit eigenem Key (bisher nur gemockt getestet).
 - [ ] Preise für gpt-4.1 / gpt-4o-mini in Einstellungen → KI eintragen (Nils), sonst nur Tokens.
 
+- [ ] **Rezept generieren (0.35.0):** Menü „Rezept generieren“, Wunsch + Portionen + Aufwand
+  (+ optional Vorrat), 1–2 Änderungswünsche, „Übernehmen“ → Import-Vorschau → in Grocy. Vorher
+  in Einstellungen → KI dem Job „Rezept generieren“ ein kreatives Modell geben (OpenAI direkt).
+  Danach Claude: KI-Log Job `rezept` (Dauer, Kosten, Reparaturrunden, Zutatenzeilen sauber
+  parsebar?), Import-Zuordnung der generierten Zutaten (Katalognamen getroffen?).
 - [ ] **Angebote (0.32.0):** Angebote → „Markt wählen“ (PLZ), „Jetzt abrufen“, KI-Treffer
   prüfen und bestätigen. Danach Claude: KI-Log Job `angebote` auswerten (Fehlgriffe wie Chips →
   Kartoffeln?), `/api/v1/angebote/status`, Preistabelle. KI-Job ggf. auf gpt-4.1 stellen.

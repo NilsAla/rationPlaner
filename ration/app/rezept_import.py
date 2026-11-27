@@ -697,7 +697,7 @@ def beschreibung(rezept: RohRezept, schritte: list[str] | None = None) -> str:
     """Schritte als <p>-Absätze (Küchen-Card zeigt sie einzeln), darunter der Quellenlink."""
     liste = rezept.schritte if schritte is None else schritte
     absaetze = "".join(f"<p>{escape(t.strip())}</p>" for t in liste if t.strip())
-    return absaetze + quelle_link(rezept.url, rezept.quelle)
+    return absaetze + (quelle_link(rezept.url, rezept.quelle) if rezept.url else "")
 
 
 def quelle_link(url: str, quelle: str) -> str:

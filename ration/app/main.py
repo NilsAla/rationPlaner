@@ -42,6 +42,7 @@ from app import (
     planer,
     protokoll,
     rezept_import,
+    rezept_ki,
     testdaten,
     uebersicht,
 )
@@ -549,7 +550,9 @@ async def import_uebernehmen(
     )
     eintrag.rezept_id = recipe.id
     s.merge(
-        RezeptMeta(rezept_id=recipe.id, quelle=roh.quelle, quelle_id=roh.quelle_id, url=roh.url)
+        RezeptMeta(
+            rezept_id=recipe.id, quelle=roh.quelle, quelle_id=roh.quelle_id, url=roh.url or None
+        )
     )
     if schritte := _import_anleitung(data):
         quelle = data.anleitung_quelle if data.anleitung_quelle in ("ki", "code") else "manuell"
@@ -719,6 +722,7 @@ def create_app(
     app.include_router(api)
     app.include_router(katalog.router)
     app.include_router(importlauf.router)
+    app.include_router(rezept_ki.router)
     app.include_router(bon.router)
     app.include_router(kategorisierung.router)
     app.include_router(planer.router)

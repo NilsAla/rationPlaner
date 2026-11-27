@@ -16,6 +16,7 @@ export const MENUE = [
     {route: "rezepte", titel: "Rezeptbuch", ico: "📚", view: "rezepte"},
     {route: "rezept-neu", titel: "Neues Rezept", ico: "✏️", view: "rezept_edit"},
     {route: "import", titel: "Import per Link", ico: "🔗", view: "import"},
+    {route: "generieren", titel: "Rezept generieren", ico: "🪄", view: "generieren"},
     {route: "anleitungen", titel: "Kochanleitungen", ico: "🪜", view: "anleitungen"},
   ]},
   {gruppe: "Vorrat", ico: "🥫", punkte: [

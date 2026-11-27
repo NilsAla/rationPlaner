@@ -145,7 +145,7 @@ function vorschau(box, v, produkte) {
     <div id="zeilen">${v.zutaten.map(zeileHtml).join("")}</div></div>
   <div class="card"><div class="kopf"><h2>2 · Anleitung</h2>
       <label class="inline"><input type="checkbox" id="ianl" ${schritte.length ? "checked" : ""}> als Kochanleitung übernehmen</label></div>
-    <p class="muted small">${anl?.quelle === "ki" ? "Von der KI Schritt für Schritt umgeschrieben." : "Vorschlag aus den Originalschritten (ohne KI)."}
+    <p class="muted small">${v.quelle === "ki" ? "Von der KI zusammen mit dem Rezept geschrieben." : anl?.quelle === "ki" ? "Von der KI Schritt für Schritt umgeschrieben." : "Vorschlag aus den Originalschritten (ohne KI)."}
       ${anl?.fehler ? `<span class="over">KI-Fehler: ${esc(anl.fehler)}</span>` : ""}</p>
     ${anl?.hinweise?.length ? `<ul class="small">${anl.hinweise.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
     <p class="muted tiny">Mengen im Text für ${v.portionen} Portion(en): Kochmodus und Rezeptbuch rechnen sie für andere Portionen um.</p>

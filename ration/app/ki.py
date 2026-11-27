@@ -1,6 +1,6 @@
 """KI-Aufrufe über zwei Backends: HA ai_task (Standard) oder OpenAI direkt (API-Key als Option).
 
-Zuordnung je Job (bon, import, kochanleitung, kategorisierung, naehrwerte, planer) liegt in der
+Zuordnung je Job (bon, import, kochanleitung, kategorisierung, naehrwerte, planer, …) liegt in der
 App-DB (Einstellung „ki“). Jeder Aufruf landet im KI-Protokoll mit Tokens und Kosten. Tokens sind
 im HA-Modus geschätzt (≈), im OpenAI-Modus echt (usage). Der API-Key wird nie geloggt.
 """
@@ -34,6 +34,7 @@ JOBS = {
     "planer": "Wochenplan",
     "packungen": "Packungsgrößen",
     "angebote": "Angebote zuordnen",
+    "rezept": "Rezept generieren",
 }
 BACKENDS = ("ha", "openai")
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"

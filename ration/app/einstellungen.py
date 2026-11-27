@@ -58,7 +58,7 @@ STANDARD: dict[str, dict[str, Any]] = {
 }
 KI_JOBS = (
     "bon", "import", "kochanleitung", "kategorisierung", "naehrwerte", "planer", "packungen",
-    "angebote",
+    "angebote", "rezept",
 )  # fmt: skip
 
 

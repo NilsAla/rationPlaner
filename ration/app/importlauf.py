@@ -92,18 +92,30 @@ async def anleitung_entwurf(
 
 
 async def vorschau_berechnen(
-    app, s: Session, data: ImportIn, melden: Callable[..., None] = lambda *a: None
+    app,
+    s: Session,
+    data: ImportIn | None,
+    melden: Callable[..., None] = lambda *a: None,
+    *,
+    roh: rezept_import.RohRezept | None = None,
+    anleitung: dict | None = None,
 ) -> tuple[rezept_import.RohRezept, dict]:
-    """Rezept lesen, Code-Zuordnung, KI-Schritt. Gibt (Rohrezept, Vorschau ohne import_id)."""
-    melden("Seite lesen")
-    roh = await rezept_import.rezept_laden(data.url, data.html)
+    """Rezept lesen, Code-Zuordnung, KI-Schritt. Gibt (Rohrezept, Vorschau ohne import_id).
+
+    roh/anleitung: fertiges Rezept samt Kochanleitung (KI-Entwurf, rezept_ki.py) statt Link;
+    dann wird keine Seite gelesen und die Anleitung nicht neu geschrieben."""
+    if roh is None:
+        assert data is not None
+        melden("Seite lesen")
+        roh = await rezept_import.rezept_laden(data.url, data.html)
+    mit_ki = data.ki if data is not None else True
     melden("Zuordnen")
     aliase = {a.text: (a.produkt_id, a.quelle or "nutzer") for a in s.scalars(select(ZutatAlias))}
     produkte = await app.state.backend.list_products()
     zuordnung = rezept_import.zuordnen(roh, produkte, aliase)
     ki_ = llm_import.KiErgebnis(aktiv=False)
-    zuordnen_ki = data.ki and app.state.ki.verfuegbar("import")
-    anleitung_ki = data.ki and app.state.ki.verfuegbar("kochanleitung")
+    zuordnen_ki = mit_ki and app.state.ki.verfuegbar("import")
+    anleitung_ki = anleitung is None and mit_ki and app.state.ki.verfuegbar("kochanleitung")
     anzahl = len(llm_import.offene(zuordnung)) if zuordnen_ki else 0
     jobs = (("import",) if anzahl else ()) + (("kochanleitung",) if anleitung_ki else ())
     if jobs:
@@ -114,10 +126,13 @@ async def vorschau_berechnen(
             return ki_
         return await llm_import.verfeinern(app.state.ki, zuordnung, produkte)
 
-    # Zuordnung und Anleitung gleichzeitig: Wartezeit = der längere Aufruf
-    ki_, anleitung = await asyncio.gather(
-        zuordnen_lauf(), anleitung_entwurf(app.state.ki, roh, zuordnung, anleitung_ki)
-    )
+    if anleitung is None:
+        # Zuordnung und Anleitung gleichzeitig: Wartezeit = der längere Aufruf
+        ki_, anleitung = await asyncio.gather(
+            zuordnen_lauf(), anleitung_entwurf(app.state.ki, roh, zuordnung, anleitung_ki)
+        )
+    else:
+        ki_ = await zuordnen_lauf()
     dublette = s.scalars(select(RezeptMeta).where(RezeptMeta.quelle_id == roh.quelle_id)).first()
     return roh, {
         "status": "fertig",
@@ -170,7 +185,13 @@ def _fehler(engine, eintrag_id: int, text: str) -> None:
             s.commit()
 
 
-async def _lauf(app, eintrag_id: int, data: ImportIn) -> None:
+async def _lauf(
+    app,
+    eintrag_id: int,
+    data: ImportIn | None,
+    roh: rezept_import.RohRezept | None = None,
+    anleitung: dict | None = None,
+) -> None:
     engine = app.state.engine
 
     def melden(schritt: str, anzahl: int | None = None, jobs: tuple[str, ...] = ()) -> None:
@@ -186,7 +207,9 @@ async def _lauf(app, eintrag_id: int, data: ImportIn) -> None:
 
     try:
         with Session(engine) as s:
-            roh, antwort = await vorschau_berechnen(app, s, data, melden)
+            roh, antwort = await vorschau_berechnen(
+                app, s, data, melden, roh=roh, anleitung=anleitung
+            )
         with Session(engine) as s:
             e = s.get(RezeptImport, eintrag_id)
             if e is None:
@@ -209,10 +232,22 @@ async def import_start(data: ImportIn, request: Request, s: Session = Depends(se
     e = RezeptImport(url=data.url.strip(), quelle_id="", roh={}, status="laeuft", schritt="Start")
     s.add(e)
     s.commit()
-    aufgabe = asyncio.create_task(_lauf(request.app, e.id, data))
+    starten(request.app, e.id, data)
+    return status(e)
+
+
+def starten(
+    app,
+    eintrag_id: int,
+    data: ImportIn | None,
+    *,
+    roh: rezept_import.RohRezept | None = None,
+    anleitung: dict | None = None,
+) -> None:
+    """Vorschau für einen angelegten RezeptImport im Hintergrund rechnen."""
+    aufgabe = asyncio.create_task(_lauf(app, eintrag_id, data, roh, anleitung))
     _AUFGABEN.add(aufgabe)
     aufgabe.add_done_callback(_AUFGABEN.discard)
-    return status(e)
 
 
 @router.get("/import")

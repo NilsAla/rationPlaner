@@ -217,7 +217,7 @@ Testbild in Nils' `/media` zu legen, ohne die neue App-Version).
 |---|---|---|---|
 | Foto/PDF | Rezeptkarten, Kochbücher | `ai_task` mit Bild | ungetestet |
 | URL | HelloFresh, Chefkoch & Co. | schema.org/Recipe (JSON-LD), Zuordnung per Alias/Name, Review | ungetestet |
-| Generiert | Prompt in der App | `ai_task` mit Bestand als Kontext | ungetestet |
+| Generiert | Prompt in der App | KI-Job `rezept`, Katalog und optional Bestand als Kontext, dann Import-Vorschau | ungetestet |
 | Eigenes | Manuelle Eingabe | – | getestet |
 
 **Import per Link:** Vorschau liest Name, Portionen und Zutaten aus dem JSON-LD der Seite.
@@ -336,6 +336,21 @@ ein Fehlgriff nicht festsetzt. Kosten: Katalog ≈ 15 Tokens je Produkt und Aufr
 ≈ 3k Tokens, gpt-4.1-mini ≈ 0,1 ct je Rezept). Fällt die KI aus, bleibt der Code-Vorschlag.
 Hart codiert bleiben nur Mengen und Einheiten; Produkt-Synonyme und „feste Begriffe“ aus 0.28.10
 sind wieder entfernt (Live-Test: hart codierte Regeln haben selbst Dubletten erzeugt).
+
+**Rezept generieren** (0.35.0, `app/rezept_ki.py`, Idee Nils 2026-11-27): Wunsch als Freitext,
+Portionen, Aufwand (schnell/normal/aufwändig), optional „Vorrat nutzen“ (Bestand je Produkt mit
+frühestem MHD, bald Ablaufendes zuerst, ohne Immer-da). Der Prompt enthält immer die
+Katalognamen, damit die KI Zutaten so nennt wie bei uns. Die KI (Job `rezept`) liefert Name,
+Portionen, Zutatenzeilen als Text („200 g Crème fraîche“) und **die Kochanleitung direkt im
+Kochmodus-Format** (Schritte mit Zutaten-Indizes, Teilmengen, Timer, nebenher; Entscheidung
+Nils: kein zweiter Kochanleitungs-Aufruf). Der Code prüft die Schritte wie bei der
+Kochanleitung (`schritt_pruefen`, eine Reparaturrunde, fehlende Zutaten ordnet notfalls der Code
+zu). Entwürfe liegen mit allen Versionen in `rezept_entwurf`; Änderungswünsche („statt Sahne
+Crème fraîche“) gehen mit dem Entwurf als Vorlage an die KI und hängen eine neue Version an, jede
+Version bleibt wählbar. Nach Grocy geht nichts direkt: „Übernehmen“ startet den normalen
+Hintergrund-Import mit dem Entwurf als Rohrezept (Quelle `ki`, Quell-ID `ki-<Entwurf>-<Version>`,
+kein Quellenlink). Zutatenzeilen laufen durch den Parser des Link-Imports, Zuordnung und Gramm
+rechnet der Code bzw. die Import-KI, der Nutzer prüft wie beim Link (Grundregeln 1 und 4).
 
 Kuratierung über Daumen hoch/runter. Planer mischt höchstens 1–2 ungetestete Rezepte pro Woche.
 Die Datenbank bleibt privat; fremde Fotos werden nicht übernommen, Zubereitungsschritte seit 0.12.0 schon (s. Import).
