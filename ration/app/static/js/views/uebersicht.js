@@ -15,7 +15,7 @@ export default async function render(el) {
     api("vorschlaege").catch(() => []), api("dubletten").catch(() => []), api("katalog/produkte"),
     api("plan/laeufe").catch(() => []), api("spontan").catch(() => ({rezepte: [], schwelle_pct: 95}))]);
   const rezept = Object.fromEntries(buch.map((r) => [r.id, r]));
-  const tage = u.tage.slice(1);
+  const tage = u.tage;  // ab heute, wie im Kalender
   const frei = new Set(u.tage.filter((t) => !t.gericht).map((t) => t.datum));
   const kochtage = einst.planer.kochtage;
   const wd = (d) => (new Date(d + "T12:00:00").getDay() + 6) % 7;
@@ -145,6 +145,15 @@ export default async function render(el) {
     toast(r.verschoben ? `Heute gekocht, bisheriges Gericht auf ${kurzTag(r.verschoben.datum)} ${Number(r.verschoben.datum.slice(8))}.` : "Für heute geplant");
     render(el);
   }));
+  $$("[data-plus]", el).forEach((b) => b.onclick = () => guarded(async () => {
+    const d = b.dataset.plus;
+    const pers = einst.planer.personen_je_wochentag?.[String(wd(d))] ?? einst.planer.portionen;
+    const {rezeptWaehlen} = await import(`./plan.js${new URL(import.meta.url).search}`);
+    const w = await rezeptWaehlen(d, buch, pers);
+    if (!w) return;
+    await put(`plan/${d}`, {rezept_id: w.id, portionen: w.portionen});
+    toast(`${rezept[w.id]?.name ?? "Gericht"} am ${wt(d)}`); render(el);
+  }));
   $$("[data-heute]", el).forEach((b) => b.onclick = () => guarded(async () => {
     await put(`plan/${u.datum}`, {rezept_id: b.dataset.heute, portionen: einst.planer.portionen || +b.dataset.p});
     toast("Für heute geplant"); render(el);
@@ -188,9 +197,10 @@ export default async function render(el) {
 function tagKarte(t, alle) {
   const g = t.gericht, morgen = plusTage(t.datum, 1);
   const kopf = `<div class="tag-kopf"><b>${kurzTag(t.datum)}</b> <span class="muted tiny">${wt(t.datum).split(", ")[1] ?? ""}</span></div>`;
-  if (!g) return `<div class="tag-karte frei" data-drop="${t.datum}">${kopf}<a class="frei-plus" href="#/plan" title="Planen">＋</a></div>`;
+  const istHeute = t.datum === heute() ? " ist-heute" : "";
+  if (!g) return `<div class="tag-karte frei${istHeute}" data-drop="${t.datum}">${kopf}<button class="frei-plus" data-plus="${t.datum}" title="Gericht hinzufügen" aria-label="Gericht hinzufügen">＋</button></div>`;
   const imPlan = alle.some((x) => x.datum === morgen);
-  return `<div class="tag-karte" data-drop="${t.datum}" data-drag="${t.datum}" draggable="true">
+  return `<div class="tag-karte${istHeute}" data-drop="${t.datum}" data-drag="${t.datum}" draggable="true">
     ${kopf}
     <a class="tag-bild" href="#/rezept/${esc(g.rezept_id)}">${g.foto ? `<img src="${fotoUrl(g.foto)}" alt="" loading="lazy" draggable="false">` : `<span>🍽️</span>`}
       <span class="ecke">${nutriBadge(g.nutri)}</span></a>

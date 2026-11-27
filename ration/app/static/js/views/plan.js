@@ -144,7 +144,7 @@ export default async function render(el, ctx = {}) {
 }
 
 // Rezept suchen und wählen: kochbare zuerst, Portionen einstellbar. → {id, portionen} | null
-async function rezeptWaehlen(datum, buch, portionen, aktuell = null) {
+export async function rezeptWaehlen(datum, buch, portionen, aktuell = null) {
   let wahl = null, filter = "";
   const sortiert = [...buch].sort((a, b) => (b.kochbar - a.kochbar) || (b.favorit ?? 0) - (a.favorit ?? 0) || a.name.localeCompare(b.name, "de"));
   const eintrag = (r) => `<button type="button" class="rw-zeile ${r.id === aktuell ? "aktuell" : ""}" data-r="${esc(r.id)}">

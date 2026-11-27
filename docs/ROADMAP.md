@@ -1,4 +1,4 @@
-# Roadmap und Übergabe (Stand 2026-11-27, Version 0.36.1 / API 1.30)
+# Roadmap und Übergabe (Stand 2026-11-27, Version 0.36.2 / API 1.30)
 
 Diese Datei ist der Übergabepunkt für die Weiterarbeit mit Claude Code direkt im Repo.
 Erst `CLAUDE.md` und `docs/konzept.md` lesen, dann hier die offenen Aufträge.
@@ -35,9 +35,9 @@ Wochenende: 3 Gerichte geplant, Einkaufsliste schon in `todo.einkaufsliste` gesc
 - [ ] Optional: OpenAI-Direktmodus mit eigenem Key (bisher nur gemockt getestet).
 - [ ] Preise für gpt-4.1 / gpt-4o-mini in Einstellungen → KI eintragen (Nils), sonst nur Tokens.
 
-- [ ] **Neue Navigation (0.36.1):** am Handy (Companion-App) und Desktop durchklicken: Leiste
+- [ ] **Neue Navigation (0.36.2):** am Handy (Companion-App) und Desktop durchklicken: Leiste
   unten, „Mehr“, Tabs wischen, Auswahl-Kacheln, Zurück auf Detailseiten, Kochmodus ohne Leisten.
-  Wochenplan (0.36.1): ＋/×, Ziehen am Handy (lange drücken) in der Companion-App.
+  Wochenplan (0.36.2): ＋/×, Ziehen am Handy (lange drücken) in der Companion-App.
 - [ ] **Rezept generieren (0.35.0):** Menü „Rezept generieren“, Wunsch + Portionen + Aufwand
   (+ optional Vorrat), 1–2 Änderungswünsche, „Übernehmen“ → Import-Vorschau → in Grocy. Vorher
   in Einstellungen → KI dem Job „Rezept generieren“ ein kreatives Modell geben (OpenAI direkt).
