@@ -151,12 +151,14 @@ def pruefen(daten: dict) -> tuple[dict, list[str]]:
     if not schritte:
         probleme.append("Keine gültigen Schritte geliefert.")
     hinweise: list[str] = []
+    namen = [rezept_import.zutat_parsen(t).name for t in zutaten]
+    if korrigiert := text_abgleich(schritte, namen):
+        hinweise.append(f"Zutaten in {korrigiert} Schritt(en) nach dem Schritttext korrigiert")
     if zutaten and schritte and (fehlend := kochen.fehlende_zutaten(schritte, len(zutaten))):
         probleme.append(
             "Diese Zutaten fehlen in allen Schritten: "
             + ", ".join(f"{i} ({zutaten[i]})" for i in fehlend)
         )
-        namen = [rezept_import.zutat_parsen(t).name for t in zutaten]
         kochen.zutaten_zuordnen(schritte, fehlend, namen)
         hinweise.append("Zugeordnet vom Code: " + ", ".join(namen[i] for i in fehlend))
     kochen.anteile_ausgleichen(schritte)
@@ -169,6 +171,24 @@ def pruefen(daten: dict) -> tuple[dict, list[str]]:
         "aenderung": str(daten.get("aenderung") or "").strip()[:300],
     }
     return entwurf, probleme
+
+
+def text_abgleich(schritte: list[dict], namen: list[str]) -> int:
+    """Zutaten je Schritt gegen den Schritttext prüfen: Die KI verzählt sich bei Indizes in der
+    eigenen Liste (live: Champignons statt Knoblauch), den Text schreibt sie richtig. Index ohne
+    Erwähnung fällt weg, erwähnte Zutaten kommen dazu. Gibt die Zahl geänderter Schritte."""
+    geaendert = 0
+    for s in schritte:
+        text = f"{s['titel']} {s['text']}"
+        vorher = [z["zutat"] for z in s["zutaten"]]
+        s["zutaten"] = [z for z in s["zutaten"] if kochen.nennt(text, namen[z["zutat"]])]
+        drin = {z["zutat"] for z in s["zutaten"]}
+        for i, n in enumerate(namen):
+            if i not in drin and kochen.nennt(text, n):
+                s["zutaten"].append({"zutat": i, "anteil": 1.0})
+        if sorted(vorher) != sorted(z["zutat"] for z in s["zutaten"]):
+            geaendert += 1
+    return geaendert
 
 
 def als_text(rezept: dict) -> str:
@@ -286,8 +306,13 @@ def abgleich(
     for z in rezept_import.zuordnen(roh, produkte, aliase):
         if z.aktion == "zuordnen" and z.produkt_id in by_id:
             p = by_id[z.produkt_id]
+            gleich = (
+                z.sicher
+                or rezept_import.alias_key(z.name) in aliase
+                or (rezept_import.gleicher_name(z.name, p.name))
+            )
             ergebnis.append({
-                "status": "db" if z.sicher else "vorschlag",
+                "status": "db" if gleich else "vorschlag",
                 "produkt_id": p.id, "produkt": p.name, "einheit": p.unit,
                 "bestand": round(bestand.get(p.id, 0.0), 1),
                 "immer_da": p.tracking_mode == TrackingMode.IMMER_DA,

@@ -717,3 +717,8 @@ def alias_key(text: str) -> str:
 def _voll(text: str) -> frozenset[str]:
     """Alle Wortstämme inklusive Klammern und Zusätzen: Grundlage für „sicherer Treffer“."""
     return frozenset(_stamm(w) for w in alias_key(text).split() if len(w) >= 2)
+
+
+def gleicher_name(a: str, b: str) -> bool:
+    """Gleicher voller Name (alle Wortstämme), wie beim sicheren Treffer."""
+    return _voll(a) == _voll(b)

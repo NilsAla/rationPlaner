@@ -149,3 +149,20 @@ def test_abgleich_katalog_und_neu(fake_backend):
     assert a[0]["status"] == "db" and a[0]["produkt_id"] == p.id and a[0]["bestand"] == 3.0
     assert a[1] == {"status": "neu", "neu_name": "Fantasiepilz"}
     assert a[2]["status"] == "weglassen"
+
+
+def test_text_abgleich_korrigiert_verzaehlte_indizes():
+    daten = {
+        **ENTWURF,
+        "zutaten": ["1 Zwiebel", "200 g Champignons", "1 Knoblauchzehe"],
+        "schritte": [
+            # KI verzählt sich: Champignons (1) statt Knoblauch (2)
+            {"titel": "Schneiden", "text": "Zwiebel und Knoblauchzehe fein würfeln.",
+             "zutaten": ["0", "1"]},
+            {"titel": "Braten", "text": "200 g Champignons anbraten.", "zutaten": ["1"]},
+        ],
+    }  # fmt: skip
+    entwurf, probleme = rezept_ki.pruefen(daten)
+    assert not probleme
+    assert [[z["zutat"] for z in s["zutaten"]] for s in entwurf["schritte"]] == [[0, 2], [1]]
+    assert "1 Schritt(en)" in entwurf["hinweise"][0]

@@ -354,7 +354,10 @@ rechnet der Code bzw. die Import-KI, der Nutzer prüft wie beim Link (Grundregel
 Die Entwurfsansicht zeigt je Zutat den Code-Abgleich mit dem Katalog (0.35.1, Wunsch Nils): aus
 unserer DB (Alias/gleicher Name, mit Bestand), ähnliches Produkt (Kern-Name), neu oder
 weggelassen. Zutaten-Indizes der Schritte sind eine feste Auswahl 0–39 wie bei der
-Kochanleitung; als freie Textliste ließ gpt-4o-mini sie live in allen Schritten leer.
+Kochanleitung; als freie Textliste ließ gpt-4o-mini sie live in allen Schritten leer. Als Auswahl
+verzählte sich gpt-4o-mini (Champignons statt Knoblauch), deshalb prüft der Code jeden Schritt
+gegen seinen Text (0.35.2, `text_abgleich`): Index ohne Erwähnung fällt weg, erwähnte Zutaten
+kommen dazu. Grün im Abgleich heißt Alias (auch von der KI) oder gleicher voller Name.
 
 Kuratierung über Daumen hoch/runter. Planer mischt höchstens 1–2 ungetestete Rezepte pro Woche.
 Die Datenbank bleibt privat; fremde Fotos werden nicht übernommen, Zubereitungsschritte seit 0.12.0 schon (s. Import).
