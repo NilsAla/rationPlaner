@@ -2,70 +2,94 @@ import {$, $$, api, esc, guarded, importIds, importText, importVergessen, lokal,
 
 const V = new URL(import.meta.url).search; // ?v=<version> für alle Views
 
-// Menü: Gruppen mit Unterpunkten. route → Modul in views/
-export const MENUE = [
-  {route: "", titel: "Übersicht", ico: "🏠", view: "uebersicht"},
-  {gruppe: "Küche", ico: "🍳", punkte: [
-    {route: "heute", titel: "Heute kochen", ico: "🔥", view: "heute"},
-    {route: "kochen", titel: "Kochmodus", ico: "👩‍🍳", view: "kochen"},
+// Bereiche mit Tabs. Ein Tab ist eine Seite (route → Modul in views/) oder eine Auswahl
+// (modi): mehrere Seiten unter einem Tab, oben als Kacheln wählbar. Alte Routen bleiben gültig.
+export const BEREICHE = [
+  {id: "start", titel: "Start", ico: "🏠", unten: true, tabs: [
+    {route: "", titel: "Übersicht", view: "uebersicht"},
+  ]},
+  {id: "kochen", titel: "Kochen", ico: "🍳", unten: true, tabs: [
+    {route: "heute", titel: "Heute", ico: "🔥", view: "heute"},
     {route: "plan", titel: "Wochenplan", ico: "📅", view: "plan"},
-    {route: "einkauf", titel: "Einkauf", ico: "🛒", view: "einkauf"},
-    {route: "angebote", titel: "Angebote", ico: "🏷️", view: "angebote"},
+    {route: "kochen", titel: "Kochmodus", ico: "👩‍🍳", view: "kochen"},
   ]},
-  {gruppe: "Rezepte", ico: "📖", punkte: [
+  {id: "rezepte", titel: "Rezepte", ico: "📖", unten: true, tabs: [
     {route: "rezepte", titel: "Rezeptbuch", ico: "📚", view: "rezepte"},
-    {route: "rezept-neu", titel: "Neues Rezept", ico: "✏️", view: "rezept_edit"},
-    {route: "import", titel: "Import per Link", ico: "🔗", view: "import"},
-    {route: "generieren", titel: "Rezept generieren", ico: "🪄", view: "generieren"},
-    {route: "anleitungen", titel: "Kochanleitungen", ico: "🪜", view: "anleitungen"},
+    {titel: "Neu & KI", ico: "✨", modi: [
+      {route: "generieren", titel: "KI generieren", ico: "🪄", text: "Wunsch eingeben, KI erfindet das Rezept", view: "generieren"},
+      {route: "import", titel: "Per Link", ico: "🔗", text: "HelloFresh, Chefkoch & Co.", view: "import"},
+      {route: "rezept-neu", titel: "Von Hand", ico: "✏️", text: "Zutaten selbst eintragen", view: "rezept_edit"},
+      {route: "anleitungen", titel: "Kochanleitungen", ico: "🪜", text: "Schritt für Schritt von der KI", view: "anleitungen"},
+    ]},
   ]},
-  {gruppe: "Vorrat", ico: "🥫", punkte: [
-    {route: "inventar", titel: "Inventar", ico: "📦", view: "inventar"},
-    {route: "einbuchen", titel: "Einbuchen & Bon", ico: "🧾", view: "einbuchen"},
-    {route: "scannen", titel: "Scannen", ico: "📱", view: "scannen"},
+  {id: "vorrat", titel: "Vorrat", ico: "🥫", unten: true, tabs: [
+    {route: "inventar", titel: "Bestand", ico: "📦", view: "inventar"},
+    {titel: "Einbuchen", ico: "➕", modi: [
+      {route: "einbuchen", titel: "Bon & von Hand", ico: "🧾", text: "Kassenbon fotografieren oder Zeilen eintragen", view: "einbuchen"},
+      {route: "scannen", titel: "Barcode", ico: "📷", text: "Packungen scannen", view: "scannen"},
+    ]},
     {route: "reste", titel: "Reste & Füllstand", ico: "🥡", view: "reste"},
+  ]},
+  {id: "einkauf", titel: "Einkauf", ico: "🛒", unten: true, tabs: [
+    {route: "einkauf", titel: "Einkaufsliste", ico: "📝", view: "einkauf"},
+    {route: "angebote", titel: "Angebote", ico: "🏷️", view: "angebote"},
     {route: "ausgaben", titel: "Ausgaben", ico: "💶", view: "ausgaben"},
   ]},
-  {gruppe: "Datenbank", ico: "🗂️", punkte: [
+  {id: "produkte", titel: "Produkte", ico: "🗂️", tabs: [
     {route: "produkte", titel: "Produkte", ico: "🥕", view: "produkte"},
+    {route: "ki-vorschlaege", titel: "KI-Kategorisierung", ico: "✨", view: "vorschlaege", badge: "vorschlaege"},
     {route: "dubletten", titel: "Dubletten", ico: "👯", view: "dubletten", badge: "dubletten"},
     {route: "packungen", titel: "Packungsgrößen", ico: "📏", view: "packungen"},
-    {route: "ki-vorschlaege", titel: "KI-Kategorisierung", ico: "✨", view: "vorschlaege", badge: "vorschlaege"},
   ]},
-  {gruppe: "System", ico: "⚙️", punkte: [
+  {id: "system", titel: "System", ico: "⚙️", tabs: [
     {route: "einstellungen", titel: "Einstellungen", ico: "🎛️", view: "einstellungen"},
-    {route: "log/aenderungen", titel: "Änderungsprotokoll", ico: "📝", view: "log_aenderungen"},
+    {route: "log/aenderungen", titel: "Änderungen", ico: "📝", view: "log_aenderungen"},
     {route: "log/ki", titel: "KI-Protokoll", ico: "🤖", view: "log_ki"},
   ]},
 ];
-// Routen, die nicht im Menü stehen: Detailseiten. Muster → View, markierter Menüpunkt
+// Detailseiten ohne Tab: Muster → View, Bereich
 const DETAIL = [
   [/^kochen\/([^/]+)$/, "kochen", "kochen"],
-  [/^rezept\/([^/]+)\/anleitung$/, "anleitung", "anleitungen"],
+  [/^rezept\/([^/]+)\/anleitung$/, "anleitung", "rezepte"],
   [/^rezept\/([^/]+)\/bearbeiten$/, "rezept_edit", "rezepte"],
   [/^rezept\/([^/]+)$/, "rezept", "rezepte"],
   [/^produkt-neu$/, "produkt", "produkte"],
   [/^produkt\/([^/]+)$/, "produkt", "produkte"],
 ];
-const alle = MENUE.flatMap((m) => m.punkte ?? [m]);
+// Alle Seiten flach: {route, titel, view, bereich, tab, modus?}
+const alle = BEREICHE.flatMap((b) => b.tabs.flatMap((t) => t.modi
+  ? t.modi.map((m) => ({...m, bereich: b, tab: t, modus: true}))
+  : [{...t, bereich: b, tab: t}]));
 const badges = {};
+const tabBadge = (t) => (t.modi ?? [t]).reduce((n, x) => n + (badges[x.badge] || 0), 0);
+const bereichBadge = (b) => b.tabs.reduce((n, t) => n + tabBadge(t), 0);
+const badgeHtml = (n, warn = false) => n ? `<span class="badge ${warn ? "warn" : ""}">${n}</span>` : "";
+// Ziel eines Tabs/Bereichs: zuletzt besuchte Seite darin, sonst die erste
+const zielTab = (t) => t.modi ? (t.modi.find((m) => m.route === lokal(`modus.${t.titel}`, null)) ?? t.modi[0]).route : t.route;
+const zielBereich = (b) => lokal(`bereich.${b.id}`, null) ?? zielTab(b.tabs[0]);
 
-function menueZeichnen(aktiv) {
-  const zu = lokal("menue.zu", []);
-  $("#menu").innerHTML = MENUE.map((m) => {
-    if (!m.punkte) return link(m, aktiv);
-    const offen = !zu.includes(m.gruppe) || m.punkte.some((p) => p.route === aktiv);
-    return `<button class="gruppe ${offen ? "" : "zu"}" data-gruppe="${esc(m.gruppe)}"><span class="ico">${m.ico}</span>${esc(m.gruppe)}
-      <span class="pfeil">▾</span></button><div class="unter">${m.punkte.map((p) => link(p, aktiv)).join("")}</div>`;
-  }).join("");
-  $$("#menu [data-gruppe]").forEach((b) => b.onclick = () => {
-    const g = b.dataset.gruppe, liste = lokal("menue.zu", []);
-    merken("menue.zu", liste.includes(g) ? liste.filter((x) => x !== g) : [...liste, g]);
-    b.classList.toggle("zu");
-  });
+let aktiv = {bereich: BEREICHE[0], seite: alle[0]};
+function menueZeichnen() {
+  const {bereich, seite} = aktiv;
+  $("#menu").innerHTML = BEREICHE.map((b) => `<a href="#/${zielBereich(b)}" class="bereich ${b === bereich ? "on" : ""}">
+      <span class="ico">${b.ico}</span><span class="name">${esc(b.titel)}</span>${badgeHtml(bereichBadge(b), b.id === "produkte")}</a>
+    ${b === bereich && b.tabs.length > 1 ? `<div class="unter">${b.tabs.map((t) => `<a href="#/${zielTab(t)}"
+      class="${seite?.tab === t ? "on" : ""}">${esc(t.titel)}${badgeHtml(tabBadge(t), t.badge === "dubletten")}</a>`).join("")}</div>` : ""}`).join("");
+  $("#unten").innerHTML = BEREICHE.filter((b) => b.unten).map((b) => `<a href="#/${zielBereich(b)}" class="${b === bereich ? "on" : ""}">
+    <span class="ico">${b.ico}</span><span>${esc(b.titel)}</span>${bereichBadge(b) ? `<i class="punkt"></i>` : ""}</a>`).join("")
+    + `<button id="mehr" class="${bereich.unten ? "" : "on"}" aria-label="Mehr"><span class="ico">☰</span><span>Mehr</span>${
+      BEREICHE.some((b) => !b.unten && bereichBadge(b)) ? `<i class="punkt"></i>` : ""}</button>`;
+  $("#mehr").onclick = () => document.body.classList.add("nav-auf");
+  const tabs = $("#tabs");
+  // Tabs nur auf Seiten des Bereichs (nicht auf Detailseiten), Auswahl-Kacheln unter dem Tab
+  if (!seite || (bereich.tabs.length < 2 && !seite.modus)) { tabs.hidden = true; tabs.innerHTML = ""; return; }
+  tabs.hidden = false;
+  tabs.innerHTML = (bereich.tabs.length > 1 ? `<div class="tab-leiste">${bereich.tabs.map((t) => `<a href="#/${zielTab(t)}"
+      class="${seite.tab === t ? "on" : ""}"><span class="ico">${t.ico ?? ""}</span>${esc(t.titel)}${badgeHtml(tabBadge(t), t.badge === "dubletten")}</a>`).join("")}</div>` : "")
+    + (seite.modus ? `<div class="modi">${seite.tab.modi.map((m) => `<a href="#/${m.route}" class="modus ${m === seite.tab.modi.find((x) => x.route === seite.route) ? "on" : ""}">
+      <span class="ico">${m.ico}</span><span><b>${esc(m.titel)}</b><small>${esc(m.text ?? "")}</small></span></a>`).join("")}</div>` : "");
+  tabs.querySelector(".tab-leiste a.on")?.scrollIntoView({block: "nearest", inline: "center"});
 }
-const link = (p, aktiv) => `<a href="#/${p.route}" class="${p.route === aktiv ? "on" : ""}"><span class="ico">${p.ico}</span>${esc(p.titel)}
-  ${badges[p.badge] ? `<span class="badge ${p.badge === "dubletten" ? "warn" : ""}">${badges[p.badge]}</span>` : ""}</a>`;
 
 
 let laufend = 0, aufraeumen = null;
@@ -76,22 +100,30 @@ async function zeigen() {
   const pfad = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
   const [route, query] = pfad.split("?");
   const params = Object.fromEntries(new URLSearchParams(query ?? ""));
-  let eintrag = alle.find((p) => p.route === route), arg = null, markiert = route;
-  if (!eintrag) {
-    for (const [re, view, menue] of DETAIL) {
+  let seite = alle.find((p) => p.route === route), view = seite?.view, arg = null, bereich = seite?.bereich;
+  if (!seite) {
+    for (const [re, v, b] of DETAIL) {
       const m = route.match(re);
-      if (m) { eintrag = {view, titel: ""}; arg = m[1] ?? null; markiert = menue; break; }
+      if (m) { view = v; arg = m[1] ?? null; bereich = BEREICHE.find((x) => x.id === b); break; }
     }
   }
-  eintrag ??= alle[0];
-  menueZeichnen(markiert);
+  if (!view) { seite = alle[0]; view = seite.view; bereich = seite.bereich; }
+  if (seite) {
+    merken(`bereich.${bereich.id}`, seite.route);
+    if (seite.modus) merken(`modus.${seite.tab.titel}`, seite.route);
+  }
+  aktiv = {bereich, seite};
+  menueZeichnen();
+  // Detailseite: Zurück statt Menü (auf dem Handy)
+  $("#zurueck").hidden = !!seite;
+  document.body.classList.toggle("detail", !seite);
   document.body.classList.remove("nav-auf");
-  titel(eintrag.titel || "rationPlaner");
+  titel(bereich.titel);
   const nr = ++laufend;
   const el = $("#view");
   el.innerHTML = `<div class="leer">Lädt …</div>`;
   await guarded(async () => {
-    const mod = await import(`./views/${eintrag.view}.js${V}`);
+    const mod = await import(`./views/${view}.js${V}`);
     if (nr !== laufend) return;
     el.innerHTML = "";
     const r = await mod.default(el, {arg, params, neu: () => zeigen()});
@@ -108,7 +140,7 @@ async function status() {
     $("#statusline").textContent = s.text;
     badges.vorschlaege = new Set(v.map((x) => `${x.typ}:${x.objekt_id}`)).size || 0;
     badges.dubletten = d.length || 0;
-    menueZeichnen(decodeURIComponent(location.hash.replace(/^#\/?/, "")).split("?")[0]);
+    menueZeichnen();
   });
 }
 
@@ -118,7 +150,7 @@ async function suchindex() {
   if (index) return index;
   const [r, p] = await Promise.all([api("rezepte"), api("produkte")]);
   index = [
-    ...alle.map((m) => ({text: m.titel, route: m.route, art: "Seite"})),
+    ...alle.map((m) => ({text: m.titel, route: m.route, art: m.bereich.titel})),
     ...r.map((x) => ({text: x.name, route: `rezept/${x.id}`, art: "Rezept"})),
     ...p.map((x) => ({text: x.name, route: `produkt/${x.id}`, art: "Produkt"})),
   ];
@@ -179,6 +211,9 @@ async function importStatus() {
 window.addEventListener("importe", importStatus);
 
 $("#burger").onclick = () => document.body.classList.toggle("nav-auf");
+$("#zurueck").onclick = () => {
+  if (history.length > 1) history.back(); else location.hash = "#/" + zielBereich(aktiv.bereich);
+};
 $("#scrim").onclick = () => document.body.classList.remove("nav-auf");
 window.addEventListener("hashchange", () => { zeigen(); status(); });
 sucheEinrichten();

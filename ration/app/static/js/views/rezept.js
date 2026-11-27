@@ -87,7 +87,7 @@ function makros(n) {
   const fehlt = n.fehlend.length ? `<p class="muted tiny">Ohne Werte (${pct(1 - n.abdeckung)} des Gewichts): ${n.fehlend.map((f) =>
     `<a href="#/produkt/${esc(f.produkt_id)}" title="${esc(f.grund)}">${esc(f.name)}</a>`).join(", ")}</p>` : "";
   if (!v.kcal) return `<div class="card"><h2>Makros</h2><p class="muted">Noch keine Nährwerte für die Zutaten.
-    Am Produkt eintragen oder unter <a href="#/vorschlaege">KI-Vorschläge</a> schätzen lassen.</p>${fehlt}</div>`;
+    Am Produkt eintragen oder unter <a href="#/ki-vorschlaege">KI-Vorschläge</a> schätzen lassen.</p>${fehlt}</div>`;
   return `<div class="card"><div class="kopf"><h2>Makros <span class="muted tiny">je Portion</span></h2>${nutriBadge(n.nutri_score?.klasse,
       n.nutri_score ? `Nutri-Score ${n.nutri_score.klasse}: ${n.nutri_score.punkte} Punkte (negativ ${n.nutri_score.negativ}, positiv ${n.nutri_score.positiv})` : "")}</div>
     <div class="makros">${kachel(zahl(v.kcal), "kcal", "Energie")}${kachel(zahl(v.protein), "g", "Protein")}

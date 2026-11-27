@@ -15,10 +15,10 @@ export default async function render(el, {params}) {
       <div class="aktionen"><a class="btn klein" href="#/produkt-neu">+ Neues Produkt</a></div></div>
       <p class="muted tiny">MHD leer = Standard-Haltbarkeit des Produkts. Preis optional (Gesamtpreis), fließt in die Kostenschätzung.</p>
       <datalist id="plist">${produkte.map((p) => `<option value="${esc(p.name)}">`).join("")}</datalist>
-      <div class="tabelle"><table><thead><tr><th>Produkt</th><th>Menge</th><th></th><th>MHD</th><th>Lagerort</th><th>Preis</th><th></th></tr></thead>
+      <div class="tabelle"><table class="ez-tabelle"><thead><tr><th>Produkt</th><th>Menge</th><th></th><th>MHD</th><th>Lagerort</th><th>Preis</th><th></th></tr></thead>
         <tbody id="ez">${zeile()}</tbody></table></div>
       <div class="row" style="margin-top:8px"><button class="btn" id="mehr">+ Zeile</button><button class="btn primary" id="buchen">Alles einbuchen</button></div></div>
-    <div class="card"><h2>Kassenbon fotografieren</h2>
+    <div class="card" style="order:-1"><h2>Kassenbon fotografieren</h2>
       <div class="bon-drop" id="bdrop" tabindex="0" title="Foto wählen, hierher ziehen oder Strg+V">
         <img id="bvor" alt="" hidden><span id="btext">Bild hierher ziehen · <b>Strg+V</b> fügt aus der Zwischenablage ein</span></div>
       <div class="row" style="margin-top:8px"><button class="btn" id="bkam">📷 Foto machen</button><button class="btn" id="bgal">🖼 Aus Galerie / Datei</button></div>

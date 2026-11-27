@@ -585,9 +585,18 @@ Neu aufgebaut auf Wunsch Nils: Vanilla-ES-Module ohne Build (`app/static/`), Has
 jede Seite ein Modul unter `static/js/views/`, gemeinsame Helfer in `static/js/lib.js`. Alle
 Pfade relativ (Ingress), statische Dateien mit `Cache-Control: no-cache`, Module mit `?v=`.
 
-- **Navigation:** Seitenleiste mit Gruppen und Unterpunkten (einklappbar, gemerkt im Browser),
-  auf dem Handy als Burgermenü. Globale Suche (Taste `/`) über Seiten, Rezepte und Produkte.
-  Badges für offene Dubletten und KI-Vorschläge. Hell/Dunkel/System.
+- **Navigation (0.36.0, Umbau auf Wunsch Nils):** sieben Bereiche mit Tabs statt 25
+  Menüpunkten (`BEREICHE` in `static/js/main.js`): Start · Kochen (Heute, Wochenplan,
+  Kochmodus) · Rezepte (Rezeptbuch, **Neu & KI**) · Vorrat (Bestand, **Einbuchen**, Reste &
+  Füllstand) · Einkauf (Liste, Angebote, Ausgaben) · Produkte (Produkte, KI-Kategorisierung,
+  Dubletten, Packungsgrößen) · System. „Neu & KI“ und „Einbuchen“ sind Auswahl-Tabs: oben
+  Kacheln für KI generieren / Per Link / Von Hand / Kochanleitungen bzw. Bon & von Hand /
+  Barcode. Jede Seite behält ihre Route (alte Links gelten weiter); gemerkt wird je Bereich
+  und Auswahl die zuletzt besuchte Seite. Desktop: Seitenleiste mit den Bereichen, im aktiven
+  die Tabs. Handy: Leiste unten (Start, Kochen, Rezepte, Vorrat, Einkauf, Mehr), Tabs
+  wischbar unter der Kopfzeile, Detailseiten mit Zurück-Pfeil, im Kochmodus ohne Leisten.
+  Globale Suche (Taste `/`) über Seiten, Rezepte und Produkte. Badges für offene Dubletten
+  und KI-Vorschläge. Hell/Dunkel/System.
 - **Küche:** Übersicht (Heute, läuft bald ab, Woche, Zu tun, Reste, Vorrat), Heute kochen mit
   Bewertung, Wochenplan als Kalender (Tage anklicken, Schnellwahl, Rezept direkt eintragen,
   Planer mit Reglern und Ausschluss-Tags), Einkauf nach Kategorie gruppiert mit Kosten.

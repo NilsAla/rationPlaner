@@ -15,7 +15,7 @@ export default async function render(el, {params}) {
       <select id="tag"><option value="">Alle Tags</option>${tags.map((t) => `<option ${t === f.tag ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
       <select id="quelle"><option value="">Alle Quellen</option>${[...quellen].sort((a, b) => a[1].localeCompare(b[1], "de")).map(([k, t]) =>
         `<option value="${k}" ${k === f.quelle ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
-      <a class="btn primary" href="#/rezept-neu">+ Neu</a><a class="btn" href="#/import">🔗 Import</a></div>
+      <a class="btn primary" href="#/generieren">✨ Neues Rezept</a></div>
     <div class="chips"><button class="chip ${f.kochbar ? "on" : ""}" data-f="kochbar">✅ jetzt kochbar</button>
       <button class="chip ${f.nur_fav ? "on" : ""}" data-f="nur_fav">★ Favoriten</button>
       ${produkt ? `<a class="chip on" href="#/rezepte">mit ${esc(produkt.name)} ✕</a>` : ""}
