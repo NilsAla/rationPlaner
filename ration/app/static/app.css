@@ -197,20 +197,76 @@ details > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 
 /* Kalender */
 .kalender { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
-.kalender .tag-zelle { min-width: 0; overflow-wrap: anywhere; }
-.kalender .wt { font-size: 12px; color: var(--muted); text-align: center; }
-.tag-zelle { min-height: 84px; border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--card);
-  cursor: pointer; display: flex; flex-direction: column; gap: 3px; font-size: 12px; position: relative; }
-.tag-zelle:hover { border-color: var(--accent); }
-.tag-zelle .nr { font-weight: 600; font-size: 13px; }
-.tag-zelle.vergangen { opacity: .45; cursor: default; }
+.kalender .wt { font-size: 12px; color: var(--muted); text-align: center; font-weight: 600; }
+.tag-zelle { min-width: 0; min-height: 96px; border: 1px solid var(--line); border-radius: 12px; padding: 6px; background: var(--card);
+  display: flex; flex-direction: column; gap: 5px; position: relative; transition: border-color .12s, background .12s; }
+.tag-zelle .tz-kopf { display: flex; align-items: baseline; gap: 6px; }
+.tag-zelle .nr { font-weight: 650; font-size: 13px; }
+.tag-zelle .wt-kurz { display: none; }
+.tag-zelle .heute-tag { font-size: 10px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 999px; padding: 0 6px; margin-left: auto; }
+.tag-zelle.heute { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .tag-zelle.heute .nr { color: var(--accent); }
-.tag-zelle.koch { background: var(--accent-soft); border-color: var(--accent); }
-.tag-zelle.aus { background: repeating-linear-gradient(45deg, transparent, transparent 6px, var(--hover) 6px, var(--hover) 8px); }
-.tag-zelle .rz { font-weight: 500; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.tag-zelle .rz.gekocht { color: var(--muted); text-decoration: line-through; }
-.tag-zelle .haken { position: absolute; top: 5px; right: 6px; color: var(--accent); font-weight: 700; }
-@media (max-width: 600px) { .tag-zelle { min-height: 64px; padding: 4px; font-size: 11px; } .kalender { gap: 3px; } }
+.tag-zelle.vergangen { opacity: .5; }
+.tag-zelle.aus.frei:not(.vergangen) { background: repeating-linear-gradient(45deg, transparent, transparent 6px, var(--hover) 6px, var(--hover) 8px); }
+.tag-zelle.drop-ziel { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent) inset; }
+.tag-zelle .plus { flex: 1; min-height: 44px; border: 1.5px dashed var(--line); border-radius: 10px; background: none; color: var(--muted);
+  font-size: 20px; line-height: 1; transition: all .12s; }
+.tag-zelle .plus:hover, .tag-zelle .plus:focus-visible { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.kalender.einplanen .plus { font-size: 12px; border-color: var(--accent); color: var(--accent); }
+.gericht { display: flex; align-items: center; gap: 6px; padding: 4px; border-radius: 9px; background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); cursor: grab; position: relative; min-width: 0;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
+.gericht:hover { border-color: var(--accent); }
+.gericht img, .gericht .g-ico { width: 30px; height: 30px; border-radius: 7px; object-fit: cover; flex: none; display: grid; place-items: center;
+  background: var(--card); font-size: 15px; }
+.gericht .g-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.gericht .g-name { font-size: 12.5px; font-weight: 600; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.gericht .g-p { font-size: 11px; color: var(--muted); }
+.gericht.gekocht .g-name { text-decoration: line-through; color: var(--muted); }
+.gericht .g-weg { position: absolute; top: -7px; right: -7px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--card); color: var(--muted); font-size: 14px; line-height: 1; display: grid; place-items: center; padding: 0;
+  opacity: 0; transition: opacity .12s; box-shadow: var(--shadow); }
+.gericht:hover .g-weg, .gericht .g-weg:focus-visible { opacity: 1; }
+.gericht .g-weg:hover { color: var(--bad); border-color: var(--bad); }
+@media (hover: none) { .gericht .g-weg { opacity: 1; } }
+.gericht.zieht { opacity: .35; }
+.gericht.geist { position: fixed; z-index: 100; pointer-events: none; box-shadow: 0 10px 30px rgba(0,0,0,.25); opacity: .95; cursor: grabbing; }
+/* Handy: Tagesliste statt sieben enger Spalten, vergangene Tage nur beim Zurückblättern */
+@media (max-width: 700px) {
+  .kalender { grid-template-columns: 1fr; gap: 6px; }
+  .kalender .wt { display: none; }
+  .kalender.ab-heute .tag-zelle.vergangen { display: none; }
+  .tag-zelle { min-height: 0; flex-direction: row; align-items: center; padding: 8px 10px; }
+  .tag-zelle .tz-kopf { flex-direction: column; align-items: center; gap: 0; width: 42px; flex: none; }
+  .tag-zelle .wt-kurz { display: block; font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+  .tag-zelle .nr { font-size: 17px; }
+  .tag-zelle .heute-tag { margin: 2px 0 0; }
+  .tag-zelle .plus { min-height: 46px; }
+  .tag-zelle.monatsanfang { margin-top: 8px; }
+  .gericht { flex: 1; padding: 6px 8px; }
+  .gericht img, .gericht .g-ico { width: 40px; height: 40px; }
+  .gericht .g-name { font-size: 14px; }
+  .gericht .g-weg { position: static; opacity: 1; width: 32px; height: 32px; font-size: 18px; box-shadow: none; }
+}
+/* Planer: Tage als Chips */
+.tage-wahl { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.tag-chip { flex: 0 0 auto; width: 46px; padding: 5px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+  color: var(--text); display: flex; flex-direction: column; align-items: center; line-height: 1.15; position: relative; }
+.tag-chip small { font-size: 10px; color: var(--muted); font-weight: 600; }
+.tag-chip b { font-size: 15px; }
+.tag-chip i { position: absolute; top: 0; right: 5px; font-style: normal; font-weight: 700; color: var(--warn); }
+.tag-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tag-chip.on small { color: #fff; opacity: .85; }
+/* Rezept wählen (Dialog) */
+.rw-liste { max-height: min(55vh, 460px); }
+.rw-zeile { display: flex !important; align-items: center !important; gap: 10px !important; }
+.rw-zeile img, .rw-zeile .g-ico { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: none; display: grid; place-items: center; background: var(--hover); }
+.rw-zeile .rw-text { display: flex; flex-direction: column; min-width: 0; }
+.rw-zeile.aktuell { background: var(--accent-soft); }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.stepper button { border: 0; background: var(--hover); color: var(--text); width: 36px; height: 36px; font-size: 18px; }
+.stepper input { width: 48px; border: 0; border-radius: 0; text-align: center; padding: 6px 0; background: var(--card); -moz-appearance: textfield; }
+.stepper input::-webkit-inner-spin-button { -webkit-appearance: none; }
 
 /* Regler */
 .regler { display: grid; grid-template-columns: 1fr; gap: 4px; margin-top: 10px; }
