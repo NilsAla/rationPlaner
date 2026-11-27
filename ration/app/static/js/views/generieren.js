@@ -1,10 +1,31 @@
-import {$, $$, api, esc, guarded, post, gehe, importMerken, zeit} from "../lib.js";
+import {$, $$, api, esc, fmt, guarded, post, gehe, importMerken, zeit} from "../lib.js";
 
 // Rezept von der KI erfinden lassen: Wunsch → Entwurf → Änderungswünsche → Import-Vorschau.
 // Nach Grocy geht erst etwas über die normale Import-Vorschau (Zuordnung prüfen, übernehmen).
 // ?id=… öffnet einen Entwurf.
 const AUFWAND = [["schnell", "schnell (≤ 25 min)"], ["normal", "normal"], ["aufwaendig", "aufwändig"]];
 const BEISPIELE = ["statt Sahne Crème fraîche", "schärfer", "vegetarisch", "weniger Schritte", "für 4 Portionen"];
+
+// Abgleich mit dem Katalog (nur Code, die Import-Vorschau entscheidet endgültig):
+// grün = aus unserer DB, gelb = ähnliches Produkt, blau = wird neu angelegt, grau = weggelassen
+const ABGLEICH = {db: ["gruen", "aus unserer DB"], vorschlag: ["gelb", "ähnliches Produkt"], neu: ["blau", "neu"], weglassen: ["grau", "weggelassen"]};
+function abgleichHtml(zutaten, abgleich) {
+  const n = {};
+  abgleich.forEach((a) => { n[a.status] = (n[a.status] ?? 0) + 1; });
+  const legende = Object.entries(ABGLEICH).filter(([k]) => n[k])
+    .map(([k, [f, t]]) => `<span><i class="imp-punkt ${f}"></i>${n[k]} ${t}</span>`).join("");
+  const ziel = (a) => {
+    if (!a) return "";
+    if (a.status === "neu") return `<span class="tag">+ neu: ${esc(a.neu_name)}</span>`;
+    if (a.status === "weglassen") return `<span class="muted tiny">${esc(a.hinweis || "weggelassen")}</span>`;
+    const vorrat = a.immer_da ? "immer da" : a.bestand > 0 ? `im Vorrat ${fmt(a.bestand)} ${esc(a.einheit)}` : "nicht im Vorrat";
+    return `→ <b>${esc(a.produkt)}</b>${a.status === "vorschlag" ? ` <span class="tag">ähnlich</span>` : ""} <span class="muted tiny">${vorrat}</span>`;
+  };
+  return `<div class="imp-legende small">${legende}</div>
+    <ul class="gen-zutaten">${zutaten.map((z, i) => { const a = abgleich[i];
+      return `<li><i class="imp-punkt ${ABGLEICH[a?.status]?.[0] ?? "grau"}"></i>${esc(z)} ${ziel(a)}</li>`; }).join("")}</ul>
+    <p class="muted tiny">Vorab-Abgleich mit dem Katalog. In der Import-Vorschau prüft zusätzlich die KI, dort kannst du jede Zeile ändern.</p>`;
+}
 
 export default async function render(el, {params}) {
   let aktiv = true;
@@ -56,7 +77,7 @@ export default async function render(el, {params}) {
       ${e.versionen.length > 1 ? `<div class="chips" style="margin-bottom:10px">${e.versionen.map((x, i) =>
         `<button class="chip ${i === version ? "on" : ""}" data-v="${i}" title="${esc(x.wunsch ?? "erster Entwurf")}">v${i + 1}${x.wunsch ? `: ${esc(x.wunsch.slice(0, 30))}` : ""}</button>`).join("")}</div>` : ""}
       ${r.aenderung && v.wunsch ? `<p class="small">✏️ ${esc(r.aenderung)}</p>` : ""}
-      <h3>Zutaten</h3><ul>${r.zutaten.map((z) => `<li>${esc(z)}</li>`).join("")}</ul>
+      <h3>Zutaten</h3>${abgleichHtml(r.zutaten, v.abgleich ?? [])}
       <h3>Anleitung</h3><ol>${r.schritte.map((s) => `<li><b>${esc(s.titel)}</b>${s.timer_s ? ` <span class="tag">⏱ ${Math.round(s.timer_s / 60)} min</span>` : ""}${s.parallel ? ` <span class="tag">nebenher</span>` : ""}
         <div class="small">${esc(s.text)}</div></li>`).join("")}</ol>
       ${r.hinweise?.length ? `<ul class="small muted">${r.hinweise.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}

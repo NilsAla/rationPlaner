@@ -351,6 +351,10 @@ Version bleibt wählbar. Nach Grocy geht nichts direkt: „Übernehmen“ starte
 Hintergrund-Import mit dem Entwurf als Rohrezept (Quelle `ki`, Quell-ID `ki-<Entwurf>-<Version>`,
 kein Quellenlink). Zutatenzeilen laufen durch den Parser des Link-Imports, Zuordnung und Gramm
 rechnet der Code bzw. die Import-KI, der Nutzer prüft wie beim Link (Grundregeln 1 und 4).
+Die Entwurfsansicht zeigt je Zutat den Code-Abgleich mit dem Katalog (0.35.1, Wunsch Nils): aus
+unserer DB (Alias/gleicher Name, mit Bestand), ähnliches Produkt (Kern-Name), neu oder
+weggelassen. Zutaten-Indizes der Schritte sind eine feste Auswahl 0–39 wie bei der
+Kochanleitung; als freie Textliste ließ gpt-4o-mini sie live in allen Schritten leer.
 
 Kuratierung über Daumen hoch/runter. Planer mischt höchstens 1–2 ungetestete Rezepte pro Woche.
 Die Datenbank bleibt privat; fremde Fotos werden nicht übernommen, Zubereitungsschritte seit 0.12.0 schon (s. Import).

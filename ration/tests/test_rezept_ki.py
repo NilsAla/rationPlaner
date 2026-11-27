@@ -74,6 +74,8 @@ def test_generieren_ueberarbeiten_importieren(c, fake_ha, fake_backend):
     assert r.status_code == 201, r.text
     e = r.json()
     assert e["versionen"][0]["rezept"]["name"] == "Pilzpasta"
+    status = [a["status"] for a in e["versionen"][0]["abgleich"]]
+    assert len(status) == 4 and "neu" in status
     assert "höchstens 25 Minuten" in fake_ha.ki_anfragen[-1]
     assert "Änderungswunsch" not in fake_ha.ki_anfragen[-1]
 
@@ -137,3 +139,13 @@ def test_ohne_brauchbare_antwort(c, fake_ha):
     r = c.post("/api/v1/generieren", json={"prompt": "irgendwas"})
     assert r.status_code == 502
     assert len(fake_ha.ki_anfragen) == 2  # eine Reparaturrunde
+
+
+def test_abgleich_katalog_und_neu(fake_backend):
+    produkte = asyncio.run(fake_backend.list_products())
+    p = produkte[0]
+    rezept = {**ENTWURF, "zutaten": [f"100 g {p.name}", "250 g Fantasiepilz", "Wasser"]}
+    a = rezept_ki.abgleich(rezept, produkte, {}, {p.id: 3.0})
+    assert a[0]["status"] == "db" and a[0]["produkt_id"] == p.id and a[0]["bestand"] == 3.0
+    assert a[1] == {"status": "neu", "neu_name": "Fantasiepilz"}
+    assert a[2]["status"] == "weglassen"

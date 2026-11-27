@@ -20,9 +20,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import importlauf, kochen, rezept_import
-from app.db import RezeptEntwurf, RezeptImport
+from app.db import RezeptEntwurf, RezeptImport, ZutatAlias
 from app.deps import session
-from app.inventory.base import TrackingMode
+from app.inventory.base import Product, TrackingMode
 
 log = logging.getLogger("ration.rezept_ki")
 router = APIRouter(prefix="/api/v1")
@@ -60,9 +60,11 @@ Regeln für die Anleitung (Kochmodus):
   lohnt sich, wenn danach etwas gart oder wartet, etwas nebenher läuft oder die Arbeit wechselt.
   Bereitstellen, Waschen und Anrichten nie als eigener Schritt. Typisch 6–12 Schritte. Kurzer
   Titel im Imperativ ("Nudeln kochen"), Text 1–4 Sätze mit Temperaturen, Zeiten, Garpunkt.
-- zutaten: die Indizes (ab 0, Reihenfolge der Zutatenliste) der Zutaten, die in DIESEM Schritt
-  verarbeitet werden. Jede Zutat mindestens einmal. teilweise: Indizes, von denen hier nur ein
-  Teil verwendet wird (Butter halb/halb), sonst leer.
+- zutaten: die Indizes (ab 0, Reihenfolge der Zutatenliste: die erste Zutat ist "0") der
+  Zutaten, die in DIESEM Schritt verarbeitet, geschnitten oder in Topf/Pfanne gegeben werden.
+  Pflicht: Jede Zutat steht in mindestens einem Schritt, und jeder Schritt, in dem Zutaten
+  verarbeitet werden, nennt sie (auch beim Anbraten, wenn sie vorher geschnitten wurden).
+  teilweise: Indizes, von denen hier nur ein Teil verwendet wird (Butter halb/halb), sonst leer.
 - timer_minuten nur für echtes Warten/Garen (Kochzeit, Ofen, Ruhen). timer_name kurz ("Nudeln").
 - parallel: true, wenn der Schritt nebenher weiterläuft (Wasser aufsetzen, Ofen, Soße köcheln).
 - Höchstens {max} Schritte.
@@ -80,6 +82,10 @@ Setze den Änderungswunsch um und behalte alles andere bei. Passe Mengen, Zutate
 Schritte und Zutaten-Indizes so an, dass das Rezept stimmig bleibt.
 """
 
+# Indizes als feste Auswahl 0…MAX_ZUTATEN-1 (wie bei der Kochanleitung): als freie Textliste ließ
+# gpt-4o-mini über ai_task die Zutaten aller Schritte leer (Live-Test 0.35.0)
+_INDIZES = {"select": {"options": [str(i) for i in range(MAX_ZUTATEN)], "multiple": True}}
+
 STRUKTUR = {
     "name": {"required": True, "selector": {"text": {}}},
     "portionen": {"required": True, "selector": {"number": {}}},
@@ -92,9 +98,8 @@ STRUKTUR = {
                 "fields": {
                     "titel": {"required": True, "selector": {"text": {}}},
                     "text": {"required": True, "selector": {"text": {"multiline": True}}},
-                    # Indizes als Text: Anzahl der Zutaten steht vorher nicht fest
-                    "zutaten": {"required": False, "selector": {"text": {"multiple": True}}},
-                    "teilweise": {"required": False, "selector": {"text": {"multiple": True}}},
+                    "zutaten": {"required": True, "selector": _INDIZES},
+                    "teilweise": {"required": False, "selector": _INDIZES},
                     "timer_minuten": {"required": False, "selector": {"number": {}}},
                     "timer_name": {"required": False, "selector": {"text": {}}},
                     "parallel": {"required": False, "selector": {"boolean": {}}},
@@ -266,12 +271,49 @@ def _jetzt() -> str:
     return importlauf._jetzt().isoformat(timespec="seconds")
 
 
-def ausgabe(e: RezeptEntwurf) -> dict:
+def abgleich(
+    rezept: dict,
+    produkte: list[Product],
+    aliase: dict[str, tuple[str, str]],
+    bestand: dict[str, float],
+) -> list[dict]:
+    """Je Zutat: aus dem Katalog (db: sicher, vorschlag: über den Kern-Namen), neu oder
+    weggelassen, dazu der Bestand. Nur der Code-Abgleich; endgültig entscheidet die
+    Import-Vorschau (dort prüft zusätzlich die Import-KI)."""
+    roh = roh_rezept(0, 0, rezept)
+    by_id = {p.id: p for p in produkte}
+    ergebnis = []
+    for z in rezept_import.zuordnen(roh, produkte, aliase):
+        if z.aktion == "zuordnen" and z.produkt_id in by_id:
+            p = by_id[z.produkt_id]
+            ergebnis.append({
+                "status": "db" if z.sicher else "vorschlag",
+                "produkt_id": p.id, "produkt": p.name, "einheit": p.unit,
+                "bestand": round(bestand.get(p.id, 0.0), 1),
+                "immer_da": p.tracking_mode == TrackingMode.IMMER_DA,
+            })  # fmt: skip
+        elif z.aktion == "weglassen":
+            ergebnis.append({"status": "weglassen", "hinweis": z.hinweis})
+        else:
+            ergebnis.append({"status": "neu", "neu_name": z.neu_name or z.name})
+    return ergebnis
+
+
+async def ausgabe(request: Request, s: Session, e: RezeptEntwurf) -> dict:
+    """Entwurf mit allen Versionen, je Version der aktuelle Abgleich mit dem Katalog."""
+    backend = request.app.state.backend
+    produkte, chargen = await asyncio.gather(backend.list_products(), backend.list_all_batches())
+    aliase = {a.text: (a.produkt_id, a.quelle or "nutzer") for a in s.scalars(select(ZutatAlias))}
+    bestand: dict[str, float] = {}
+    for b in chargen:
+        bestand[b.product_id] = bestand.get(b.product_id, 0.0) + b.amount
     return {
         "id": e.id,
         "prompt": e.prompt,
         "optionen": e.optionen,
-        "versionen": e.versionen,
+        "versionen": [
+            {**v, "abgleich": abgleich(v["rezept"], produkte, aliase, bestand)} for v in e.versionen
+        ],
         "import_id": e.import_id,
         "angelegt": e.angelegt.isoformat() if e.angelegt else None,
     }
@@ -317,8 +359,8 @@ async def entwuerfe(request: Request, s: Session = Depends(session)) -> dict:
 
 
 @router.get("/generieren/{entwurf_id}")
-async def entwurf_lesen(entwurf_id: int, s: Session = Depends(session)) -> dict:
-    return ausgabe(_entwurf(s, entwurf_id))
+async def entwurf_lesen(entwurf_id: int, request: Request, s: Session = Depends(session)) -> dict:
+    return await ausgabe(request, s, _entwurf(s, entwurf_id))
 
 
 @router.post("/generieren", status_code=201)
@@ -337,7 +379,7 @@ async def generieren(data: GenerierenIn, request: Request, s: Session = Depends(
     s.add(e)
     s.commit()
     log.info("Rezept-Entwurf %s: %s", e.id, rezept["name"])
-    return ausgabe(e)
+    return await ausgabe(request, s, e)
 
 
 @router.post("/generieren/{entwurf_id}/ueberarbeiten")
@@ -361,7 +403,7 @@ async def ueberarbeiten(
         {"wunsch": data.wunsch.strip(), "rezept": rezept, "angelegt": _jetzt()},
     ]
     s.commit()
-    return ausgabe(e)
+    return await ausgabe(request, s, e)
 
 
 def roh_rezept(entwurf_id: int, version: int, rezept: dict) -> rezept_import.RohRezept:
